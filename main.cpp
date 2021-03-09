@@ -9,6 +9,7 @@
 
 using namespace std;
 
+// Sort by rows...
 struct coord_sort_key 
 {
     inline bool operator() (const pair<int, int>& p1, 
@@ -119,7 +120,7 @@ int main(int argc, char** argv) {
 
     double* result = new double[coordinates.size()];
 
-    SDDMM_column_dist(coordinates, A, B, result);
+    // SDDMM_column_dist(coordinates, A, B, result);
  
 
     /*if(BCL::rank() == 0) {
@@ -128,8 +129,9 @@ int main(int argc, char** argv) {
     cout << "Rank " << BCL::rank() << " has " << NNZ << endl;
     */
 
+    delete result;
+    freemm(&spMat); // There's a free issue here...
+
     BCL::finalize();
 
-    delete result;
-    freemm(&spMat);
 }
