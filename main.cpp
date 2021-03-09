@@ -53,33 +53,47 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
                 cout << "Not ordered correctly." << endl;
             }
             Arow = fetch_row(A, coordinates[i].first); // Could do asynchronously, perhaps?
-            double* Brow = Btile.data() + B.shape()[1] * coordinates[i].second;
+            if(coordinates[i].second / B.tile_shape()[0] != BCL::rank()) {
+                cout << "Error, nonzero in the wrong bucket: " << coordinates[i].second << endl;
+            }
+
+            double* Brow = Btile.data() + B.shape()[1] * (coordinates[i].second % B.tile_shape()[0]);
             result[i] = cblas_ddot(B.shape()[1], Arow.data(), 1, Brow, 1);
         }
     }
 }
 
 int main(int argc, char** argv) {
-    cout << "Starting kernel" << endl;
+    cout << "Preprocessing Input Matrix" << endl;
 
     if(argc < 3) {
         cout << "Usage: Provide filename of matrix market format, r value." << endl;
         return 1; 
     }
 
-    struct mmdata spMat;
+    struct mmdata spMat; 
 
     if (initialize_mm(argv[1], &spMat)) {
         cout << "Error reading supplied matrix." << endl;
         return 1;
     } 
+
+    cout    << "Reading Sparse Matrix with " << spMat.M << " rows,"
+            << spMat.N << " columns, and " << spMat.NNZ << " nonzeros." << endl;
+
     size_t r = (size_t) atoi(argv[2]);
 
     // Start BCL once we've read the sparse matrix.
-    size_t segment_size = 256;
+    size_t segment_size = 256; // Segment size in megabytes
 	BCL::init(segment_size);
-
 	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
+
+    if (BCL::rank() == 0) {
+        printf("Just created a %lu x %lu matrix.  Here's some info:\n",
+                A.shape()[0], A.shape()[1]);
+        A.print_info();
+    }
+
 	BCL::DMatrix<double> B({(size_t) spMat.N, r}, BCL::BlockRow());
 
     BCL::barrier();
@@ -94,33 +108,44 @@ int main(int argc, char** argv) {
 
     int NNZ = 0;
     int total_NNZ = 0; // Sanity check across all the processes
-    if(spMat.symmetricity == 1) {
         for(int i = 0; i < spMat.NNZ; i++) {
             if(tile_start <= spMat.y[i] && spMat.y[i] < tile_end) {
-                coordinates.emplace_back((size_t) spMat.x[i] - 1, (size_t) spMat.y[i] - 1); 
+
+                coordinates.emplace_back((size_t) spMat.x[i], (size_t) spMat.y[i]);
+
                 // newX.push_back(spMat.x[i]);
                 // newY.push_back(spMat.y[i]);
                 NNZ++;
             }
-            total_NNZ++;
-            if(spMat.x[i] != spMat.y[i]) {
-                if(tile_start <= spMat.x[i] && spMat.x[i] < tile_end) {
-                    coordinates.emplace_back((size_t) spMat.y[i] - 1, (size_t) spMat.x[i] - 1); 
-                    // newY.push_back(spMat.x[i]);
-                    // newX.push_back(spMat.y[i]);
-                    NNZ++;
-                }
+
+            if(spMat.symmetricity == 1) {
                 total_NNZ++;
+                if(spMat.x[i] != spMat.y[i]) {
+                    if(tile_start <= spMat.x[i] && spMat.x[i] < tile_end) {
+                        coordinates.emplace_back((size_t) spMat.y[i], (size_t) spMat.x[i]); 
+                        // newY.push_back(spMat.x[i]);
+                        // newX.push_back(spMat.y[i]);
+                        NNZ++;
+                    }
+                    total_NNZ++;
+                }
             }
         }
 
         // This fully materializes the sparse matrix (since otherwise, we only get the
         // entries above the diagonal if symmetric)
-    }
 
     double* result = new double[coordinates.size()];
 
-    // SDDMM_column_dist(coordinates, A, B, result);
+    /*for(auto it = coordinates.begin(); it != coordinates.end(); it++) {
+        if((*it).first >= (size_t) spMat.M) {
+            cout << "Error: " << (*it).first << endl;
+        }
+    }*/
+
+    cout << "Starting Kernel..." << endl;
+    SDDMM_column_dist(coordinates, A, B, result);
+    cout << "Kernel Finished!" << endl;
  
 
     /*if(BCL::rank() == 0) {
@@ -130,7 +155,7 @@ int main(int argc, char** argv) {
     */
 
     delete result;
-    freemm(&spMat); // There's a free issue here...
+    // freemm(&spMat); Slight memory free issue here, will fix later 
 
     BCL::finalize();
 
