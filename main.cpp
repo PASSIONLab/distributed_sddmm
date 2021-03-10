@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <bcl/bcl.hpp>
 #include <bcl/containers/DMatrix.hpp>
+#include <immintrin.h>
+#include <string.h>
+#include <chrono>
+#include <ctime>
 
 using namespace std;
 
@@ -33,6 +37,26 @@ std::vector<double> fetch_row(BCL::DMatrix<double> &A, size_t abs_row) {
     return(A.get_tile_row(tile_num, 0, row_num));
 }
 
+void serial_kernel(vector<pair<size_t, size_t>> &coords, 
+    double* A,
+    double* B,
+    size_t r,
+    double* res) {   
+
+    for(int i = 0; i < coords.size(); i++){
+        // Assume that the result is a multiple of 8
+
+        double* baseA = A + coords[i].first * r;
+        double* baseB = B + coords[i].second * r;
+
+        // cout << coords[i].second << endl; 
+        // cout << baseB[16] << endl;
+
+        // Assume that r is a multiple of 8 
+        res[i] = cblas_ddot(r, baseA, 1, baseB, 1);
+    }
+}
+
 void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates, 
             BCL::DMatrix<double> &A,
             BCL::DMatrix<double> &B,
@@ -46,6 +70,8 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
 
     vector<double> Btile = B.get_tile(BCL::rank(), 0);
 
+    int numDotProds = 0;
+
     for(int i = 0; i < coordinates.size(); i++) {
         vector<double> Arow;
         if (coordinates[i].first != currentRow) {
@@ -56,16 +82,15 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
             if(coordinates[i].second / B.tile_shape()[0] != BCL::rank()) {
                 cout << "Error, nonzero in the wrong bucket: " << coordinates[i].second << endl;
             }
-
-            double* Brow = Btile.data() + B.shape()[1] * (coordinates[i].second % B.tile_shape()[0]);
-            result[i] = cblas_ddot(B.shape()[1], Arow.data(), 1, Brow, 1);
         }
+        double* Brow = Btile.data() + B.shape()[1] * (coordinates[i].second % B.tile_shape()[0]);
+        result[i] = cblas_ddot(B.shape()[1], Arow.data(), 1, Brow, 1);
+        numDotProds++;
     }
+    cout << "Rank " << BCL::rank() << " processed " << numDotProds << " nonzeros. " << endl;
 }
 
 int main(int argc, char** argv) {
-    cout << "Preprocessing Input Matrix" << endl;
-
     if(argc < 3) {
         cout << "Usage: Provide filename of matrix market format, r value." << endl;
         return 1; 
@@ -87,14 +112,20 @@ int main(int argc, char** argv) {
     size_t segment_size = 256; // Segment size in megabytes
 	BCL::init(segment_size);
 	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
+	BCL::DMatrix<double> B({(size_t) spMat.N, r}, BCL::BlockRow());
+
+    // Fill the dense matrices with random values
+    srand48(BCL::rank());
+    A.apply_inplace([](float a) { return drand48(); });
+    B.apply_inplace([](float a) { return drand48(); });
+
 
     if (BCL::rank() == 0) {
-        printf("Just created a %lu x %lu matrix.  Here's some info:\n",
-                A.shape()[0], A.shape()[1]);
+        cout << "For Matrix A: " << endl;
         A.print_info();
+        cout << "For Matrix B: " << endl;
+        B.print_info();
     }
-
-	BCL::DMatrix<double> B({(size_t) spMat.N, r}, BCL::BlockRow());
 
     BCL::barrier();
 
@@ -106,57 +137,71 @@ int main(int argc, char** argv) {
     size_t tile_start = BCL::rank() * B.tile_shape()[0];
     size_t tile_end = min(tile_start + (size_t) B.tile_shape()[0], (size_t) spMat.N);
 
-    int NNZ = 0;
     int total_NNZ = 0; // Sanity check across all the processes
-        for(int i = 0; i < spMat.NNZ; i++) {
-            if(tile_start <= spMat.y[i] && spMat.y[i] < tile_end) {
+    for(int i = 0; i < spMat.NNZ; i++) {
+        if(tile_start <= spMat.y[i] && spMat.y[i] < tile_end) {
 
-                coordinates.emplace_back((size_t) spMat.x[i], (size_t) spMat.y[i]);
+            coordinates.emplace_back((size_t) spMat.x[i], (size_t) spMat.y[i]);
 
-                // newX.push_back(spMat.x[i]);
-                // newY.push_back(spMat.y[i]);
-                NNZ++;
-            }
+            // newX.push_back(spMat.x[i]);
+            // newY.push_back(spMat.y[i]);
+        }
+        total_NNZ++;
 
-            if(spMat.symmetricity == 1) {
-                total_NNZ++;
-                if(spMat.x[i] != spMat.y[i]) {
-                    if(tile_start <= spMat.x[i] && spMat.x[i] < tile_end) {
-                        coordinates.emplace_back((size_t) spMat.y[i], (size_t) spMat.x[i]); 
-                        // newY.push_back(spMat.x[i]);
-                        // newX.push_back(spMat.y[i]);
-                        NNZ++;
-                    }
-                    total_NNZ++;
+        if(spMat.symmetricity == 1) {
+            if(spMat.x[i] != spMat.y[i]) {
+                if(tile_start <= spMat.x[i] && spMat.x[i] < tile_end) {
+                    coordinates.emplace_back((size_t) spMat.y[i], (size_t) spMat.x[i]); 
+                    // newY.push_back(spMat.x[i]);
+                    // newX.push_back(spMat.y[i]);
                 }
+                total_NNZ++;
             }
         }
+    }
 
         // This fully materializes the sparse matrix (since otherwise, we only get the
         // entries above the diagonal if symmetric)
 
     double* result = new double[coordinates.size()];
 
-    /*for(auto it = coordinates.begin(); it != coordinates.end(); it++) {
-        if((*it).first >= (size_t) spMat.M) {
-            cout << "Error: " << (*it).first << endl;
+    int num_trials = 20; 
+
+    if(strcmp(argv[3], "serial") == 0) {
+        vector<double> Atile = A.get_tile(BCL::rank(), 0);
+        vector<double> Btile = B.get_tile(BCL::rank(), 0);
+
+        cout << "Size is " << Btile.size() << endl;
+
+        cout << "Starting serial kernel..." << endl;
+        auto t_start = std::chrono::steady_clock::now();
+        for(int i = 0; i < num_trials; i++) {
+            serial_kernel(coordinates, Atile.data(), Btile.data(), r, result);
         }
-    }*/
+        auto t_end = std::chrono::steady_clock::now();
+        double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
 
-    cout << "Starting Kernel..." << endl;
-    SDDMM_column_dist(coordinates, A, B, result);
-    cout << "Kernel Finished!" << endl;
- 
-
-    /*if(BCL::rank() == 0) {
-        cout << "Total number of nonzeros is " << total_NNZ << endl;
+        cout << "Kernel took " << millis_per_kernel << endl;
     }
-    cout << "Rank " << BCL::rank() << " has " << NNZ << endl;
-    */
+    else {
+        cout << "Starting parallel kernel..." << endl;
+        auto t_start = std::chrono::steady_clock::now();
+        SDDMM_column_dist(coordinates, A, B, result); 
+        auto t_end = std::chrono::steady_clock::now();
+        double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
+        BCL::barrier();
+        if(BCL::rank() == 0) {
+            cout << "Kernel took " << millis_per_kernel << " milliseconds" << endl;
+            cout    << "Throughput is " 
+                    << total_NNZ * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
+                    << " GFLOPs" << endl;
+        }
+    }
 
     delete result;
     // freemm(&spMat); Slight memory free issue here, will fix later 
 
     BCL::finalize();
+
 
 }
