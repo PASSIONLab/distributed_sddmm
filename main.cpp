@@ -164,8 +164,22 @@ int main(int argc, char** argv) {
         // entries above the diagonal if symmetric)
 
     double* result = new double[coordinates.size()];
+    double* other_result = new double[coordinates.size()];
 
-    int num_trials = 20; 
+    int num_trials = 20;
+
+    vector<double> Atile = A.get_tile(BCL::rank(), 0);
+    vector<double> Btile = B.get_tile(BCL::rank(), 0);
+    serial_kernel(coordinates, Atile.data(), Btile.data(), r, other_result);
+    SDDMM_column_dist(coordinates, A, B, result); 
+
+    for(int i = 0; i < coordinates.size(); i++) {
+        if(result[i] - other_result[i] > 0) {
+            cout << "Error!" << endl;
+        }
+    }
+
+
 
     if(strcmp(argv[3], "serial") == 0) {
         vector<double> Atile = A.get_tile(BCL::rank(), 0);
