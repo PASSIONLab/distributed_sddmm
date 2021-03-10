@@ -29,6 +29,19 @@ struct coord_sort_key
     }
 };
 
+inline double vectorized_dot_product(double* A, double* B, size_t r) {
+        __m512d lane1;
+
+        #pragma GCC unroll 20
+        for(int j = 0; j < r; j+=8) {
+            __m512d Avec1 = _mm512_loadu_pd(A + j);
+            __m512d Bvec1 = _mm512_loadu_pd(B + j);
+
+            lane1 = _mm512_fmadd_pd(Avec1, Bvec1, lane1);
+        }
+        return (_mm512_reduce_add_pd(lane1));
+}
+
 std::vector<double> fetch_row(BCL::DMatrix<double> &A, size_t abs_row) {
     size_t tile_num =  abs_row / A.tile_shape()[0];
     size_t row_num  = abs_row % A.tile_shape()[0];
@@ -37,23 +50,19 @@ std::vector<double> fetch_row(BCL::DMatrix<double> &A, size_t abs_row) {
     return(A.get_tile_row(tile_num, 0, row_num));
 }
 
-void serial_kernel(vector<pair<size_t, size_t>> &coords, 
+void serial_kernel(vector<pair<size_t, size_t>> &coordinates, 
     double* A,
     double* B,
     size_t r,
-    double* res) {   
+    double* result) {   
 
-    for(int i = 0; i < coords.size(); i++){
-        // Assume that the result is a multiple of 8
+    // We assume that the local coordinates are sorted by row so we can
+    // just call this kernel repeatedly
 
-        double* baseA = A + coords[i].first * r;
-        double* baseB = B + coords[i].second * r;
-
-        // cout << coords[i].second << endl; 
-        // cout << baseB[16] << endl;
-
-        // Assume that r is a multiple of 8 
-        res[i] = cblas_ddot(r, baseA, 1, baseB, 1);
+    for(int i = 0; i < coordinates.size(); i++) {
+        double* Arow = A + r * coordinates[i].first;
+        double* Brow = B + r * coordinates[i].second; 
+        result[i] = vectorized_dot_product(Arow, Brow, r); 
     }
 }
 
@@ -68,26 +77,26 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
 
     int currentRow = -1;
 
+    // vector<double> Atile = A.get_tile(BCL::rank(), 0);
     vector<double> Btile = B.get_tile(BCL::rank(), 0);
-
-    int numDotProds = 0;
+    vector<double> Arow;
 
     for(int i = 0; i < coordinates.size(); i++) {
-        vector<double> Arow;
-        if (coordinates[i].first != currentRow) {
-            if(coordinates[i].first > currentRow) {
-                cout << "Not ordered correctly." << endl;
+        if ((int) coordinates[i].first != currentRow) {
+            if((int) coordinates[i].first < currentRow) {
+                cout << "Not ordered correctly " << coordinates[i].first << endl;
             }
-            Arow = fetch_row(A, coordinates[i].first); // Could do asynchronously, perhaps?
+            Arow = fetch_row(A, coordinates[i].first); // Should do asynchronously 
             if(coordinates[i].second / B.tile_shape()[0] != BCL::rank()) {
                 cout << "Error, nonzero in the wrong bucket: " << coordinates[i].second << endl;
             }
+            currentRow = coordinates[i].first;
         }
+
+        // double* Arow = Atile.data() + A.shape()[1] * (coordinates[i].first % A.tile_shape()[0]);
         double* Brow = Btile.data() + B.shape()[1] * (coordinates[i].second % B.tile_shape()[0]);
-        result[i] = cblas_ddot(B.shape()[1], Arow.data(), 1, Brow, 1);
-        numDotProds++;
+        result[i] = vectorized_dot_product(Arow.data(), Brow, A.shape()[1]);
     }
-    cout << "Rank " << BCL::rank() << " processed " << numDotProds << " nonzeros. " << endl;
 }
 
 int main(int argc, char** argv) {
@@ -163,29 +172,15 @@ int main(int argc, char** argv) {
         // This fully materializes the sparse matrix (since otherwise, we only get the
         // entries above the diagonal if symmetric)
 
+    sort(coordinates.begin(), coordinates.end(), coord_sort_key());
+
     double* result = new double[coordinates.size()];
-    double* other_result = new double[coordinates.size()];
 
-    int num_trials = 20;
-
-    vector<double> Atile = A.get_tile(BCL::rank(), 0);
-    vector<double> Btile = B.get_tile(BCL::rank(), 0);
-    serial_kernel(coordinates, Atile.data(), Btile.data(), r, other_result);
-    SDDMM_column_dist(coordinates, A, B, result); 
-
-    for(int i = 0; i < coordinates.size(); i++) {
-        if(result[i] - other_result[i] > 0) {
-            cout << "Error!" << endl;
-        }
-    }
-
-
+    int num_trials = 30;
 
     if(strcmp(argv[3], "serial") == 0) {
         vector<double> Atile = A.get_tile(BCL::rank(), 0);
         vector<double> Btile = B.get_tile(BCL::rank(), 0);
-
-        cout << "Size is " << Btile.size() << endl;
 
         cout << "Starting serial kernel..." << endl;
         auto t_start = std::chrono::steady_clock::now();
@@ -195,12 +190,21 @@ int main(int argc, char** argv) {
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
 
-        cout << "Kernel took " << millis_per_kernel << endl;
+        cout << "Kernel took " << millis_per_kernel << " milliseconds" << endl;
+        cout    << "Throughput is " 
+                << total_NNZ * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
+                << " GFLOPs" << endl;
     }
     else {
         cout << "Starting parallel kernel..." << endl;
-        auto t_start = std::chrono::steady_clock::now();
+
+        // Warmup
         SDDMM_column_dist(coordinates, A, B, result); 
+
+        auto t_start = std::chrono::steady_clock::now();
+        for(int i = 0; i < num_trials; i++) {
+            SDDMM_column_dist(coordinates, A, B, result); 
+        }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
         BCL::barrier();
