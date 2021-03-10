@@ -196,7 +196,10 @@ int main(int argc, char** argv) {
                 << " GFLOPs" << endl;
     }
     else {
-        cout << "Starting parallel kernel..." << endl;
+
+        if(BCL::rank() == 0) {
+            cout << "Starting parallel kernel..." << endl;
+        }
 
         // Warmup
         SDDMM_column_dist(coordinates, A, B, result); 
