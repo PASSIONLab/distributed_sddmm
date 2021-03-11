@@ -168,19 +168,34 @@ int main(int argc, char** argv) {
     double partition_time;
     f >> maxLen >> partition_time;
 
-    for(int i = 0; i < spMat.N; i++) {
-        int col_idx, processor, local_idx;
-        f >> col_idx >> processor >> local_idx;
+	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
 
-        if ((size_t) processor == BCL::rank()) {
-            my_column_embeds.emplace(col_idx, local_idx); 
+    // TODO: THIS ONLY WORKS IF EVERYTHING IS SYMMETRIC!!
+    // These are for the case when you don't want to do a hypergraph partition
+    size_t tile_start = BCL::rank() * A.tile_shape()[0];
+    size_t tile_end = min(tile_start + (size_t) A.tile_shape()[0], (size_t) spMat.M);
+
+    for(size_t i = 0; i < spMat.N; i++) {
+        if(strcmp(argv[4], "hypergraph") == 0) {
+            int col_idx, processor, local_idx;
+            f >> col_idx >> processor >> local_idx;
+
+            if ((size_t) processor == BCL::rank()) {
+                my_column_embeds.emplace(col_idx, local_idx); 
+            }
+        }
+        else if(strcmp(argv[4], "simple") == 0) {
+            if(tile_start <= i && i < tile_end) {
+                my_column_embeds.emplace(i, i - tile_start);
+            }
         }
     }
+
+    // cout << argv[4] << endl;
 
     f.close();
 
     // Initialize the distributed and local dense matrices
-	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
     srand48(BCL::rank());
     A.apply_inplace([](double a) { return drand48(); });
     double* B_local = new double[maxLen * r];
@@ -203,8 +218,11 @@ int main(int argc, char** argv) {
 
     sort(local_coordinates.begin(), local_coordinates.end(), coord_sort_key());
 
-    cout << "Rank " << BCL::rank() << " has " << local_coordinates.size() << " nonzeros" << endl;
-    cout << "Total Nonzeros (Fully Materialized in Symmetric Case): " << coordinates.size() << endl;
+    cout << "Rank " << BCL::rank() << " nonzeros:, \t " << local_coordinates.size() << endl; 
+    
+    if(BCL::rank() == 0) {
+        cout << "Total Nonzeros (Fully Materialized in Symmetric Case): " << coordinates.size() << endl;
+    } 
 
     BCL::barrier();
 
