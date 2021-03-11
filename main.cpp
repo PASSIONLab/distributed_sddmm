@@ -218,7 +218,7 @@ int main(int argc, char** argv) {
         cout << "Starting serial kernel..." << endl;
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            serial_kernel(coordinates, Atile.data(), B_local, r, result);
+            serial_kernel(local_coordinates, Atile.data(), B_local, r, result);
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
@@ -235,11 +235,11 @@ int main(int argc, char** argv) {
         }
 
         // Warmup
-        SDDMM_column_dist(coordinates, A, B_local, result); 
+        SDDMM_column_dist(local_coordinates, A, B_local, result); 
 
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            SDDMM_column_dist(coordinates, A, B_local, result); 
+            SDDMM_column_dist(local_coordinates, A, B_local, result); 
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
