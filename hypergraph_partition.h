@@ -3,4 +3,4 @@
 
 using namespace std;
 
-void partition(vector<pair<size_t, size_t>> &, long int, long int);
+void partition(vector<pair<size_t, size_t>> &, long int, long int, int, string);

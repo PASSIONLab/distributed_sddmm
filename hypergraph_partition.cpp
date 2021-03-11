@@ -2,11 +2,14 @@
 #include <cstdio>
 #include <vector>
 #include <unordered_set>
+#include <fstream>
 #include "patoh/patoh.h"
+#include <chrono>
+#include <ctime>
 
 using namespace std;
 
-void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nCols) {
+void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nCols, int num_procs, string filename) {
     cout << "Starting hypergraph partitioning..." << endl;
     // This assumes that the coordinates arrive in row-sorted order 
     PaToH_Parameters args;
@@ -64,7 +67,7 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     _pins = pins.data();
     _xpins = xpins.data();
 
-    pargs->_k = 68; // For now, test partitioning into just 5 parts 
+    pargs->_k = num_procs; // For now, test partitioning into just 5 parts 
 
     cout << "Set up pins, xpins!" << endl;
 
@@ -76,14 +79,53 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
 
     PaToH_Alloc(pargs, _c, _n, _nconst, cwghts, nwghts, _xpins, _pins);
 
+
     int cut;
 
+    auto t_start = std::chrono::steady_clock::now();
     PaToH_Part(pargs, _c, _n, _nconst, useFixCells,
         cwghts, nwghts, _xpins, _pins, targetweights,
         partvec, partweights, &cut);
+    auto t_end = std::chrono::steady_clock::now();
+    double seconds = std::chrono::duration<double, std::milli>(t_end-t_start).count() / 1000.0;
+ 
 
-    cout << "Partitioned Hypergraph!" << endl;
+    cout << "Hypergraph Partitioning took " << seconds << " seconds." << endl;
     printf("%d-way cutsize is: %d\n", args._k, cut);
 
+    // Write information about the hypergraph partitioning
+    // to an output file
+
+    vector<vector<int>> processor_assignments;
+    for(int i = 0; i < num_procs; i++) {
+        processor_assignments.emplace_back();
+    }
+    for(int i = 0; i < _c; i++) {
+        processor_assignments[partvec[i]].push_back(i);
+    }
+
+    int maxLen = -1;
+    for(int i = 0; i < num_procs; i++) {
+        maxLen = max(maxLen, (int) processor_assignments[i].size());
+    }
+
+    ofstream ofs (filename, std::ofstream::out);
+
+    // First line: Max Length of any bucket and seconds taken for hypergraph partitioning 
+    ofs << maxLen << " " << seconds << "\n";
+
+
+    // Subsequent line: Column coordinate, which processor, which
+    // row within that processor
+
+    for(int i = 0; i < num_procs; i++) {
+        for(int j = 0; j < processor_assignments[i].size(); j++) {
+            ofs << processor_assignments[i][j] << " " << i << " " << j << "\n";
+        }
+    }
+    ofs.flush();
+    ofs.close();
+
+    // PaToH_Free();
 
 }

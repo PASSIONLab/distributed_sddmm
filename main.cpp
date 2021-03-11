@@ -11,8 +11,16 @@
 #include <chrono>
 #include <ctime>
 #include "hypergraph_partition.h"
+#include <string>
+#include <fstream>
+#include <unordered_set>
 
 using namespace std;
+
+inline bool file_exists (const std::string& name) {
+    ifstream f(name.c_str());
+    return f.good();
+}
 
 // Sort by rows...
 struct coord_sort_key 
@@ -69,7 +77,7 @@ void serial_kernel(vector<pair<size_t, size_t>> &coordinates,
 
 void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates, 
             BCL::DMatrix<double> &A,
-            BCL::DMatrix<double> &B,
+            double* B_local, 
             double* result 
             ) {
     
@@ -95,7 +103,7 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
         }
 
         // double* Arow = Atile.data() + A.shape()[1] * (coordinates[i].first % A.tile_shape()[0]);
-        double* Brow = Btile.data() + B.shape()[1] * (coordinates[i].second % B.tile_shape()[0]);
+        double* Brow = B_local + A.shape()[1] * coordinates[i].second;
         result[i] = vectorized_dot_product(Arow.data(), Brow, A.shape()[1]);
     }
 }
@@ -121,51 +129,15 @@ int main(int argc, char** argv) {
     // Start BCL once we've read the sparse matrix.
     size_t segment_size = 256; // Segment size in megabytes
 	BCL::init(segment_size);
-	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
-	BCL::DMatrix<double> B({(size_t) spMat.N, r}, BCL::BlockRow());
-
-    // Fill the dense matrices with random values
-    srand48(BCL::rank());
-    A.apply_inplace([](float a) { return drand48(); });
-    B.apply_inplace([](float a) { return drand48(); });
-
-
-    if (BCL::rank() == 0) {
-        cout << "For Matrix A: " << endl;
-        A.print_info();
-        cout << "For Matrix B: " << endl;
-        B.print_info();
-    }
-
-    BCL::barrier();
-
     // In case symmetric, materialize every entry for convenience
 
     vector<pair<size_t, size_t>> coordinates;
 
-    // Block into column panels. Modify here if the distribution changes.
-    size_t tile_start = BCL::rank() * B.tile_shape()[0];
-    size_t tile_end = min(tile_start + (size_t) B.tile_shape()[0], (size_t) spMat.N);
-
-    int total_NNZ = 0; // Sanity check across all the processes
     for(int i = 0; i < spMat.NNZ; i++) {
-        if(tile_start <= spMat.y[i] && spMat.y[i] < tile_end) {
-
-            coordinates.emplace_back((size_t) spMat.x[i], (size_t) spMat.y[i]);
-
-            // newX.push_back(spMat.x[i]);
-            // newY.push_back(spMat.y[i]);
-        }
-        total_NNZ++;
-
+        coordinates.emplace_back((size_t) spMat.x[i], (size_t) spMat.y[i]);
         if(spMat.symmetricity == 1) {
-            if(spMat.x[i] != spMat.y[i]) {
-                if(tile_start <= spMat.x[i] && spMat.x[i] < tile_end) {
+            if(spMat.x[i] != spMat.y[i]) {            
                     coordinates.emplace_back((size_t) spMat.y[i], (size_t) spMat.x[i]); 
-                    // newY.push_back(spMat.x[i]);
-                    // newX.push_back(spMat.y[i]);
-                }
-                total_NNZ++;
             }
         }
     }
@@ -175,9 +147,49 @@ int main(int argc, char** argv) {
 
     sort(coordinates.begin(), coordinates.end(), coord_sort_key());
 
+    string partition_filepath =  string(argv[1]) 
+                       + "." 
+                       + to_string(BCL::nprocs()) 
+                       + ".partitioning";
+
     if(BCL::rank() == 0) {
-        partition(coordinates, spMat.M, spMat.N);
+        if(! file_exists(partition_filepath)) {
+            partition(coordinates, spMat.M, spMat.N, BCL::nprocs(), partition_filepath);
+        }
     }
+
+    // Now filter down to only the coordinates that we care about
+    unordered_set<int> my_column_embeds; 
+    vector<pair<size_t, size_t>> local_coordinates;
+    ifstream f(partition_filepath);
+    int maxLen;
+    double partition_time;
+    f >> maxLen >> partition_time;
+
+    for(int i = 0; i < spMat.N; i++) {
+        size_t col_idx, processor, local_idx;
+        f >> coord_idx >> processor >> local_idx;
+
+        if (processor == BCL::rank()) {
+            my_column_embeds.insert(coord_idx); 
+        }
+    }
+
+    // Initialize the distributed and local dense matrices
+	BCL::DMatrix<double> A({(size_t) spMat.M, BCL::BlockRow());
+    srand48(BCL::rank());
+    A.apply_inplace([](double a) { return drand48(); });
+    double* B_local = new double[maxLen * r];
+    for(int i = 0; i < maxLen * r; i++) {
+        B_local[i] = drand48(); 
+    }
+
+    if (BCL::rank() == 0) {
+        cout << "Matrix A: " << endl;
+        A.print_info();
+    }
+
+    BCL::barrier();
 
     /*double* result = new double[coordinates.size()];
 
@@ -227,7 +239,6 @@ int main(int argc, char** argv) {
     delete result;
     // freemm(&spMat); Slight memory free issue here, will fix later 
     */
-
 
     BCL::finalize();
 
