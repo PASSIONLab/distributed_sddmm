@@ -175,7 +175,11 @@ int main(int argc, char** argv) {
 
     sort(coordinates.begin(), coordinates.end(), coord_sort_key());
 
-    double* result = new double[coordinates.size()];
+    if(BCL::rank() == 0) {
+        partition(coordinates, spMat.M, spMat.N);
+    }
+
+    /*double* result = new double[coordinates.size()];
 
     int num_trials = 30;
 
@@ -222,6 +226,8 @@ int main(int argc, char** argv) {
 
     delete result;
     // freemm(&spMat); Slight memory free issue here, will fix later 
+    */
+
 
     BCL::finalize();
 
