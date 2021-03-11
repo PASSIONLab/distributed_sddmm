@@ -83,9 +83,18 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     int cut;
 
     auto t_start = std::chrono::steady_clock::now();
-    PaToH_Part(pargs, _c, _n, _nconst, useFixCells,
-        cwghts, nwghts, _xpins, _pins, targetweights,
-        partvec, partweights, &cut);
+
+    if(num_procs > 1) {
+        PaToH_Part(pargs, _c, _n, _nconst, useFixCells,
+            cwghts, nwghts, _xpins, _pins, targetweights,
+            partvec, partweights, &cut);
+    }
+    else {
+        for(int i = 0; i < _c; i++) {
+            partvec[i] = 0;
+        }
+        cut = 0;
+    }
     auto t_end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double, std::milli>(t_end-t_start).count() / 1000.0;
  

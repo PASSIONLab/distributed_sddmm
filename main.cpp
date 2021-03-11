@@ -13,7 +13,7 @@
 #include "hypergraph_partition.h"
 #include <string>
 #include <fstream>
-#include <unordered_set>
+#include <unordered_map>
 
 using namespace std;
 
@@ -87,7 +87,6 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
     int currentRow = -1;
 
     // vector<double> Atile = A.get_tile(BCL::rank(), 0);
-    vector<double> Btile = B.get_tile(BCL::rank(), 0);
     vector<double> Arow;
 
     for(int i = 0; i < coordinates.size(); i++) {
@@ -96,9 +95,6 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
                 cout << "Not ordered correctly " << coordinates[i].first << endl;
             }
             Arow = fetch_row(A, coordinates[i].first); // Should do asynchronously 
-            if(coordinates[i].second / B.tile_shape()[0] != BCL::rank()) {
-                cout << "Error, nonzero in the wrong bucket: " << coordinates[i].second << endl;
-            }
             currentRow = coordinates[i].first;
         }
 
@@ -153,30 +149,38 @@ int main(int argc, char** argv) {
                        + ".partitioning";
 
     if(BCL::rank() == 0) {
+        cout << "Total Number of Processes: " << BCL::nprocs() << endl;
         if(! file_exists(partition_filepath)) {
             partition(coordinates, spMat.M, spMat.N, BCL::nprocs(), partition_filepath);
         }
     }
 
+    BCL::barrier();
+
     // Now filter down to only the coordinates that we care about
-    unordered_set<int> my_column_embeds; 
+    unordered_map<int, int> my_column_embeds; 
     vector<pair<size_t, size_t>> local_coordinates;
     ifstream f(partition_filepath);
+    // f.clear();
+    // f.seekg(0, ios::beg);
+
     int maxLen;
     double partition_time;
     f >> maxLen >> partition_time;
 
     for(int i = 0; i < spMat.N; i++) {
-        size_t col_idx, processor, local_idx;
-        f >> coord_idx >> processor >> local_idx;
+        int col_idx, processor, local_idx;
+        f >> col_idx >> processor >> local_idx;
 
-        if (processor == BCL::rank()) {
-            my_column_embeds.insert(coord_idx); 
+        if ((size_t) processor == BCL::rank()) {
+            my_column_embeds.emplace(col_idx, local_idx); 
         }
     }
 
+    f.close();
+
     // Initialize the distributed and local dense matrices
-	BCL::DMatrix<double> A({(size_t) spMat.M, BCL::BlockRow());
+	BCL::DMatrix<double> A({(size_t) spMat.M, r}, BCL::BlockRow());
     srand48(BCL::rank());
     A.apply_inplace([](double a) { return drand48(); });
     double* B_local = new double[maxLen * r];
@@ -189,27 +193,39 @@ int main(int argc, char** argv) {
         A.print_info();
     }
 
+
+    for(int i = 0; i < coordinates.size(); i++) {
+        auto it = my_column_embeds.find(coordinates[i].second);
+        if(it != my_column_embeds.end()) {
+            local_coordinates.emplace_back(coordinates[i].first, (size_t) it->second);
+        }
+    }
+
+    sort(local_coordinates.begin(), local_coordinates.end(), coord_sort_key());
+
+    cout << "Rank " << BCL::rank() << " has " << local_coordinates.size() << " nonzeros" << endl;
+    cout << "Total Nonzeros (Fully Materialized in Symmetric Case): " << coordinates.size() << endl;
+
     BCL::barrier();
 
-    /*double* result = new double[coordinates.size()];
+    double* result = new double[local_coordinates.size()];
 
     int num_trials = 30;
 
     if(strcmp(argv[3], "serial") == 0) {
         vector<double> Atile = A.get_tile(BCL::rank(), 0);
-        vector<double> Btile = B.get_tile(BCL::rank(), 0);
 
         cout << "Starting serial kernel..." << endl;
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            serial_kernel(coordinates, Atile.data(), Btile.data(), r, result);
+            serial_kernel(coordinates, Atile.data(), B_local, r, result);
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
 
         cout << "Kernel took " << millis_per_kernel << " milliseconds" << endl;
         cout    << "Throughput is " 
-                << total_NNZ * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
+                << coordinates.size() * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
                 << " GFLOPs" << endl;
     }
     else {
@@ -219,11 +235,11 @@ int main(int argc, char** argv) {
         }
 
         // Warmup
-        SDDMM_column_dist(coordinates, A, B, result); 
+        SDDMM_column_dist(coordinates, A, B_local, result); 
 
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            SDDMM_column_dist(coordinates, A, B, result); 
+            SDDMM_column_dist(coordinates, A, B_local, result); 
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
@@ -231,14 +247,13 @@ int main(int argc, char** argv) {
         if(BCL::rank() == 0) {
             cout << "Kernel took " << millis_per_kernel << " milliseconds" << endl;
             cout    << "Throughput is " 
-                    << total_NNZ * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
+                    << coordinates.size() * r * 2.0 / (millis_per_kernel / 1000) * 1e-9 
                     << " GFLOPs" << endl;
         }
     }
 
     delete result;
     // freemm(&spMat); Slight memory free issue here, will fix later 
-    */
 
     BCL::finalize();
 
