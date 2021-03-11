@@ -10,7 +10,7 @@ find_package(MPI REQUIRED)
 find_package(BLAS REQUIRED)
 
 link_directories(patoh)
-add_executable(distributed_sddmm main.cpp mm.cpp )
+add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp)
 # -DSHMEM
 # -DGASNET_EX
 target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -DSHMEM)
