@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdio>
 #include <vector>
+#include <unordered_set>
 #include "patoh/patoh.h"
 
 using namespace std;
@@ -12,31 +13,58 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     PPaToH_Parameters pargs = &args;
     PaToH_Initialize_Parameters(pargs, PATOH_CONPART, PATOH_SUGPARAM_SPEED);
 
-    int *pins; 
-    int *xpins;
+    int *_pins; 
+    int *_xpins;
 
-    /*pins.push_back(0);
+    vector<int> pins;
+    vector<int> xpins;
+
+    unordered_set<size_t> nonzero_rows;   
+
+    xpins.push_back(0);
     for(int i = 0; i < coords.size(); i++) {
+        // nonzero_rows.insert(coords[i].first);
         if(i > 0 && coords[i].first != coords[i-1].first) {
             if(coords[i].first < coords[i-1].first) {
                 cout << "Error, coordinates not sorted in row order!" << endl;
             }
 
-            pins.push_back(i); 
+            xpins.push_back(i);
         }
-        xpins.push_back((int) coords[i].second);
+        pins.push_back((int) coords[i].second);
+        if(coords[i].second > nCols)
+            cout << "Error!" << endl;
     }
-    pins.push_back(coords.size());*/
+
+    xpins.push_back(coords.size());
+
+    // cout << nonzero_rows.size() << endl;
+    // cout << xpins.size() << endl;
 
     int _c = nCols;
-    int _n = nRows;
-    int _nconst = 0;
+    int _n = xpins.size() - 1;
+    int _nconst = 1;
     int useFixCells = 0;
-    int* cwghts = NULL;
-    int* nwghts = NULL;
+    int* cwghts = new int[_c];
 
-    PaToH_Read_Hypergraph("../patoh/ken-11.u", &_c, &_n, &_nconst, &cwghts, &nwghts,
-        &xpins, &pins);
+    for(int i = 0; i < _c; i++) {
+        cwghts[i] = 1;
+    }
+
+    // Every vertex has equal weight here
+
+    int* nwghts = new int[_n];
+    for(int i = 0; i < _n; i++) {
+        nwghts[i] = 1;
+    }
+
+    /*PaToH_Read_Hypergraph("../patoh/ken-11.u", &_c, &_n, &_nconst, &cwghts, &nwghts,
+        &xpins, &pins);*/
+
+    _pins = pins.data();
+    _xpins = xpins.data();
+
+    pargs->_k = 68; // For now, test partitioning into just 5 parts 
 
     cout << "Set up pins, xpins!" << endl;
 
@@ -44,20 +72,18 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     int* partweights = new int[pargs->_k * _nconst]; 
     float* targetweights = NULL;
 
-    pargs->_k = 5; // For now, test partitioning into just 5 parts 
-
     cout << "Finished setting up partitioning parameters!" << endl;
 
-    PaToH_Alloc(pargs, _c, _n, _nconst, cwghts, nwghts, xpins, pins);
+    PaToH_Alloc(pargs, _c, _n, _nconst, cwghts, nwghts, _xpins, _pins);
 
     int cut;
 
     PaToH_Part(pargs, _c, _n, _nconst, useFixCells,
-        cwghts, nwghts, xpins, pins, targetweights,
+        cwghts, nwghts, _xpins, _pins, targetweights,
         partvec, partweights, &cut);
 
-    PaToH_Free();
     cout << "Partitioned Hypergraph!" << endl;
     printf("%d-way cutsize is: %d\n", args._k, cut);
+
 
 }

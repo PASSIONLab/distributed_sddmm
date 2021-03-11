@@ -13,7 +13,7 @@ link_directories(patoh)
 add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp)
 # -DSHMEM
 # -DGASNET_EX
-target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -DSHMEM)
+target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -DSHMEM -O3)
 target_include_directories(distributed_sddmm PRIVATE bcl/ patoh)
 target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} patoh)
 
