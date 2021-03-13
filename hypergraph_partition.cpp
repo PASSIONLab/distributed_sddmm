@@ -5,13 +5,15 @@
 #include <fstream>
 #include "patoh/patoh.h"
 #include <chrono>
+#include <cstring>
 #include <ctime>
 
 using namespace std;
 
 void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nCols, int num_procs, string filename) {
     cout << "Starting hypergraph partitioning..." << endl;
-    // This assumes that the coordinates arrive in row-sorted order 
+
+    // Precondition: The coordinates arrive in row-sorted order 
     PaToH_Parameters args;
     PPaToH_Parameters pargs = &args;
     PaToH_Initialize_Parameters(pargs, PATOH_CONPART, PATOH_SUGPARAM_SPEED);
@@ -50,12 +52,19 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     int useFixCells = 0;
     int* cwghts = new int[_c];
 
-    for(int i = 0; i < _c; i++) {
-        cwghts[i] = 1;
+    // We are going to set the cell weights by the number of nonzeros in a particular column;
+    // This will give us load balance 
+    memset(cwghts, 0, sizeof(int) * _c);
+
+    for(int i = 0; i < coords.size(); i++) {
+        cwghts[coords[i].second]++;
     }
 
-    // Every vertex has equal weight here
+    /*for(int i = 0; i < _c; i++) {
+        cwghts[i] = 1;
+    }*/
 
+    // All hyperedges have equal weight here 
     int* nwghts = new int[_n];
     for(int i = 0; i < _n; i++) {
         nwghts[i] = 1;
@@ -79,7 +88,6 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
 
     PaToH_Alloc(pargs, _c, _n, _nconst, cwghts, nwghts, _xpins, _pins);
 
-
     int cut;
 
     auto t_start = std::chrono::steady_clock::now();
@@ -98,7 +106,6 @@ void partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nC
     auto t_end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double, std::milli>(t_end-t_start).count() / 1000.0;
  
-
     cout << "Hypergraph Partitioning took " << seconds << " seconds." << endl;
     printf("%d-way cutsize is: %d\n", args._k, cut);
 
