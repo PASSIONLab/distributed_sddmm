@@ -117,9 +117,10 @@ int main(int argc, char** argv) {
         return 1;
     } 
 
-    cout    << "Reading Sparse Matrix with " << spMat.M << " rows,"
-            << spMat.N << " columns, and " << spMat.NNZ << " nonzeros." << endl;
-
+    if(BCL::rank() == 0) {
+        cout    << "Reading Sparse Matrix with " << spMat.M << " rows,"
+                << spMat.N << " columns, and " << spMat.NNZ << " nonzeros." << endl;
+    }
     size_t r = (size_t) atoi(argv[2]);
 
     // Start BCL once we've read the sparse matrix.
@@ -218,7 +219,7 @@ int main(int argc, char** argv) {
 
     sort(local_coordinates.begin(), local_coordinates.end(), coord_sort_key());
 
-    cout << "Rank " << BCL::rank() << " nonzeros:, \t " << local_coordinates.size() << endl; 
+    cout << "Rank " << BCL::rank() << " nonzeros:\t " << local_coordinates.size() << endl; 
     
     if(BCL::rank() == 0) {
         cout << "Total Nonzeros (Fully Materialized in Symmetric Case): " << coordinates.size() << endl;
@@ -274,6 +275,5 @@ int main(int argc, char** argv) {
     // freemm(&spMat); Slight memory free issue here, will fix later 
 
     BCL::finalize();
-
 
 }
