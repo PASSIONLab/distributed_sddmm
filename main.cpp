@@ -52,12 +52,11 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         return (_mm512_reduce_add_pd(lane1));
 }
 
-std::vector<double> fetch_row(BCL::DMatrix<double> &A, size_t abs_row) {
+inline  BCL::future<std::vector<double, BCL::bcl_allocator<double>>>
+fetch_row(BCL::DMatrix<double> &A, size_t abs_row) {
     size_t tile_num =  abs_row / A.tile_shape()[0];
     size_t row_num  = abs_row % A.tile_shape()[0];
-    // printf("Getting row %lu, which should be row %lu within tile %lu:\n",
-    //        i, row_num, tile_num);
-    return(A.get_tile_row(tile_num, 0, row_num));
+    return A.arget_tile_row(tile_num, 0, row_num);
 }
 
 void serial_kernel(vector<pair<size_t, size_t>> &coordinates, 
@@ -77,6 +76,7 @@ void serial_kernel(vector<pair<size_t, size_t>> &coordinates,
 }
 
 void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates, 
+            vector<int> active_rows,
             BCL::DMatrix<double> &A,
             double* B_local, 
             double* result,
@@ -86,23 +86,30 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
     // We assume that the local coordinates are sorted by row so we can
     // just call this kernel repeatedly
 
-    int currentRow = -1;
 
     int num_row_fetches = 0;
     // vector<double> Atile = A.get_tile(BCL::rank(), 0);
-    vector<double> Arow;
+    vector<BCL::future<std::vector<double, BCL::bcl_allocator<double>>>> rows;
+    rows.reserve(active_rows.size());
 
+    for(int i = 0; i < active_rows.size(); i++) {
+        rows.push_back(fetch_row(A, active_rows[i]));
+    }
+
+    vector<double, BCL::bcl_allocator<double>> Arow;
+
+    int currentRow = -1;
     for(int i = 0; i < coordinates.size(); i++) {
         if ((int) coordinates[i].first != currentRow) {
             if((int) coordinates[i].first < currentRow) {
                 cout << "Not ordered correctly " << coordinates[i].first << endl;
             }
-            Arow = fetch_row(A, coordinates[i].first); // Should do asynchronously 
-            currentRow = coordinates[i].first;
+
+            currentRow = (int) coordinates[i].first;
+            Arow = rows[num_row_fetches].get();
             num_row_fetches++;
         }
 
-        // double* Arow = Atile.data() + A.shape()[1] * (coordinates[i].first % A.tile_shape()[0]);
         double* Brow = B_local + A.shape()[1] * coordinates[i].second;
         result[i] = vectorized_dot_product(Arow.data(), Brow, A.shape()[1]);
     }
@@ -140,7 +147,7 @@ int main(int argc, char** argv) {
     size_t r = (size_t) atoi(argv[2]);
 
     // Start BCL once we've read the sparse matrix.
-    size_t segment_size = 256; // Segment size in megabytes
+    size_t segment_size = 512; // Segment size in megabytes
 	BCL::init(segment_size);
     // In case symmetric, materialize every entry for convenience
 
@@ -238,7 +245,18 @@ int main(int argc, char** argv) {
         }
     }
 
+
     sort(local_coordinates.begin(), local_coordinates.end(), coord_sort_key());
+    // Isolate only the active rows
+
+    vector<int> active_rows;
+    int currentRow = -1;
+    for(auto it = local_coordinates.begin(); it != local_coordinates.end(); it++) {
+        if((int) (*it).first != currentRow ) {
+            currentRow = (int) (*it).first;
+            active_rows.push_back(currentRow);
+        }
+    }
 
     cout << "Rank " << BCL::rank() << " nonzeros:\t " << local_coordinates.size() << endl; 
     
@@ -275,11 +293,11 @@ int main(int argc, char** argv) {
         }
 
         // Warmup (and print statistics)
-        SDDMM_column_dist(local_coordinates, A, B_local, result, true); 
+        SDDMM_column_dist(local_coordinates, active_rows, A, B_local, result, true); 
 
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            SDDMM_column_dist(local_coordinates, A, B_local, result, false); 
+            SDDMM_column_dist(local_coordinates, active_rows, A, B_local, result, false); 
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
