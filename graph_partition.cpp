@@ -16,72 +16,62 @@ void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long 
 
     // Precondition: The coordinates arrive in row-sorted order 
 
-    int* nnz_per_row = (int*) calloc(nRows, sizeof(int)); 
+    idx_t* nnz_per_row = (idx_t*) calloc(nRows, sizeof(idx_t));
+    idx_t* row_starts = (idx_t*) calloc(nRows + 1, sizeof(idx_t));
+    idx_t* adjacencies = new idx_t[coords.size()];
 
-    for(auto it = coords.begin(); it != coords.end(); it++) {
-        nnz_per_row[(*it).first]++;
+    for(int i = 0; i < nRows; i++) {
+        nnz_per_row[coords[i].first]++;
+        adjacencies[i] = coords[i].second;
+    }
+
+    
+    for(int i = 1; i < nRows + 1; i++) {
+        row_starts[i] = row_starts[i - 1] + nnz_per_row[i - 1];
     }
 
 
-    xpins.push_back(coords.size());
-
-    // cout << nonzero_rows.size() << endl;
-    // cout << xpins.size() << endl;
-
-    int _c = nCols;
-    int _n = xpins.size() - 1;
-    int _nconst = 1;
-    int useFixCells = 0;
-    int* cwghts = new int[_c];
+    idx_t* vwghts = new idx_t[nCols];
 
     // We are going to set the cell weights by the number of nonzeros in a particular column;
     // This will give us load balance 
-    memset(cwghts, 0, sizeof(int) * _c);
+    memset(vwghts, 0, sizeof(idx_t) * nCols);
 
     for(int i = 0; i < coords.size(); i++) {
-        cwghts[coords[i].second]++;
+        vwghts[coords[i].second]++;
     }
 
-    /*for(int i = 0; i < _c; i++) {
-        cwghts[i] = 1;
-    }*/
-
-    // All hyperedges have equal weight here 
-    int* nwghts = new int[_n];
-    for(int i = 0; i < _n; i++) {
-        nwghts[i] = 1;
-    }
-
-    /*PaToH_Read_Hypergraph("../patoh/ken-11.u", &_c, &_n, &_nconst, &cwghts, &nwghts,
-        &xpins, &pins);*/
-
-    _pins = pins.data();
-    _xpins = xpins.data();
-
-    pargs->_k = num_procs; // For now, test partitioning into just 5 parts 
+    idx_t nvtxs = nCols;
+    idx_t ncon = 1; 
+    idx_t* xadj = row_starts;
+    idx_t* adjncy = adjacencies;
+    idx_t* vsize = NULL;
+    idx_t* adjwgt = NULL;
+    idx_t nparts = num_procs;
+    real_t* tpwgts = NULL;
+    real_t* ubvec = NULL;
 
     cout << "Set up pins, xpins!" << endl;
 
-    int* partvec = new int[_c];
-    int* partweights = new int[pargs->_k * _nconst]; 
-    float* targetweights = NULL;
+    idx_t* part = new idx_t[nCols];
+    idx_t options[METIS_NOPTIONS];
+    METIS_SetDefaultOptions(options);
+    options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_VOL;
 
     cout << "Finished setting up partitioning parameters!" << endl;
 
-    PaToH_Alloc(pargs, _c, _n, _nconst, cwghts, nwghts, _xpins, _pins);
-
-    int cut;
+    idx_t cut;
 
     auto t_start = std::chrono::steady_clock::now();
 
     if(num_procs > 1) {
-        PaToH_Part(pargs, _c, _n, _nconst, useFixCells,
-            cwghts, nwghts, _xpins, _pins, targetweights,
-            partvec, partweights, &cut);
+        METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy,
+        vwghts, vsize, adjwgt, &nparts, tpwgts,
+        ubvec, options, &cut, part);
     }
     else {
-        for(int i = 0; i < _c; i++) {
-            partvec[i] = 0;
+        for(int i = 0; i < nCols; i++) {
+            part[i] = 0;
         }
         cut = 0;
     }
@@ -89,7 +79,7 @@ void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long 
     double seconds = std::chrono::duration<double, std::milli>(t_end-t_start).count() / 1000.0;
  
     cout << "Hypergraph Partitioning took " << seconds << " seconds." << endl;
-    printf("%d-way cutsize is: %d\n", args._k, cut);
+    printf("%d-way cutsize is: %d\n", num_procs, cut);
 
     // Write information about the hypergraph partitioning
     // to an output file
@@ -98,8 +88,8 @@ void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long 
     for(int i = 0; i < num_procs; i++) {
         processor_assignments.emplace_back();
     }
-    for(int i = 0; i < _c; i++) {
-        processor_assignments[partvec[i]].push_back(i);
+    for(int i = 0; i < nCols; i++) {
+        processor_assignments[part[i]].push_back(i);
     }
 
     int maxLen = -1;
@@ -112,7 +102,6 @@ void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long 
     // First line: Max Length of any bucket and seconds taken for hypergraph partitioning 
     ofs << maxLen << " " << seconds << "\n";
 
-
     // Subsequent line: Column coordinate, which processor, which
     // row within that processor
 
@@ -123,7 +112,5 @@ void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long 
     }
     ofs.flush();
     ofs.close();
-
-    // PaToH_Free();
 
 }
