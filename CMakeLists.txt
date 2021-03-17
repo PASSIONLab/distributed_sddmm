@@ -13,17 +13,15 @@ link_directories(patoh)
 add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp)
 
 # Below 
-include(gasnet_cmake.cmak)
-set (GASNET_FLAGS ${GASNET_CXXCPPFLAGS} ${GASNET_CXXFLAGS})
-set (GASNET_BACKEND_LIB_FLAGS ${GASNET_LDFLAGS} ${GASNET_LIBS})
-set (BACKEND_FLAGS -DGASNET_EX ${GASNET_FLAGS} ${GASNET_BACKEND_LIB_FLAGS})
+#include(gasnet_cmake.cmak)
+#set (GASNET_FLAGS ${GASNET_CXXCPPFLAGS} ${GASNET_CXXFLAGS})
+#set (GASNET_BACKEND_LIB_FLAGS ${GASNET_LDFLAGS} ${GASNET_LIBS})
+#set (BACKEND_FLAGS -DGASNET_EX ${GASNET_FLAGS} ${GASNET_BACKEND_LIB_FLAGS})
 
-# set (BACKEND_FLAGS -DSHMEM) 
-
-target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -O3 -DGASNET_EX ${GASNET_FLAGS}) 
+target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -O3 -DSHMEM) 
 target_include_directories(distributed_sddmm PRIVATE bcl/ patoh )
 target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} patoh )
 
-message(${GASNET_BACKEND_LIB_FLAGS})
-target_link_options(distributed_sddmm PRIVATE ${GASNET_BACKEND_LIB_FLAGS}) 
+# message(${GASNET_BACKEND_LIB_FLAGS})
+# target_link_options(distributed_sddmm PRIVATE ${GASNET_BACKEND_LIB_FLAGS}) 
 

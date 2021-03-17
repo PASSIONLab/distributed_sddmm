@@ -14,6 +14,7 @@
 #include <string>
 #include <fstream>
 #include <unordered_map>
+#include <mpi.h>
 
 using namespace std;
 
@@ -78,7 +79,8 @@ void serial_kernel(vector<pair<size_t, size_t>> &coordinates,
 void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates, 
             BCL::DMatrix<double> &A,
             double* B_local, 
-            double* result 
+            double* result,
+            bool printstatistics
             ) {
     
     // We assume that the local coordinates are sorted by row so we can
@@ -86,6 +88,7 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
 
     int currentRow = -1;
 
+    int num_row_fetches = 0;
     // vector<double> Atile = A.get_tile(BCL::rank(), 0);
     vector<double> Arow;
 
@@ -96,12 +99,25 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
             }
             Arow = fetch_row(A, coordinates[i].first); // Should do asynchronously 
             currentRow = coordinates[i].first;
+            num_row_fetches++;
         }
 
         // double* Arow = Atile.data() + A.shape()[1] * (coordinates[i].first % A.tile_shape()[0]);
         double* Brow = B_local + A.shape()[1] * coordinates[i].second;
         result[i] = vectorized_dot_product(Arow.data(), Brow, A.shape()[1]);
     }
+
+    if(printstatistics) {
+        int buffer = num_row_fetches;
+        num_row_fetches = BCL::allreduce(buffer, std::plus<int>{});
+
+        cout << "Rank " << BCL::rank() << " " << coordinates.size() << endl;
+
+        if(BCL::rank() == 0 ) {
+            cout << "Total number of row fetches: " << num_row_fetches << endl;
+        }
+    }
+
 }
 
 int main(int argc, char** argv) {
@@ -121,16 +137,17 @@ int main(int argc, char** argv) {
         return 1;
     } 
 
-    if(BCL::rank() == 0) {
-        cout    << "Reading Sparse Matrix with " << spMat.M << " rows,"
-                << spMat.N << " columns, and " << spMat.NNZ << " nonzeros." << endl;
-    }
     size_t r = (size_t) atoi(argv[2]);
 
     // Start BCL once we've read the sparse matrix.
     size_t segment_size = 256; // Segment size in megabytes
 	BCL::init(segment_size);
     // In case symmetric, materialize every entry for convenience
+
+    if(BCL::rank() == 0) {
+        cout    << "Reading Sparse Matrix with " << spMat.M << " rows,"
+                << spMat.N << " columns, and " << spMat.NNZ << " nonzeros." << endl;
+    }
 
     vector<pair<size_t, size_t>> coordinates;
 
@@ -233,7 +250,7 @@ int main(int argc, char** argv) {
 
     double* result = new double[local_coordinates.size()];
 
-    int num_trials = 30;
+    int num_trials = 40;
 
     if(strcmp(argv[3], "serial") == 0) {
         vector<double> Atile = A.get_tile(BCL::rank(), 0);
@@ -257,12 +274,12 @@ int main(int argc, char** argv) {
             cout << "Starting parallel kernel..." << endl;
         }
 
-        // Warmup
-        SDDMM_column_dist(local_coordinates, A, B_local, result); 
+        // Warmup (and print statistics)
+        SDDMM_column_dist(local_coordinates, A, B_local, result, true); 
 
         auto t_start = std::chrono::steady_clock::now();
         for(int i = 0; i < num_trials; i++) {
-            SDDMM_column_dist(local_coordinates, A, B_local, result); 
+            SDDMM_column_dist(local_coordinates, A, B_local, result, false); 
         }
         auto t_end = std::chrono::steady_clock::now();
         double millis_per_kernel = std::chrono::duration<double, std::milli>(t_end-t_start).count() / num_trials;
@@ -279,5 +296,4 @@ int main(int argc, char** argv) {
     // freemm(&spMat); Slight memory free issue here, will fix later 
 
     BCL::finalize();
-
 }
