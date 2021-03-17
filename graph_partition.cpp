@@ -3,43 +3,25 @@
 #include <vector>
 #include <unordered_set>
 #include <fstream>
-#include "patoh/patoh.h"
 #include <chrono>
 #include <cstring>
 #include <ctime>
+#include "metis.h"
 
 using namespace std;
 
-void hypergraph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nCols, int num_procs, string filename) {
-    cout << "Starting hypergraph partitioning..." << endl;
+
+void graph_partition(vector<pair<size_t, size_t>> &coords, long int nRows, long int nCols, int num_procs, string filename) {
+    cout << "Starting graph partitioning..." << endl;
 
     // Precondition: The coordinates arrive in row-sorted order 
-    PaToH_Parameters args;
-    PPaToH_Parameters pargs = &args;
-    PaToH_Initialize_Parameters(pargs, PATOH_CONPART, PATOH_SUGPARAM_SPEED);
 
-    int *_pins; 
-    int *_xpins;
+    int* nnz_per_row = (int*) calloc(nRows, sizeof(int)); 
 
-    vector<int> pins;
-    vector<int> xpins;
-
-    unordered_set<size_t> nonzero_rows;   
-
-    xpins.push_back(0);
-    for(int i = 0; i < coords.size(); i++) {
-        // nonzero_rows.insert(coords[i].first);
-        if(i > 0 && coords[i].first != coords[i-1].first) {
-            if(coords[i].first < coords[i-1].first) {
-                cout << "Error, coordinates not sorted in row order!" << endl;
-            }
-
-            xpins.push_back(i);
-        }
-        pins.push_back((int) coords[i].second);
-        if(coords[i].second > nCols)
-            cout << "Error!" << endl;
+    for(auto it = coords.begin(); it != coords.end(); it++) {
+        nnz_per_row[(*it).first]++;
     }
+
 
     xpins.push_back(coords.size());
 

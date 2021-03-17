@@ -10,11 +10,13 @@
 #include <string.h>
 #include <chrono>
 #include <ctime>
-#include "hypergraph_partition.h"
 #include <string>
 #include <fstream>
 #include <unordered_map>
 #include <mpi.h>
+
+#include "hypergraph_partition.h"
+#include "graph_partition.h"
 
 using namespace std;
 
@@ -172,15 +174,30 @@ int main(int argc, char** argv) {
 
     sort(coordinates.begin(), coordinates.end(), coord_sort_key());
 
-    string partition_filepath =  string(argv[1]) 
-                       + "." 
-                       + to_string(BCL::nprocs()) 
-                       + ".partitioning";
+    string partition_filepath;
+
+    if(strcmp(argv[4], "graph") == 0) {
+        partition_filepath =  string(argv[1]) 
+                        + "." 
+                        + to_string(BCL::nprocs()) 
+                        + ".graph_partitioning";
+    }
+    else if(strcmp(argv[4], "hypergraph") == 0) {
+        partition_filepath =  string(argv[1]) 
+                        + "." 
+                        + to_string(BCL::nprocs()) 
+                        + ".hypergraph_partitioning";
+    }
 
     if(BCL::rank() == 0) {
         cout << "Total Number of Processes: " << BCL::nprocs() << endl;
         if(! file_exists(partition_filepath)) {
-            partition(coordinates, spMat.M, spMat.N, BCL::nprocs(), partition_filepath);
+            if(strcmp(argv[4], "hypergraph") == 0) {
+                hypergraph_partition(coordinates, spMat.M, spMat.N, BCL::nprocs(), partition_filepath);
+            }
+            else if(strcmp(argv[4], "graph") == 0) {
+                graph_partition(coordinates, spMat.M, spMat.N, BCL::nprocs(), partition_filepath);
+            }
         }
     }
 
@@ -205,7 +222,7 @@ int main(int argc, char** argv) {
     size_t tile_end = min(tile_start + (size_t) A.tile_shape()[0], (size_t) spMat.M);
 
     for(size_t i = 0; i < spMat.N; i++) {
-        if(strcmp(argv[4], "hypergraph") == 0) {
+        if(strcmp(argv[4], "hypergraph") == 0 || strcmp(argv[4], "graph") == 0) {
             int col_idx, processor, local_idx;
             f >> col_idx >> processor >> local_idx;
 

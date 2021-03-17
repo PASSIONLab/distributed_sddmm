@@ -12,7 +12,7 @@ find_package(BLAS REQUIRED)
 link_directories(patoh)
 link_directories(metis/build/Linux-x86_64/libmetis)
 
-add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp)
+add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp graph_partition.cpp)
 
 # Below 
 #include(gasnet_cmake.cmak)
@@ -21,7 +21,7 @@ add_executable(distributed_sddmm main.cpp mm.cpp hypergraph_partition.cpp)
 #set (BACKEND_FLAGS -DGASNET_EX ${GASNET_FLAGS} ${GASNET_BACKEND_LIB_FLAGS})
 
 target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -O3 -DSHMEM) 
-target_include_directories(distributed_sddmm PRIVATE bcl/ patoh metis/build/Linux-x86_64/include)
+target_include_directories(distributed_sddmm PRIVATE bcl/ patoh metis/include)
 target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} patoh metis)
 
 # message(${GASNET_BACKEND_LIB_FLAGS})
