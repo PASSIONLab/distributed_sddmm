@@ -106,14 +106,18 @@ void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates,
 
 int main(int argc, char** argv) {
     if(argc < 3) {
-        cout << "Usage: Provide filename of matrix market format, r value." << endl;
+        if(BCL::rank() == 0) {
+            cout << "Usage: Provide filename of matrix market format, r value." << endl;
+        }
         return 1; 
     }
 
     struct mmdata spMat; 
 
     if (initialize_mm(argv[1], &spMat)) {
-        cout << "Error reading supplied matrix." << endl;
+        if(BCL::rank() == 0) {
+            cout << "Error reading supplied matrix." << endl;
+        }
         return 1;
     } 
 
