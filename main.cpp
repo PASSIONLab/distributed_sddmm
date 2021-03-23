@@ -77,58 +77,6 @@ void serial_kernel(vector<pair<size_t, size_t>> &coordinates,
     }
 }
 
-void SDDMM_column_dist( vector<pair<size_t, size_t>> &coordinates, 
-            vector<int> active_rows,
-            BCL::DMatrix<double> &A,
-            double* B_local, 
-            double* result,
-            bool printstatistics
-            ) {
-    
-    // We assume that the local coordinates are sorted by row so we can
-    // just call this kernel repeatedly
-
-
-    int num_row_fetches = 0;
-    // vector<double> Atile = A.get_tile(BCL::rank(), 0);
-    vector<BCL::future<std::vector<double, BCL::bcl_allocator<double>>>> rows;
-    rows.reserve(active_rows.size());
-
-    for(int i = 0; i < active_rows.size(); i++) {
-        rows.push_back(fetch_row(A, active_rows[i]));
-    }
-
-    vector<double, BCL::bcl_allocator<double>> Arow;
-
-    int currentRow = -1;
-    for(int i = 0; i < coordinates.size(); i++) {
-        if ((int) coordinates[i].first != currentRow) {
-            if((int) coordinates[i].first < currentRow) {
-                cout << "Not ordered correctly " << coordinates[i].first << endl;
-            }
-
-            currentRow = (int) coordinates[i].first;
-            Arow = rows[num_row_fetches].get();
-            num_row_fetches++;
-        }
-
-        double* Brow = B_local + A.shape()[1] * coordinates[i].second;
-        result[i] = vectorized_dot_product(Arow.data(), Brow, A.shape()[1]);
-    }
-
-    if(printstatistics) {
-        int buffer = num_row_fetches;
-        num_row_fetches = BCL::allreduce(buffer, std::plus<int>{});
-
-        cout << "Rank " << BCL::rank() << " " << coordinates.size() << endl;
-
-        if(BCL::rank() == 0 ) {
-            cout << "Total number of row fetches: " << num_row_fetches << endl;
-        }
-    }
-
-}
-
 int main(int argc, char** argv) {
     if(argc < 3) {
         if(BCL::rank() == 0) {
