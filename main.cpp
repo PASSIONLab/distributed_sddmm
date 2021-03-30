@@ -22,12 +22,8 @@ int main(int argc, char** argv) {
     }*/
 
     // For now I'm going to use this to test the dense matrix multiplication algorithms
-    int M = 1000;
-    int N = 1000;
-    int K = 1000;
-
-    setup2D(M, N, K);
-    algorithm();
-
+    
+    test2DCorrectness(); 
+    
     MPI_Finalize();
 }

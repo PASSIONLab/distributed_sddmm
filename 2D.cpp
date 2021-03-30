@@ -2,10 +2,12 @@
 #include <utility>
 #include <vector>
 #include <cmath>
+#include <random>
 #include <mpi.h>
 #include <cblas.h>
 
 #include "spmat_reader.h"
+#include "pack.h"
 
 using namespace std;
 
@@ -56,9 +58,9 @@ void setup2D(int M, int N, int K) {
         }
     }
 
-    int rowAwidth = (int) ceil((float) M / p);
-    int rowBwidth = (int) ceil((float) N / p);
-    int colWidth =  (int) ceil((float) K / p);
+    rowAwidth = (int) ceil((float) M / p);
+    rowBwidth = (int) ceil((float) N / p);
+    colWidth =  (int) ceil((float) K / p);
 
     // This processor grid stores processors in column-major order 
     procRow = proc_rank % p; 
@@ -93,8 +95,7 @@ void algorithm() {
             rbuf = recvRowSlice;
         }
         MPI_Bcast((void*) rbuf, rowAwidth * colWidth, MPI_DOUBLE, i, row_communicator);
-
-        if(i == row_rank) {
+        if(i == col_rank) {
             cbuf = colSlice;
         }
         else {
@@ -103,7 +104,8 @@ void algorithm() {
 
         // Should overlap communication and computation, but not doing so yet...
         MPI_Bcast((void*) cbuf, rowBwidth * colWidth, MPI_DOUBLE, i, col_communicator);
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, rowAwidth, rowBwidth, colWidth, 1., rbuf, 1, cbuf, 1, 1., result, 1);
+
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rowAwidth, rowBwidth, colWidth, 1., rbuf, colWidth, cbuf, colWidth, 1., result, rowBwidth);
     }
 }
 
@@ -111,7 +113,112 @@ void algorithm() {
 void finalize2D() { 
     free(rowSlice);
     free(colSlice);
+    free(result);
 
     free(recvRowSlice); 
     free(recvColSlice); 
+
+    MPI_Comm_free(&row_communicator);
+    MPI_Comm_free(&col_communicator);
+
+}
+
+void test2DCorrectness() {
+    int num_procs;
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    int testDimension = 6;
+    int M = testDimension;
+    int N = testDimension;
+    int K = testDimension;
+
+    setup2D(M, N, K);
+
+    // Interpret both of the matrices as being in row major order
+    double* A = new double[M * K];
+    double* B = new double[K * N];
+
+    double* A_packed = new double[M * K];
+    double* B_packed = new double[K * N];
+
+    double* C_computed     = new double[M * N];
+    double* C_ground_truth = new double[M * N];
+    double* C_packed = new double[K * N];
+
+    // Standard mersenne_twister_engine seeded with 1.0 
+    // (we don't really care about randomness)
+    std::mt19937 gen(1); 
+    std::uniform_real_distribution<> dis(-1.0, 1.0);
+
+    for(int i = 0; i < M * K; i++) {
+        // A[i] = dis(gen); 
+        A[i] = i + 1;
+    }
+
+    for(int i = 0; i < N * K; i++) {
+        B[i] = i + 1;
+        // B[i] = dis(gen);
+    }
+
+    tile_spec_t Atile[2] = {{rowAwidth, colWidth,  1}, {-1, 0, 0}};
+    tile_spec_t Btile[2] = {{rowBwidth, colWidth,  1}, {-1, 0, 0}};
+    tile_spec_t Ctile[2] = {{rowAwidth, rowBwidth, 1}, {-1, 0, 0}};
+
+    pack(A, A_packed, Atile, 2, M, K); 
+    pack(B, B_packed, Btile, 2, N, K); 
+
+    cblas_dgemm(CblasRowMajor, 
+                CblasNoTrans, 
+                CblasNoTrans, 
+                M, 
+                N, 
+                K, 1., 
+                A, K, 
+                B, K, 1., 
+                C_ground_truth, N);
+
+    MPI_Scatter(
+    (void*) A_packed,
+    rowAwidth * colWidth,
+    MPI_DOUBLE,
+    (void*) rowSlice,
+    rowAwidth * colWidth,
+    MPI_DOUBLE,
+    0,
+    MPI_COMM_WORLD);
+
+    MPI_Scatter(
+    (void*) B_packed,
+    rowBwidth * colWidth,
+    MPI_DOUBLE,
+    (void*) colSlice,
+    rowBwidth * colWidth,
+    MPI_DOUBLE,
+    0,
+    MPI_COMM_WORLD);
+
+    algorithm();
+
+    MPI_Gather(
+    (void*) result,
+    rowAwidth * rowBwidth,
+    MPI_DOUBLE,
+    (void*) C_packed,
+    rowAwidth * rowBwidth,
+    MPI_DOUBLE,
+    0,
+    MPI_COMM_WORLD);
+
+    unpack(C_computed, C_packed, Ctile, 2, M, N);
+
+
+    if(proc_rank == 0) {
+        cout << "Ground Truth    Computed" << endl;
+        for(int i = 0; i < M * N; i++) {
+            cout << C_ground_truth[i] << " " << C_computed[i] << endl;
+        }
+        cout << "Completed!" << endl;
+    }
+
+    finalize2D();
 }
