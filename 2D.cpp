@@ -105,7 +105,7 @@ void algorithm() {
         // Should overlap communication and computation, but not doing so yet...
         MPI_Bcast((void*) cbuf, rowBwidth * colWidth, MPI_DOUBLE, i, col_communicator);
 
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rowAwidth, rowBwidth, colWidth, 1., rbuf, colWidth, cbuf, colWidth, 1., result, rowBwidth);
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rowAwidth, rowBwidth, colWidth, 1., rbuf, colWidth, cbuf, rowBwidth, 1., result, rowBwidth);
     }
 }
 
@@ -126,24 +126,24 @@ void finalize2D() {
 void test2DCorrectness() {
     int num_procs;
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+    int testMult = (int) sqrt(num_procs);
 
-    int testDimension = 6;
-    int M = testDimension;
-    int N = testDimension;
-    int K = testDimension;
-
+    int M = testMult * 100;
+    int N = testMult * 50;
+    int K = testMult * 60;
+    
     setup2D(M, N, K);
 
     // Interpret both of the matrices as being in row major order
-    double* A = new double[M * K];
-    double* B = new double[K * N];
+    double* A              = new double[M * K];
+    double* B              = new double[K * N];
 
-    double* A_packed = new double[M * K];
-    double* B_packed = new double[K * N];
+    double* A_packed       = new double[M * K];
+    double* B_packed       = new double[K * N];
 
     double* C_computed     = new double[M * N];
     double* C_ground_truth = new double[M * N];
-    double* C_packed = new double[K * N];
+    double* C_packed       = new double[M * N];
 
     // Standard mersenne_twister_engine seeded with 1.0 
     // (we don't really care about randomness)
@@ -161,21 +161,21 @@ void test2DCorrectness() {
     }
 
     tile_spec_t Atile[2] = {{rowAwidth, colWidth,  1}, {-1, 0, 0}};
-    tile_spec_t Btile[2] = {{rowBwidth, colWidth,  1}, {-1, 0, 0}};
+    tile_spec_t Btile[2] = {{colWidth,  rowBwidth, 1}, {-1, 0, 0}};
     tile_spec_t Ctile[2] = {{rowAwidth, rowBwidth, 1}, {-1, 0, 0}};
 
     pack(A, A_packed, Atile, 2, M, K); 
-    pack(B, B_packed, Btile, 2, N, K); 
+    pack(B, B_packed, Btile, 2, K, N); 
 
-    cblas_dgemm(CblasRowMajor, 
+    cblas_dgemm(CblasColMajor, 
                 CblasNoTrans, 
                 CblasNoTrans, 
                 M, 
                 N, 
                 K, 1., 
-                A, K, 
+                A, M, 
                 B, K, 1., 
-                C_ground_truth, N);
+                C_ground_truth, M);
 
     MPI_Scatter(
     (void*) A_packed,
@@ -186,6 +186,9 @@ void test2DCorrectness() {
     MPI_DOUBLE,
     0,
     MPI_COMM_WORLD);
+    
+
+    // cout << rowBwidth * colWidth << endl;
 
     MPI_Scatter(
     (void*) B_packed,
@@ -197,7 +200,13 @@ void test2DCorrectness() {
     0,
     MPI_COMM_WORLD);
 
+    if(proc_rank == 0) {
+        cout << "Starting algorithm!" << endl;
+    }
     algorithm();
+    if(proc_rank == 0) {
+        cout << "Algorithm complete!" << endl;
+    }
 
     MPI_Gather(
     (void*) result,
@@ -211,13 +220,16 @@ void test2DCorrectness() {
 
     unpack(C_computed, C_packed, Ctile, 2, M, N);
 
-
     if(proc_rank == 0) {
-        cout << "Ground Truth    Computed" << endl;
         for(int i = 0; i < M * N; i++) {
-            cout << C_ground_truth[i] << " " << C_computed[i] << endl;
+            // cout << C_ground_truth[i] << " " << C_computed[i] << endl;
+            if(abs(C_ground_truth[i] - C_computed[i]) > 1e-7) {
+                cout << "Error between ground truth and computed value!" << endl;
+                exit(1);
+            }
         }
-        cout << "Completed!" << endl;
+
+        cout << "Correctness Check Passed!" << endl;
     }
 
     finalize2D();

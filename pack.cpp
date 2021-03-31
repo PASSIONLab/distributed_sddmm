@@ -39,18 +39,18 @@ void pack_helper(
                 // Lowest level of unpacking
                 if(tile_specs[level].colMajor) {
                     if(unpack) {
-                        in_mat[coordX + i + (coordY + j) * n] = out_mat[j * dimR + i];      
+                        in_mat[coordX + i + (coordY + j) * m] = out_mat[j * dimR + i];      
                     }
                     else {
-                        out_mat[j * dimR + i] = in_mat[coordX + i + (coordY + j) * n];
+                        out_mat[j * dimR + i] = in_mat[coordX + i + (coordY + j) * m]; // Toggle from m to n to switch from row to column major input
                     }
                 }
                 else {
                     if(unpack) {
-                        in_mat[coordX + i + (coordY + j) * n] = out_mat[i * dimC + j];
+                        in_mat[coordX + i + (coordY + j) * m] = out_mat[i * dimC + j];
                     }
                     else {
-                        out_mat[i * dimC + j] = in_mat[coordX + i + (coordY + j) * n]; 
+                        out_mat[i * dimC + j] = in_mat[coordX + i + (coordY + j) * m]; 
                     }
                 }
                 // End lowest level of unpacking
