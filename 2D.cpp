@@ -264,6 +264,9 @@ void test2DCorrectness() {
         cout << "Correctness Check Passed!" << endl;
     }
 
+    cout << "Communication Time: " << communication_time << endl;
+    cout << "Computation Time:   " << computation_time << endl;
+
     finalize2D();
 }
 
