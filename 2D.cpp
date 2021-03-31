@@ -1,8 +1,10 @@
+#include <chrono>
+#include <cmath>
 #include <iostream>
+#include <random>
 #include <utility>
 #include <vector>
-#include <cmath>
-#include <random>
+
 #include <mpi.h>
 #include <cblas.h>
 
@@ -41,6 +43,32 @@ int M, N, K;
 
 MPI_Comm row_communicator;
 MPI_Comm col_communicator;
+
+double communication_time;
+double computation_time;
+
+void reset_performance_timers() {
+    communication_time = 0;
+    computation_time = 0;
+}
+
+double get_communication_time() {
+    return communication_time;
+}
+
+double get_computation_time() {
+    return computation_time;
+}
+
+chrono::time_point<std::chrono::steady_clock> start_clock() {
+    return std::chrono::steady_clock::now();
+}
+
+double stop_clock(chrono::time_point<std::chrono::steady_clock> &start) {
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = end - start;
+    return diff.count();
+}
 
 // Setup data structures; assert p^2 is the total number of processors 
 
@@ -94,7 +122,10 @@ void algorithm() {
         else {
             rbuf = recvRowSlice;
         }
+        auto t = start_clock();
         MPI_Bcast((void*) rbuf, rowAwidth * colWidth, MPI_DOUBLE, i, row_communicator);
+        communication_time += stop_clock(t);
+
         if(i == col_rank) {
             cbuf = colSlice;
         }
@@ -103,9 +134,14 @@ void algorithm() {
         }
 
         // Should overlap communication and computation, but not doing so yet...
+        t = start_clock();
         MPI_Bcast((void*) cbuf, rowBwidth * colWidth, MPI_DOUBLE, i, col_communicator);
+        communication_time += stop_clock(t);
 
+        t = start_clock();
         cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rowAwidth, rowBwidth, colWidth, 1., rbuf, colWidth, cbuf, rowBwidth, 1., result, rowBwidth);
+        computation_time += stop_clock(t);
+
     }
 }
 
@@ -128,11 +164,12 @@ void test2DCorrectness() {
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     int testMult = (int) sqrt(num_procs);
 
-    int M = testMult * 100;
-    int N = testMult * 50;
-    int K = testMult * 60;
+    int M = testMult * 1000;
+    int N = testMult * 1000;
+    int K = testMult * 1000;
     
     setup2D(M, N, K);
+    reset_performance_timers();
 
     // Interpret both of the matrices as being in row major order
     double* A              = new double[M * K];
@@ -146,18 +183,16 @@ void test2DCorrectness() {
     double* C_packed       = new double[M * N];
 
     // Standard mersenne_twister_engine seeded with 1.0 
-    // (we don't really care about randomness)
+    // (we just care that the matrices are nonzero) 
     std::mt19937 gen(1); 
     std::uniform_real_distribution<> dis(-1.0, 1.0);
 
     for(int i = 0; i < M * K; i++) {
-        // A[i] = dis(gen); 
-        A[i] = i + 1;
+        A[i] = dis(gen); 
     }
 
     for(int i = 0; i < N * K; i++) {
-        B[i] = i + 1;
-        // B[i] = dis(gen);
+        B[i] = dis(gen);
     }
 
     tile_spec_t Atile[2] = {{rowAwidth, colWidth,  1}, {-1, 0, 0}};
@@ -186,9 +221,6 @@ void test2DCorrectness() {
     MPI_DOUBLE,
     0,
     MPI_COMM_WORLD);
-    
-
-    // cout << rowBwidth * colWidth << endl;
 
     MPI_Scatter(
     (void*) B_packed,
@@ -234,3 +266,4 @@ void test2DCorrectness() {
 
     finalize2D();
 }
+
