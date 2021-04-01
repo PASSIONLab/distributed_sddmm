@@ -72,7 +72,7 @@ double stop_clock(chrono::time_point<std::chrono::steady_clock> &start) {
 
 // Setup data structures; assert p^2 is the total number of processors 
 
-void setup2D(int M, int N, int K) {
+void setup3D(int M, int N, int K) {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
     int num_procs;
@@ -146,7 +146,7 @@ void algorithm() {
 }
 
 
-void finalize2D() { 
+void finalize3D() { 
     free(rowSlice);
     free(colSlice);
     free(result);
@@ -159,7 +159,7 @@ void finalize2D() {
 
 }
 
-void test2DCorrectness() {
+void test3DCorrectness() {
     int num_procs;
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     int testMult = (int) sqrt(num_procs);
