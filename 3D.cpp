@@ -188,9 +188,9 @@ void test3DCorrectness() {
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     int testMult = (int) cbrt(num_procs);
 
-    int M = testMult * 1;
-    int N = testMult * 1;
-    int K = testMult * 1;
+    int M = testMult * 100;
+    int N = testMult * 100;
+    int K = testMult * 100;
 
     setup3D(M, N, K);
 
@@ -220,13 +220,13 @@ void test3DCorrectness() {
     std::uniform_real_distribution<> dis(-1.0, 1.0);
 
     for(int i = 0; i < M * K; i++) {
-        // A[i] = dis(gen); 
-        A[i] = i + 1;
+        A[i] = dis(gen); 
+        // A[i] = i + 1;
     }
 
     for(int i = 0; i < N * K; i++) {
-        // B[i] = dis(gen);
-        B[i] = i + 1;
+        B[i] = dis(gen);
+        // B[i] = i + 1;
     }
 
     tile_spec_t Atile[2] = {{rowAwidth, colWidth,  1}, {-1, 0, 0}};
