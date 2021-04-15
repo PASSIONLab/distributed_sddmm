@@ -7,7 +7,7 @@
 #include <mpi.h>
 
 #include "sddmm.h"
-#include "3D.h"
+#include "15D.h"
 
 using namespace std;
 
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
 
     // For now I'm going to use this to test the dense matrix multiplication algorithms
     
-    test3DCorrectness(); 
+    test1DCorrectness(); 
     
     MPI_Finalize();
 }
