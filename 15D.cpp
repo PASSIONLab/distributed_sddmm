@@ -5,6 +5,10 @@
 #include <utility>
 #include <vector>
 #include <string.h>
+#include <vector>
+#include <utility>
+#include <random>
+
 
 #include <mpi.h>
 #include <cblas.h>
@@ -32,6 +36,7 @@ double* Bslice;
 double* result;
 
 double* recvRowSlice;
+double* recvResultSlice;
 
 int procRow;
 int procLayer;
@@ -84,24 +89,25 @@ void setup15D(int M_loc, int N_loc, int K_loc, int c_loc) {
     int num_procs;
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
-    p = (int) num_procs / c;
+    p = (int) (num_procs / c);
 
     if(num_procs % (c * c) != 0) {
         if(proc_rank == 0) {
             cout << "Error, for 1.5D algorithm, must have c^2 divide num_procs!" << endl;
+            exit(1);
         }
 
-        if(K % p != 0) {
+        /*if(K % p != 0) {
             cout << "Error, for 1.5D algorithm, must have K divisible by num_procs / c." << endl;
-        }
+        }*/
 
-        if(M % p != 0) {
+        /*if(M % p != 0) {
             cout << "Error, for 1.5D algorithm, must have M divisible by num_procs / c." << endl;
-        }
+        }*/
     }
 
-    rowAwidth = (int) ceil((float) M / p);
-    rowBwidth = (int) ceil((float) K / p);
+    rowAwidth = (int) M / p;
+    rowBwidth = (int) K / p;
 
     procRow = proc_rank % p; 
     procLayer = proc_rank / p;
@@ -111,7 +117,8 @@ void setup15D(int M_loc, int N_loc, int K_loc, int c_loc) {
     Bslice   = new double[rowBwidth * N];
     result   = new double[rowAwidth * N];
 
-    recvRowSlice = new double[rowAwidth * K];
+    recvRowSlice = new double[rowBwidth * N];
+    recvResultSlice = new double[rowAwidth * N];
 
     // We only need to fill the portion at row_rank, col_rank
     MPI_Comm_split(MPI_COMM_WORLD, procRow,   proc_rank, &interlayer_communicator);
@@ -151,20 +158,11 @@ void algorithm() {
     MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
     MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     communication_time += stop_clock(t);
 
     swap(Bslice, recvRowSlice);
-
-    string res = "["; 
-    for(int i = 0; i < rowAwidth; i++) {
-        for(int j = 0; j < K; j++) {
-            res += " " + to_string(Aslice[i * K + j]); 
-        }
-        res += "\n";
-    }
-    res += "]\n";
-    cout << "Rank " << proc_rank << " has " << res << endl;
-     
 
     for(int i = 0; i < p / c; i++) {
 
@@ -176,7 +174,7 @@ void algorithm() {
                     N, 
                     rowBwidth, 
                     1., 
-                    Aslice + ((p + layer_rank + shift - i) % p) * rowBwidth, 
+                    Aslice + ((p + layer_rank - shift - i) % p) * rowBwidth, 
                     K, 
                     Bslice, 
                     N, 
@@ -185,35 +183,49 @@ void algorithm() {
                     N);
         computation_time += stop_clock(t);
 
-        cout << "Rank " << proc_rank << " multiplies " <<
-            Aslice[((p + layer_rank + shift - i) % p) * rowBwidth] << endl;
+        //cout << "Rank " << proc_rank << " multiplies " <<
+        //    Aslice[((p + layer_rank + shift - i) % p) * rowBwidth] << endl;
 
-        string res = "["; 
-        for(int i = 0; i < rowBwidth; i++) {
-            for(int j = 0; j < N; j++) {
-                res += " " + to_string(Bslice[i * rowBwidth + j]); 
+        /*string res = "["; 
+        for(int i = 0; i < rowAwidth; i++) {
+            for(int j = 0; j < K; j++) {
+                res += " " + to_string(Aslice[i * K + j]); 
             }
             res += "\n";
         }
         res += "]\n";
-        cout << "Rank " << proc_rank << " has " << res << endl;
+        cout << "Rank " << proc_rank << " has A matrix " << res << endl;
+
+        res = "["; 
+        for(int i = 0; i < rowBwidth; i++) {
+            for(int j = 0; j < N; j++) {
+                res += " " + to_string(Bslice[i * N + j]); 
+            }
+            res += "\n";
+        }
+        res += "]\n";
+        cout << "Rank " << proc_rank << " has B matrix " << res << endl;
 
         res = "["; 
         for(int i = 0; i < rowAwidth; i++) {
             for(int j = 0; j < N; j++) {
-                res += " " + to_string(result[i * rowAwidth+ j]); 
+                res += " " + to_string(result[i * N + j]); 
             }
             res += "\n";
         }
         res += "]\n";
         cout << "Rank " << proc_rank << " result: " << res << endl;
-
+        */
 
         t = start_clock();
 
-        // Cyclic shift
+        /*cout << "Process " << proc_rank << " with layer rank "
+            << layer_rank << " sends to " << (layer_rank + 1) % p 
+            << "." << endl;*/
+
+        
         MPI_Isend(Bslice, rowBwidth * N, MPI_DOUBLE, 
-                    (layer_rank + 1) % p, 0,
+                    (p + layer_rank + 1) % p, 0,
                     intralayer_communicator, &send_request);
 
         MPI_Irecv(recvRowSlice, rowBwidth * N, MPI_DOUBLE, MPI_ANY_SOURCE,
@@ -221,38 +233,85 @@ void algorithm() {
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+        
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        communication_time += stop_clock(t);
 
         swap(Bslice, recvRowSlice);
-        communication_time += stop_clock(t);
     }
 
+
     // Reduction across layers
-    MPI_Reduce(MPI_IN_PLACE, result, rowAwidth * N, MPI_DOUBLE,
+    t = start_clock();
+    MPI_Reduce(result, recvResultSlice, rowAwidth * N, MPI_DOUBLE,
                MPI_SUM, 0, interlayer_communicator);
+    communication_time += stop_clock(t);
 }
 
 
 void finalize15D() {
-    free(Aslice);
-    free(Bslice);
-    free(result);
-
-    free(recvRowSlice);
+    delete Aslice;
+    delete Bslice;
+    delete result;
+    delete recvRowSlice;
 
     MPI_Comm_free(&interlayer_communicator);
     MPI_Comm_free(&intralayer_communicator);
-
 }
+
+/*
+ * SDDMM with N x N matrix, N x r matrix 
+ */
+
+void benchmark15D(int N, int K, int c) {
+    // First, we are going to generate a sparse matrix; let's have every 
+    // process generate its sparse matrix coordinates
+
+    int num_procs;
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    //int d = (int) (frac_nonzero * N);
+
+    setup15D(N, N, K, c);
+
+    if(proc_rank == 0) {
+        cout << "Number of Processes: " << num_procs <<
+        ", N = " << N << ", K = " << K << 
+        ", c=" << c << endl; 
+    }
+
+    reset_performance_timers();
+    algorithm();
+
+    double sum_comm_time, sum_comp_time;
+
+    MPI_Reduce(&communication_time, &sum_comm_time, 1,
+                  MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    MPI_Reduce(&computation_time, &sum_comp_time, 1,
+                  MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if(proc_rank == 0) {
+        sum_comm_time /= num_procs;
+        sum_comp_time   /= num_procs;
+        cout << "Average Communication Time: " << sum_comm_time << endl;
+        cout << "Average Computation Time:   " << sum_comp_time << endl;
+    }
+
+    finalize15D();
+}
+
 
 void test1DCorrectness() {
     int num_procs;
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
-    M = num_procs * 2;
-    K = num_procs * 1;
-    N = num_procs * 1;
+    M = num_procs * 10;
+    K = num_procs * 3;
+    N = num_procs * 10;
 
-    setup15D(M, N, K, 1);
+    setup15D(M, N, K, 4);
     reset_performance_timers();
 
     // Interpret both of the matrices as being in row major order
@@ -280,15 +339,15 @@ void test1DCorrectness() {
         B[i] = i + 1;
     }
 
-    cblas_dgemm(CblasColMajor, 
+    cblas_dgemm(CblasRowMajor, 
                 CblasNoTrans, 
                 CblasNoTrans, 
                 M, 
                 N, 
                 K, 1., 
-                A, M, 
-                B, K, 1., 
-                C_ground_truth, M);
+                A, K, 
+                B, N, 1., 
+                C_ground_truth, N);
 
     if(row_rank == 0) {
         MPI_Scatter(
@@ -312,14 +371,16 @@ void test1DCorrectness() {
         intralayer_communicator);
     }
 
+    // cout << Bslice[0] << " " << Bslice[1] << endl;
+
     if(proc_rank == 0) {
         cout << "Starting algorithm!" << endl;
     }
     algorithm();
     if(row_rank == 0) {
-        cout << "Algorithm complete!" << endl;
+        // cout << "Algorithm complete!" << endl;
         MPI_Gather(
-            (void*) result,
+            (void*) recvResultSlice,
             rowAwidth * N,
             MPI_DOUBLE,
             (void*) C_computed,
@@ -331,11 +392,11 @@ void test1DCorrectness() {
 
     if(proc_rank == 0) {
         for(int i = 0; i < M * N; i++) {
-            cout << C_ground_truth[i] << " " << C_computed[i] << endl;
-            /*if(abs(C_ground_truth[i] - C_computed[i]) > 1e-7) {
-                cout << "Error between ground truth and computed value!" << endl;
+            //cout << C_ground_truth[i] << " " << C_computed[i] << endl;
+            if(abs(C_ground_truth[i] - C_computed[i]) > 1e-7) {
+                // cout << "Error between ground truth and computed value!" << endl;
                 exit(1);
-            }*/
+            }
         }
 
         cout << "Correctness Check Passed!" << endl;

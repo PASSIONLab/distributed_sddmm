@@ -5,3 +5,5 @@ void algorithm();
 void finalize15D();
 
 void test1DCorrectness();
+
+void benchmark15D(int N, int K, int c);

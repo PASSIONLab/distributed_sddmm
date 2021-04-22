@@ -24,6 +24,11 @@ int main(int argc, char** argv) {
     // For now I'm going to use this to test the dense matrix multiplication algorithms
     
     test1DCorrectness(); 
-    
+
+    int num_procs;
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    //benchmark15D(2000, 1000, 2);
+
     MPI_Finalize();
 }
