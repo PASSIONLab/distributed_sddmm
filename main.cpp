@@ -7,12 +7,16 @@
 #include <mpi.h>
 
 #include "sddmm.h"
-#include "15D.h"
+#include "15D_sparse.h"
+#include "erdos_gen.h"
 
 using namespace std;
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
+
+    int proc_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
     /*if(argc < 3) {
         if(proc_rank == 0) {
@@ -20,15 +24,15 @@ int main(int argc, char** argv) {
         }
         return 1; 
     }*/
-
-    // For now I'm going to use this to test the dense matrix multiplication algorithms
     
-    test1DCorrectness(); 
+    // test1DCorrectness(); 
 
-    int num_procs;
-    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+    if(proc_rank == 0) {
+        generateMatrix(2000, 2000, "test.txt", 100);
+    }
 
-    //benchmark15D(2000, 1000, 2);
+
+    benchmark15D(2000, 100, 2000, 2, "test.txt");
 
     MPI_Finalize();
 }
