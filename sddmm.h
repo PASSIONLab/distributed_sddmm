@@ -4,8 +4,10 @@
 
 using namespace std;
 
-void serial_kernel(vector<pair<size_t, size_t>> &coordinates, 
+size_t kernel(vector<pair<size_t, size_t>> &coordinates, 
     double* A,
     double* B,
     size_t r,
-    double* result);
+    double* result,
+    int start,
+    int end);

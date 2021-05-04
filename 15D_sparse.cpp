@@ -12,8 +12,10 @@
 #include <cassert>
 #include <mpi.h>
 #include <cblas.h>
+#include <algorithm>
 
 #include "spmat_reader.h"
+#include "sddmm.h"
 #include "pack.h"
 
 using namespace std;
@@ -30,9 +32,9 @@ int layer_rank; // Rank within a layer (left to right)
 int rowAwidth;
 int rowBwidth;
 
-
 double* Aslice;
 double* Bslice;
+double* Cslice;
 double* result;
 
 double* recvRowSlice;
@@ -42,6 +44,21 @@ int procRow;
 int procLayer;
 
 vector<pair<size_t, size_t>> S;
+vector<size_t> blockStarts;
+
+// Meant to sort the sparse matrix in column-major order
+struct column_major_sorter 
+{
+    inline bool operator() (const pair<size_t, size_t> &p1, const pair<size_t, size_t>& p2)
+    {
+        if(p1.second == p2.second) {
+            return (p1.first < p2.first);
+        }
+        else {
+            return p1.second < p2.second;
+        }
+    }
+};
 
 int r;
 
@@ -50,20 +67,16 @@ int M, N, K;
 MPI_Comm interlayer_communicator;
 MPI_Comm intralayer_communicator;
 
-double communication_time;
+double broadcast_time;
+double cyclic_shift_time;
 double computation_time;
+double reduction_time;
 
 void reset_performance_timers() {
-    communication_time = 0;
+    broadcast_time = 0;
+    cyclic_shift_time = 0;
     computation_time = 0;
-}
-
-double get_communication_time() {
-    return communication_time;
-}
-
-double get_computation_time() {
-    return computation_time;
+    reduction_time = 0;
 }
 
 chrono::time_point<std::chrono::steady_clock> start_clock() {
@@ -79,6 +92,7 @@ double stop_clock(chrono::time_point<std::chrono::steady_clock> &start) {
 // Setup data structures; assert p^2 is the total number of processors 
 
 void setup15D(int M_loc, int N_loc, int K_loc, int c_loc, char* filename) {
+
     M = M_loc;
     N = N_loc;
     K = K_loc;
@@ -124,30 +138,78 @@ void setup15D(int M_loc, int N_loc, int K_loc, int c_loc, char* filename) {
     int M_read, K_read, NNZ;
     ifs >> M_read >> K_read >> NNZ;
 
-    assert(M_read == M && K_read == K);
+    //assert(M_read == M && K_read == K);
+    M = M_read;
+    K = K_read;
 
     for(int i = 0; i < NNZ; i++) {
         int r, c, v;
         ifs >> r >> c >> v;
         r--;
-        c--;
+        //c--;  Because of an error, we don't want to subtract 1 here...
         if(rowAwidth * layer_rank <= r && r < rowAwidth * (layer_rank + 1)) {
             S.emplace_back(r, c);
         }
     }
 
-    cout << "Rank " << proc_rank << " has " << S.size() << " nonzeros " << endl;
-
     ifs.close();
 
+    for(int i = 0; i < S.size(); i++) {
+        if(S[i].first > M || S[i].second > K) {
+            cout << "STOPPED BEFORE SORT AT " << i << endl;
+            exit(1);
+        }
+    }
+
+    // Further sort the coordinates into blocks 
+    std::sort(S.begin(), S.end(), column_major_sorter());
+    
+    int currentStart = 0;
+    for(int i = 0; i < S.size(); i++) {
+        while(S[i].second >= currentStart) {
+            blockStarts.push_back(i);
+            currentStart += rowBwidth;
+        }
+    }
+    while(blockStarts.size() < p + 1) {
+        blockStarts.push_back(S.size());
+    }
+
+    for(int i = 0; i < S.size(); i++) {
+        S[i].first %= rowAwidth;
+        S[i].second %= rowBwidth;
+    }
+
+    /*if(proc_rank == 0) {
+        for(int i = 0; i < blockStarts.size(); i++) {
+            cout << blockStarts[i] << endl;
+        }
+    }*/
+
     // The portion of matrices A, B that are owend by the current processor 
-    Aslice   = new double[rowAwidth * K];
+    
+    Aslice   = new double[S.size()];
     Bslice   = new double[rowBwidth * N];
-    result   = new double[rowAwidth * N];
+    Cslice   = new double[rowAwidth * N];
+    result   = new double[S.size()];
+    
+    // Fill values randomly
 
+    
+    for(int i = 0; i < rowBwidth * N; i++) {
+        Bslice[i] = rand();
+    }
+    for(int i = 0; i < rowAwidth * N; i++) {
+        Cslice[i] = rand();
+    }
+    
     recvRowSlice = new double[rowBwidth * N];
-    recvResultSlice = new double[rowAwidth * N];
+    recvResultSlice = new double[S.size()];
 
+
+    if(proc_rank == 0) {
+        cout << "Initialization complete!" << endl;
+    } 
 }
 
 void swap(double* &A, double* &B) {
@@ -164,12 +226,17 @@ void algorithm() {
     // First replicate the two matrices across layers of the processor grid 
 
     int shift = procLayer * p / c;
+    
+    int nnz_processed = 0;
 
     auto t = start_clock();
     // This assumes that the matrices permanently live at the bottom-most layer 
-    MPI_Bcast((void*) Aslice, rowAwidth * K, MPI_DOUBLE, 0, interlayer_communicator);
+    MPI_Bcast((void*) Aslice, S.size(), MPI_DOUBLE, 0, interlayer_communicator);
     MPI_Bcast((void*) Bslice, rowBwidth * N, MPI_DOUBLE, 0, interlayer_communicator);
+    MPI_Bcast((void*) Cslice, rowAwidth * N, MPI_DOUBLE, 0, interlayer_communicator);
+    broadcast_time += stop_clock(t);
 
+    t = start_clock();
     // Initial shift
     MPI_Isend(Bslice, rowBwidth * N, MPI_DOUBLE, 
                 (layer_rank + shift) % p, 0,
@@ -182,28 +249,27 @@ void algorithm() {
     MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
 
     MPI_Barrier(MPI_COMM_WORLD);
-
-    communication_time += stop_clock(t);
+    cyclic_shift_time += stop_clock(t);
 
     swap(Bslice, recvRowSlice);
 
     for(int i = 0; i < p / c; i++) {
 
         t = start_clock();
-        cblas_dgemm(CblasRowMajor, 
-                    CblasNoTrans, 
-                    CblasNoTrans, 
-                    rowAwidth, 
-                    N, 
-                    rowBwidth, 
-                    1., 
-                    Aslice + ((p + layer_rank - shift - i) % p) * rowBwidth, 
-                    K, 
-                    Bslice, 
-                    N, 
-                    1., 
-                    result, 
-                    N);
+
+        int block_id = (p + layer_rank - shift - i) % p;
+
+        assert(blockStarts[block_id] < S.size());
+        assert(blockStarts[block_id + 1] <= S.size());
+
+        nnz_processed += kernel(S,
+            Cslice,
+            Bslice,
+            N,
+            result,
+            blockStarts[block_id],
+            blockStarts[block_id + 1]);
+
         computation_time += stop_clock(t);
 
         //cout << "Rank " << proc_rank << " multiplies " <<
@@ -240,12 +306,11 @@ void algorithm() {
         cout << "Rank " << proc_rank << " result: " << res << endl;
         */
 
-        t = start_clock();
-
         /*cout << "Process " << proc_rank << " with layer rank "
             << layer_rank << " sends to " << (layer_rank + 1) % p 
             << "." << endl;*/
 
+        t = start_clock();
         
         MPI_Isend(Bslice, rowBwidth * N, MPI_DOUBLE, 
                     (p + layer_rank + 1) % p, 0,
@@ -259,7 +324,7 @@ void algorithm() {
         
         MPI_Barrier(MPI_COMM_WORLD);
 
-        communication_time += stop_clock(t);
+        cyclic_shift_time += stop_clock(t);
 
         swap(Bslice, recvRowSlice);
     }
@@ -267,15 +332,25 @@ void algorithm() {
 
     // Reduction across layers
     t = start_clock();
-    MPI_Reduce(result, recvResultSlice, rowAwidth * N, MPI_DOUBLE,
+    MPI_Reduce(result, recvResultSlice, S.size(), MPI_DOUBLE,
                MPI_SUM, 0, interlayer_communicator);
-    communication_time += stop_clock(t);
-}
+    reduction_time += stop_clock(t);
 
+    // Debugging only: print out the total number of dot products taken 
+
+    int total_processed;
+    MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
+               MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if(proc_rank == 0) {
+        cout << "Total Nonzeros Processed: " << total_processed << endl;
+    }
+}
 
 void finalize15D() {
     delete Aslice;
     delete Bslice;
+    delete Cslice;
     delete result;
     delete recvRowSlice;
 
@@ -304,28 +379,44 @@ void benchmark15D(int M_loc, int N_loc, int K_loc, int c_loc, char* filename) {
         ", c=" << c << endl; 
     }
 
-    /*reset_performance_timers();
+    reset_performance_timers();
     algorithm();
+    
+    double sum_broadcast_time, sum_comp_time, sum_shift_time, sum_reduce_time;
 
-    double sum_comm_time, sum_comp_time;
+    MPI_Reduce(&broadcast_time, &sum_broadcast_time, 1,
+                  MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
-    MPI_Reduce(&communication_time, &sum_comm_time, 1,
+    MPI_Reduce(&cyclic_shift_time, &sum_shift_time, 1,
                   MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     MPI_Reduce(&computation_time, &sum_comp_time, 1,
                   MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
+    MPI_Reduce(&reduction_time, &sum_reduce_time, 1,
+                  MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+
     if(proc_rank == 0) {
-        sum_comm_time /= num_procs;
-        sum_comp_time   /= num_procs;
-        cout << "Average Communication Time: " << sum_comm_time << endl;
-        cout << "Average Computation Time:   " << sum_comp_time << endl;
-    }*/
+        sum_broadcast_time /= num_procs;
+        sum_shift_time     /= num_procs;
+        sum_comp_time      /= num_procs;
+        sum_reduce_time    /= num_procs;
+        //cout << "Average Broadcast Time: " << sum_broadcast_time<< endl;
+        //cout << "Average Cyclic Shift Time: " << sum_shift_time << endl;
+        //cout << "Average Computation Time:   " << sum_comp_time << endl;
+        //cout << "Average Reduction Time: " << sum_reduce_time << endl;
+        cout << sum_broadcast_time << " "
+        << sum_shift_time << " "
+        << sum_comp_time << " "
+        << sum_reduce_time << endl;
+    }
 
     finalize15D();
 }
 
-
+// Note: verified that this passes, commenting so that I can freely
+// change some function signatures
 void test1DCorrectness() {
     /*
     int num_procs;
