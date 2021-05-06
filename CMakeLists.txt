@@ -19,4 +19,4 @@ link_directories(
 add_executable(distributed_sddmm main.cpp mm.cpp spmat_reader.cpp sddmm.cpp 15D_sparse.cpp erdos_gen.cpp pack.cpp) 
 
 target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -O3) 
-target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS)
+target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
