@@ -4,7 +4,8 @@
 
 using namespace std;
 
-size_t kernel(vector<pair<size_t, size_t>> &coordinates, 
+size_t kernel(int64_t* rCoords,
+    int64_t* cCoords,
     double* A,
     double* B,
     size_t r,

@@ -6,4 +6,4 @@ using namespace std;
 
 //void test1DCorrectness();
 
-void benchmark15D(int M, int N, int K, int c, char* filename);
+void benchmark15D(int logM, int R, int c);
