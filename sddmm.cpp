@@ -19,7 +19,6 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         return (_mm512_reduce_add_pd(lane1));
 }
 
-
 size_t kernel(int64_t* rCoords,
     int64_t* cCoords,
     double* A,

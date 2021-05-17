@@ -47,7 +47,8 @@ public:
     vector<int64_t> rCoords;
     vector<int64_t> cCoords;
 
-    // These all relate to the local buffers
+    // These are the local dense matrix buffers (first two)
+    // and the buffer for the local nonzeros 
     int nrowsA;
     int nrowsB;
     int ncolsLocal;
@@ -57,14 +58,13 @@ public:
     double* localResult;
     double* recvResultSlice;
 
-
     // Performance timers 
     int nruns;
     double broadcast_time;
     double computation_time;
     double reduction_time;
 
-    Sparse25D(int logM, int R, int c, int nnz_per_row) {
+    Sparse25D(int logM, int nnz_per_row, int R, int c) {
         
         /*
          * Vivek: should we rename nnz_per_row to edgefactor, since that interpretation
@@ -166,6 +166,15 @@ public:
         localResult     = new double[local_nnz]; 
         recvResultSLice = new double[local_nnz]; 
 
+
+        // Randomly initialize; but should handle initialization of the dense matrices
+        // in a separate function ideally... 
+        for(int i = 0; i < nrowsA * ncolsLocal; i++) {
+            localA[i] = rand();
+        }
+        for(int i = 0; i < nrowsB * ncolsLocal; i++) {
+            localB[i] = rand();
+        }
     }
 
     void reset_performance_timers() {
@@ -189,7 +198,8 @@ public:
     }
 
     /*
-     * I guess it's best to describe this as Johnson's algorithm. 
+     * Hmmm... this looks very similar to Johnson's algorithm. What's the difference between
+     * this and Edgar's 2.5D algorithms? 
      */
     void algorithm() {
         int nnz_processed = 0;
@@ -197,13 +207,23 @@ public:
         // Assume that the matrices begin distributed across two faces of the 3D grid,
         // but not distributed yet
 
+        shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
+
         auto t = start_clock();
-        MPI_Bcast((void*) Aslice, local_nnz, MPI_DOUBLE, 0, grid->GetLayerWorld());
+        MPI_Bcast((void*) localA, nrowsA * ncolsLocal, MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
+        MPI_Bcast((void*) localB, nrowsB * ncolsLocal, MPI_DOUBLE, 0, commGridLayer->GetColWorld());
         stop_clock_and_add(t, &broadcast_time);
 
         // Perform a local SDDMM 
         t = start_clock();
-
+        nnz_processed += kernel(rCoords.data(),
+            cCoords.data(),
+            localA,
+            localB,
+            ncolsLocal,
+            result,
+            0, 
+            local_nnz); 
         stop_clock_and_add(t, &computation_time);
 
         // Reduction across layers (fiber world)
@@ -269,4 +289,16 @@ public:
         delete[] recvResultSlice;
     }
 
+}
+
+int main(int argc, char** argv) {
+    MPI_Init(&argc, &argv);
+
+    int proc_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+
+    int num_procs;
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    Sparse25D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
 }

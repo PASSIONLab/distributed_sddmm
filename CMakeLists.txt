@@ -16,7 +16,7 @@ include_directories(
 link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib)
 
-add_executable(distributed_sddmm main.cpp mm.cpp spmat_reader.cpp sddmm.cpp 15D_sparse.cpp erdos_gen.cpp pack.cpp) 
+add_executable(25D_sparse 25D_sparse.cpp) 
+target_compile_options(25D_sparse PRIVATE -O3 -march=knl -O3) 
+target_link_libraries(25D_sparse PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
 
-target_compile_options(distributed_sddmm PRIVATE -O3 -march=knl -O3) 
-target_link_libraries(distributed_sddmm PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
