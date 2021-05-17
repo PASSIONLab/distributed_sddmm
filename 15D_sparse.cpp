@@ -27,13 +27,13 @@
 using namespace std;
 using namespace combblas;
 
-#define EDGEFACTOR 16
+#define EDGEFACTOR 32
 
 typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
 
 class Sparse15D {
 public:
-    // Matrix Dimensions, K is the inner dimension
+    // Matrix Dimensions, R is the short inner dimension
     int M;
     int N;
     int R;
@@ -47,7 +47,7 @@ public:
     unique_ptr<CommGrid3D> grid;
 
     // Parallel coordinate arrays for the sparse matrix
-    int local_nnz; 
+    int64_t local_nnz; 
     vector<int64_t> rCoords;
     vector<int64_t> cCoords; 
     vector<int64_t> blockStarts;
@@ -59,7 +59,8 @@ public:
     double* Bslice;
     double* Cslice;
     double* result;
-
+    
+    // Temporary buffers
     double* recvRowSlice;
     double* recvResultSlice;
     
@@ -251,9 +252,9 @@ public:
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+        stop_clock_and_add(t, &cyclic_shift_time);
 
         MPI_Barrier(MPI_COMM_WORLD);
-        stop_clock_and_add(t, &cyclic_shift_time);
 
         swap(Bslice, recvRowSlice);
 
@@ -286,9 +287,10 @@ public:
 
             MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
             MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-            
-            MPI_Barrier(MPI_COMM_WORLD);
             stop_clock_and_add(t, &cyclic_shift_time);
+
+            MPI_Barrier(MPI_COMM_WORLD);
+
 
             swap(Bslice, recvRowSlice);
         }
@@ -343,6 +345,16 @@ public:
         }
     }
 
+    void benchmark() {
+        reset_performance_timers();
+
+        int nruns = 10;
+        for(int i = 0; i < nruns; i++) {
+            algorithm();
+        }
+        print_statistics();
+    }
+
     // Destructor
     ~Sparse15D() {
         delete[] Aslice;
@@ -354,14 +366,3 @@ public:
         delete[] recvResultSlice;
     }
 };
-
-void benchmark15D(int logM, int R, int c) {
-    Sparse15D x(logM, R, c);
-    x.reset_performance_timers();
-
-    int nruns = 10;
-    for(int i = 0; i < nruns; i++) {
-        x.algorithm();
-    }
-    x.print_statistics();
-}
