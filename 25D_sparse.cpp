@@ -111,7 +111,7 @@ public:
             DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(grid->GetCommGridLayer());
 
             double initiator[4] = {0.25, 0.25, 0.25, 0.25};
-            assert(abs(initiator[0] + initiator[1] + initiator[2] + initiator[4] - 1.0) < 1e-7);
+            assert(abs(initiator[0] + initiator[1] + initiator[2] + initiator[3] - 1.0) < 1e-7);
             unsigned long int scale      = logM;
 
             DEL->GenGraph500Data(initiator, scale, nnz_per_row);
@@ -125,14 +125,11 @@ public:
             }
 
             local_nnz = G->seq().getnnz();
-            rowAwidth = G->seq().getnrow();
             delete DEL;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
         MPI_Bcast(&local_nnz, 1, MPI_INT, 0, grid->GetFiberWorld());
-        MPI_Bcast(&rowAwidth, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        rowBwidth = (int) ceil((float) N  * c / p);
 
         rCoords.resize(local_nnz);
         cCoords.resize(local_nnz);
@@ -145,8 +142,11 @@ public:
             tuple<int64_t, int64_t, int>* values = tups.tuples;  
             
             for(int i = 0; i < tups.getnnz(); i++) {
+                // TODO: Change some indices here!! 
+
+
                 rCoords[i] = get<0>(values[i]);
-                cCoords[i] = get<1>(values[i]); // So that we have valid indexing 
+                cCoords[i] = get<1>(values[i]); 
             }
             delete G;
         }
@@ -156,7 +156,7 @@ public:
         MPI_Bcast(cCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         // Step 7: allocate buffers for the dense matrices; over-allocate the dense matrices,
-        // that's ok.
+        // that's ok. Although we do have better tools to do this... see the 1.5D allocation.
         nrowsA = this->M / sqrtpc + 1;
         nrowsB = this->N / sqrtpc + 1;
         ncolsLocal = this->R / c;
@@ -164,7 +164,7 @@ public:
         localA          = new double[nrowsA * ncolsLocal]; 
         localB          = new double[nrowsB * ncolsLocal];
         localResult     = new double[local_nnz]; 
-        recvResultSLice = new double[local_nnz]; 
+        recvResultSlice = new double[local_nnz]; 
 
 
         // Randomly initialize; but should handle initialization of the dense matrices
@@ -201,8 +201,9 @@ public:
      * Hmmm... this looks very similar to Johnson's algorithm. What's the difference between
      * this and Edgar's 2.5D algorithms? 
      */
-    void algorithm() {
+    void algorithm(bool verbose) {
         int nnz_processed = 0;
+        nruns++;
 
         // Assume that the matrices begin distributed across two faces of the 3D grid,
         // but not distributed yet
@@ -221,14 +222,14 @@ public:
             localA,
             localB,
             ncolsLocal,
-            result,
+            localResult,
             0, 
             local_nnz); 
         stop_clock_and_add(t, &computation_time);
 
         // Reduction across layers (fiber world)
         t = start_clock();
-        MPI_Reduce(result, recvResultSlice, local_nnz, MPI_DOUBLE,
+        MPI_Reduce(localResult, recvResultSlice, local_nnz, MPI_DOUBLE,
                 MPI_SUM, 0, grid->GetFiberWorld());
         stop_clock_and_add(t, &reduction_time);
 
@@ -238,10 +239,9 @@ public:
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
                 MPI_SUM, 0, grid->GetLayerWorld());
 
-        if(proc_rank == 0) {
+        if(proc_rank == 0 && verbose) {
             cout << "Total Nonzeros Processed: " << total_processed << endl;
         } 
-
     }
 
     void print_statistics() {
@@ -273,11 +273,13 @@ public:
     }
 
     void benchmark() {
+        algorithm(true);
+
         reset_performance_timers();
 
         int nruns = 10;
         for(int i = 0; i < nruns; i++) {
-            algorithm();
+            algorithm(false);
         }
         print_statistics();
     }
@@ -288,8 +290,7 @@ public:
         delete[] localResult;
         delete[] recvResultSlice;
     }
-
-}
+};
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -301,4 +302,5 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
     Sparse25D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    x.benchmark();
 }
