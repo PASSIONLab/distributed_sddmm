@@ -33,6 +33,8 @@ public:
     int N;
     int R;
 
+    int nnz_per_row;
+
     int p;     // Total number of processes
     int sqrtpc; // Square grid size on each layer
     int c;     // Number of Layers
@@ -76,6 +78,7 @@ public:
         this->N = this->M;
         this->R = R;
         this->c = c;
+        this->nnz_per_row = nnz_per_row;
 
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &p);
@@ -205,6 +208,16 @@ public:
         int nnz_processed = 0;
         nruns++;
 
+        if(proc_rank == 0 && verbose) {
+            cout << "Matrix Dimensions: " 
+            << this->M << " x " << this->N << endl;
+            cout << "Nonzeros Per row: " << nnz_per_row << endl;
+            cout << "R-Value: " << this->R << endl;
+            
+            cout << "Grid Dimensions: "
+            << sqrtpc << " x " << sqrtpc << " x " << c << endl;
+        }
+
         // Assume that the matrices begin distributed across two faces of the 3D grid,
         // but not distributed yet
 
@@ -256,18 +269,17 @@ public:
         MPI_Allreduce(&reduction_time, &sum_reduce_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-
         if(proc_rank == 0) {
+            cout << "Avg. Broadcast Time\t"
+                << "Avg. Computation Time\t"
+                << "Avg. Reduction Time" << endl;
+
             sum_broadcast_time /= p * nruns;
             sum_comp_time      /= p * nruns;
             sum_reduce_time    /= p * nruns;
-            //cout << "Average Broadcast Time: " << sum_broadcast_time<< endl;
-            //cout << "Average Cyclic Shift Time: " << sum_shift_time << endl;
-            //cout << "Average Computation Time:   " << sum_comp_time << endl;
-            //cout << "Average Reduction Time: " << sum_reduce_time << endl;
-            cout << "Aggregate: " 
-            << sum_broadcast_time << " "
-            << sum_comp_time << " "
+            cout 
+            << sum_broadcast_time << "\t"
+            << sum_comp_time << "\t"
             << sum_reduce_time << endl;
         }
     }
@@ -282,6 +294,9 @@ public:
             algorithm(false);
         }
         print_statistics();
+        if(proc_rank == 0) {
+            cout << "=================================" << endl;
+        }
     }
 
     ~Sparse25D() {
@@ -300,6 +315,12 @@ int main(int argc, char** argv) {
 
     int num_procs;
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    // Arguments:
+    // 1. Log of side length of sparse matrix
+    // 2. NNZ per row
+    // 3. R-Dimension Length
+    // 4. Replication factor
 
     Sparse25D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
     x.benchmark();
