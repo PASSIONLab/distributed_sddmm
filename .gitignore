@@ -2,3 +2,5 @@ bcl
 build
 data
 metis
+eigen
+result_files/*
