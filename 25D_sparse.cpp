@@ -15,6 +15,8 @@
 #include <algorithm>
 
 #include "sddmm.h"
+#include "common.h"
+#include "io_utils.h"
 
 // CombBLAS includes 
 #include <memory>
@@ -144,9 +146,6 @@ public:
             tuple<int64_t, int64_t, int>* values = tups.tuples;  
             
             for(int i = 0; i < tups.getnnz(); i++) {
-                // TODO: Change some indices here!! 
-
-
                 rCoords[i] = get<0>(values[i]);
                 cCoords[i] = get<1>(values[i]); 
             }
@@ -168,15 +167,6 @@ public:
         localResult     = new double[local_nnz]; 
         recvResultSlice = new double[local_nnz]; 
 
-
-        // Randomly initialize; but should handle initialization of the dense matrices
-        // in a separate function ideally... 
-        for(int i = 0; i < nrowsA * ncolsLocal; i++) {
-            localA[i] = rand();
-        }
-        for(int i = 0; i < nrowsB * ncolsLocal; i++) {
-            localB[i] = rand();
-        }
     }
 
     void reset_performance_timers() {

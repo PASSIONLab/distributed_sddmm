@@ -15,6 +15,7 @@
 #include <Eigen/Dense>
 
 #include "sddmm.h"
+#include "common.h"
 #include "pack.h"
 
 // This code implements a 1.5D Sparse Matrix Multiplication Algorithm
@@ -26,9 +27,6 @@
 using namespace std;
 using namespace combblas;
 using namespace Eigen;
-
-typedef Matrix<double, Dynamic, Dynamic, RowMajor> DenseMatrix;
-typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
 
 class Sparse15D {
 public:
@@ -101,24 +99,6 @@ public:
 
         PSpMat_s32p64_Int * G; 
         if(grid->GetRankInFiber() == 0) {
-            DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(grid->GetCommGridLayer());
-
-            double initiator[4] = {0.25, 0.25, 0.25, 0.25};
-            unsigned long int scale      = logM;
-
-            DEL->GenGraph500Data(initiator, scale, nnz_per_row);
-            PermEdges(*DEL);
-            RenameVertices(*DEL);	
-            G = new PSpMat_s32p64_Int(*DEL, false);
-
-            int64_t total_nnz = G->getnnz(); 
-            if(proc_rank == 0) {
-                cout << "Total Nonzeros Generated: " << total_nnz << endl;
-            }
-
-            local_nnz = G->seq().getnnz();
-            localSrows = G->seq().getnrow();
-            delete DEL;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
