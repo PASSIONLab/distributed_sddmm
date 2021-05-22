@@ -14,7 +14,6 @@
 #include <cblas.h>
 #include <algorithm>
 
-#include "spmat_reader.h"
 #include "sddmm.h"
 
 // CombBLAS includes 

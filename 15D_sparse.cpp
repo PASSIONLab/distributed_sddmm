@@ -11,10 +11,9 @@
 #include <fstream>
 #include <cassert>
 #include <mpi.h>
-#include <cblas.h>
 #include <algorithm>
+#include <Eigen/Dense>
 
-#include "spmat_reader.h"
 #include "sddmm.h"
 #include "pack.h"
 
@@ -26,7 +25,9 @@
 
 using namespace std;
 using namespace combblas;
+using namespace Eigen;
 
+typedef Matrix<double, Dynamic, Dynamic, RowMajor> DenseMatrix;
 typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
 
 class Sparse15D {
@@ -52,21 +53,17 @@ public:
     vector<int64_t> cCoords; 
     vector<int64_t> blockStarts;
 
-    // Buffers for the dense matrix 
+    // Values of the sparse matrix, and the final result
+    // of the calculation 
+    VectorXd Svalues; 
+    VectorXd result;
 
-    // To do: maybe convert to vectors, since that is cleaner?
-    double* Aslice;
-    double* Bslice;
-    double* Cslice;
-    double* result;
-    
-    // Temporary buffers
-    double* recvRowSlice;
-    double* recvResultSlice;
+    DenseMatrix localA;
+    DenseMatrix localB;
     
     // Local dimensions
-    int64_t rowAwidth;
-    int64_t rowBwidth;
+    int64_t localSrows;
+    int64_t localBrows;
 
     // Performance timers 
     int nruns;
@@ -120,14 +117,14 @@ public:
             }
 
             local_nnz = G->seq().getnnz();
-            rowAwidth = G->seq().getnrow();
+            localSrows = G->seq().getnrow();
             delete DEL;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
         MPI_Bcast(&local_nnz, 1, MPI_INT, 0, grid->GetFiberWorld());
-        MPI_Bcast(&rowAwidth, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        rowBwidth = (int) ceil((float) N  * c / p);
+        MPI_Bcast(&localSrows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        localBrows = (int) ceil((float) N  * c / p);
 
         rCoords.resize(local_nnz);
         cCoords.resize(local_nnz);
@@ -155,31 +152,28 @@ public:
         for(int i = 0; i < local_nnz; i++) {
             while(cCoords[i] >= currentStart) {
                 blockStarts.push_back(i);
-                currentStart += rowBwidth;
+                currentStart += localBrows;
             }
 
             // So that indexing in the kernel becomes easier...
-            cCoords[i] %= rowBwidth;
+            cCoords[i] %= localBrows;
         }
         while(blockStarts.size() < p / c + 1) {
             blockStarts.push_back(local_nnz);
         }
 
         // Step 7: Allocate buffers to receive entries. 
-        Aslice = new double[local_nnz];
-        Bslice = new double[rowBwidth * R];
-        Cslice = new double[rowAwidth * R];
-        result = new double[local_nnz];
-
-        recvRowSlice = new double[rowBwidth * R];
-        recvResultSlice = new double[local_nnz];
+        new (&Svalues) VectorXd(local_nnz);
+        new (&localA) DenseMatrix(localSrows, R);
+        new (&localB) DenseMatrix(localBrows, R);
+        new (&result) VectorXd(local_nnz);
 
         // Randomly initialize; should find a better way to handle this later...
-        for(int i = 0; i < rowBwidth * R; i++) {
-            Bslice[i] = rand();
+        for(int i = 0; i < localA.rows() * localA.cols(); i++) {
+            localA.data()[i] = rand();
         }
-        for(int i = 0; i < rowAwidth * R; i++) {
-            Cslice[i] = rand();
+        for(int i = 0; i < localB.rows() * localB.cols(); i++) {
+            localB.data()[i] = rand();
         }
     };
 
@@ -202,12 +196,6 @@ public:
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff = end - start;
         *timer += diff.count();
-    }
-
-    void swap(double* &A, double* &B) {
-        double* temp = A;
-        A = B;
-        B = temp;
     }
 
     void algorithm(bool verbose) {
@@ -239,30 +227,32 @@ public:
 
         auto t = start_clock();
         // This assumes that the matrices permanently live in the bottom processor layer 
-        MPI_Bcast((void*) Aslice, local_nnz, MPI_DOUBLE,     0, grid->GetFiberWorld());
+        MPI_Bcast((void*) Svalues.data(), Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
 
-        // ^^^ Note: the kernel doesn't handle Aslice yet, but that's ok.
-
-        MPI_Bcast((void*) Bslice, rowBwidth * R, MPI_DOUBLE, 0, grid->GetFiberWorld());
-        MPI_Bcast((void*) Cslice, rowAwidth * R, MPI_DOUBLE, 0, grid->GetFiberWorld());
+        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         stop_clock_and_add(t, &broadcast_time);
 
         // Initial shift
+
+        // Temporary buffer to hold the received portion of matrix B.
+        DenseMatrix recvRowSlice(localB.rows(), localB.cols());
+
         t = start_clock();
-        MPI_Isend(Bslice, rowBwidth * R, MPI_DOUBLE, 
+        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                     (rankInLayer + shift) % (p / c), 0,
                     grid->GetLayerWorld(), &send_request);
 
-        MPI_Irecv(recvRowSlice, rowBwidth * R, MPI_DOUBLE, MPI_ANY_SOURCE,
+        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
                 0, grid->GetLayerWorld(), &recv_request);
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
         stop_clock_and_add(t, &cyclic_shift_time);
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        localB = recvRowSlice;
 
-        swap(Bslice, recvRowSlice);
+        MPI_Barrier(MPI_COMM_WORLD);
 
         for(int i = 0; i < p / (c * c); i++) {
             t = start_clock();
@@ -274,35 +264,45 @@ public:
 
             nnz_processed += kernel(rCoords.data(),
                 cCoords.data(),
-                Cslice,
-                Bslice,
+                localA.data(),
+                localB.data(),
                 R,
-                result,
+                result.data(),
                 blockStarts[block_id],
                 blockStarts[block_id + 1]);
 
             stop_clock_and_add(t, &computation_time);
 
             t = start_clock();
-            MPI_Isend(Bslice, rowBwidth * R, MPI_DOUBLE, 
+            MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                         ((p/c) + rankInLayer + 1) % (p/c), 0,
                         grid->GetLayerWorld(), &send_request);
 
-            MPI_Irecv(recvRowSlice, rowBwidth * R, MPI_DOUBLE, MPI_ANY_SOURCE,
+            MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
                     0, grid->GetLayerWorld(), &recv_request);
 
             MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
             MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
             stop_clock_and_add(t, &cyclic_shift_time);
 
-            MPI_Barrier(MPI_COMM_WORLD);
+            localB = recvRowSlice;
 
-            swap(Bslice, recvRowSlice);
+            MPI_Barrier(MPI_COMM_WORLD);
         }
 
         // Reduction across layers
         t = start_clock();
-        MPI_Reduce(result, recvResultSlice, local_nnz, MPI_DOUBLE,
+
+        void* sendBuf, *recvBuf;
+        if(grid->GetRankInFiber() == 0) {
+            sendBuf = MPI_IN_PLACE;
+            recvBuf = result.data();
+        }
+        else {
+            sendBuf = result.data();
+            recvBuf = NULL;
+        }
+        MPI_Reduce(sendBuf, recvBuf, result.size(), MPI_DOUBLE,
                 MPI_SUM, 0, grid->GetFiberWorld());
         stop_clock_and_add(t, &reduction_time);
 
@@ -368,15 +368,8 @@ public:
         }
     }
 
-    // Destructor
     ~Sparse15D() {
-        delete[] Aslice;
-        delete[] Bslice;
-        delete[] Cslice;
-        delete[] result;
-
-        delete[] recvRowSlice;
-        delete[] recvResultSlice;
+        // Destructor
     }
 };
 

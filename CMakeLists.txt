@@ -13,6 +13,11 @@ find_package(OpenMP REQUIRED)
 include_directories(
 	/global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/include)
 
+# Link to Eigen
+include_directories(
+    /global/homes/v/vbharadw/distributed_sddmm/eigen
+)
+
 link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib)
 
