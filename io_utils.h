@@ -5,6 +5,8 @@
 #include "CombBLAS/CombBLAS.h"
 
 using namespace Eigen;
+using namespace combblas;
+using namespace std;
 
 // Requirement: Only the processes participating in the sparse matrix
 // read should enter either of these function calls.
@@ -13,7 +15,10 @@ using namespace Eigen;
 // per row. All parameters except the first two are output parameters
 
 // TODO: Add a parameter that can sort the nonzeros  
-void generateRandomMatrix(int logM, int nnz_per_row
+void generateRandomMatrix(int logM, 
+    int nnz_per_row,
+    shared_ptr<CommGrid> layerGrid,
+    int* total_nnz,
     vector<int64_t> *rCoords,
     vector<int64_t> *cCoords,
     VectorXd* Svalues 
@@ -21,7 +26,7 @@ void generateRandomMatrix(int logM, int nnz_per_row
 
     PSpMat_s32p64_Int * G; 
 
-    DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(grid->GetCommGridLayer());
+    DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(layerGrid);
 
     double initiator[4] = {0.25, 0.25, 0.25, 0.25};
     unsigned long int scale      = logM;
@@ -31,10 +36,8 @@ void generateRandomMatrix(int logM, int nnz_per_row
     RenameVertices(*DEL);	
     G = new PSpMat_s32p64_Int(*DEL, false);
 
-    int64_t total_nnz = G->getnnz(); 
-
-    *local_nnz = G->seq().getnnz();
-    localSrows = G->seq().getnrow();
+    *total_nnz = G->getnnz(); 
+    int64_t local_nnz = G->seq().getnnz();
     delete DEL;
 
     rCoords->resize(local_nnz);

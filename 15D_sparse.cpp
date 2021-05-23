@@ -16,6 +16,7 @@
 
 #include "sddmm.h"
 #include "common.h"
+#include "io_utils.h"
 #include "pack.h"
 
 // This code implements a 1.5D Sparse Matrix Multiplication Algorithm
@@ -53,11 +54,9 @@ public:
 
     // Values of the sparse matrix, and the final result
     // of the calculation 
-    VectorXd Svalues; 
-    VectorXd result;
+    VectorXd Svalues, result;
 
-    DenseMatrix localA;
-    DenseMatrix localB;
+    DenseMatrix localA, localB;
     
     // Local dimensions
     int64_t localSrows;
@@ -97,8 +96,21 @@ public:
         // edge list. Only the bottom-most layer needs to do the
         // generation, we can broadcast it to everybody else
 
-        PSpMat_s32p64_Int * G; 
+        PSpMat_s32p64_Int * G;
         if(grid->GetRankInFiber() == 0) {
+            int total_nnz;
+            generateRandomMatrix(logM, nnz_per_row,
+                grid->GetCommGridLayer(),
+                &total_nnz,
+                &rCoords,
+                &cCoords,
+                &Svalues 
+            );
+            local_nnz = Svalues.size();
+            localSrows = rCoords.size();
+            if(proc_rank == 0) {
+                cout << "Generated " << total_nnz << " nonzeros." << endl;
+            }
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
@@ -108,20 +120,6 @@ public:
 
         rCoords.resize(local_nnz);
         cCoords.resize(local_nnz);
-
-        // Step 5: sort the coordinates
-        if(grid->GetRankInFiber() == 0) {
-            SpTuples<int64_t,int> tups(G->seq()); 
-            tups.SortColBased();
-
-            tuple<int64_t, int64_t, int>* values = tups.tuples;  
-            
-            for(int i = 0; i < tups.getnnz(); i++) {
-                rCoords[i] = get<0>(values[i]);
-                cCoords[i] = get<1>(values[i]); // So that we have valid indexing 
-            }
-            delete G;
-        }
 
         // Step 5: broadcast the sparse matrices (the coordinates, not the values)
         MPI_Bcast(rCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
@@ -143,7 +141,7 @@ public:
         }
 
         // Step 7: Allocate buffers to receive entries. 
-        new (&Svalues) VectorXd(local_nnz);
+
         new (&localA) DenseMatrix(localSrows, R);
         new (&localB) DenseMatrix(localBrows, R);
         new (&result) VectorXd(local_nnz);
@@ -168,20 +166,10 @@ public:
         }
     }
 
-    chrono::time_point<std::chrono::steady_clock> start_clock() {
-        return std::chrono::steady_clock::now();
-    }
-
-    void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, double* timer) {
-        auto end = std::chrono::steady_clock::now();
-        std::chrono::duration<double> diff = end - start;
-        *timer += diff.count();
-    }
-
     void algorithm(bool verbose) {
         nruns++;
         if(proc_rank == 0 && verbose) {
-            cout << "Starting algorithm..." << endl;
+            cout << "Benchmarking 1.5D Algorithm..." << endl;
         }
 
         if(proc_rank == 0 && verbose) {
@@ -189,7 +177,6 @@ public:
             << this->M << " x " << this->N << endl;
             cout << "Nonzeros Per row: " << nnz_per_row << endl;
             cout << "R-Value: " << this->R << endl;
-            
             cout << "Grid Dimensions: "
             << p / c << " x " << c << endl;
         }
@@ -329,6 +316,8 @@ public:
             << sum_shift_time << "\t"
             << sum_comp_time << "\t"
             << sum_reduce_time << endl;
+
+            cout << "=================================" << endl;
         }
 
     }
@@ -342,10 +331,6 @@ public:
             algorithm(false);
         }
         print_statistics();
-
-        if(proc_rank == 0) {
-            cout << "=================================" << endl;
-        }
     }
 
     ~Sparse15D() {
