@@ -25,20 +25,16 @@
 using namespace std;
 using namespace combblas;
 
-typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
-
 class Sparse25D {
 public:
-    // Matrix Dimensions, R is the small inner dimen 
-    int M;
-    int N;
-    int R;
+    // Matrix Dimensions, R is the small inner dimension
+    int M, N, R;
 
     int nnz_per_row;
 
-    int p;     // Total number of processes
+    int p;      // Total number of processes
     int sqrtpc; // Square grid size on each layer
-    int c;     // Number of Layers
+    int c;      // Number of Layers
 
     int proc_rank;     // Global process rank
 
@@ -47,19 +43,14 @@ public:
 
     // Parallel coordinate arrays for the sparse matrix
     int64_t local_nnz; 
-    vector<int64_t> rCoords;
-    vector<int64_t> cCoords;
+    vector<int64_t> rCoords, cCoords;
 
     // These are the local dense matrix buffers (first two)
     // and the buffer for the local nonzeros 
-    int nrowsA;
-    int nrowsB;
-    int ncolsLocal;
+    int nrowsA, nrowsB, ncolsLocal;
 
-    double* localA;
-    double* localB;
-    double* localResult;
-    double* recvResultSlice;
+    VectorXd Svalues, result;
+    DenseMatrix localA, localB;
 
     // Performance timers 
     int nruns;
@@ -74,7 +65,7 @@ public:
          * may not be correct for general R-mat matrices/ 
          */
 
-        // Assume square for now 
+        // Assume square matrix for now... 
         this->M = 1 << logM;
         this->N = this->M;
         this->R = R;
@@ -110,47 +101,23 @@ public:
         // edge list. Only the bottom-most layer needs to do the
         // generation, we can broadcast it to everybody else
 
-        PSpMat_s32p64_Int * G; 
         if(grid->GetRankInFiber() == 0) {
-            DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(grid->GetCommGridLayer());
-
-            double initiator[4] = {0.25, 0.25, 0.25, 0.25};
-            assert(abs(initiator[0] + initiator[1] + initiator[2] + initiator[3] - 1.0) < 1e-7);
-            unsigned long int scale      = logM;
-
-            DEL->GenGraph500Data(initiator, scale, nnz_per_row);
-            PermEdges(*DEL);
-            RenameVertices(*DEL);	
-            G = new PSpMat_s32p64_Int(*DEL, false);
-
-            int64_t total_nnz = G->getnnz(); 
+            int total_nnz;
+            generateRandomMatrix(logM, nnz_per_row,
+                grid->GetCommGridLayer(),
+                &total_nnz,
+                &rCoords,
+                &cCoords,
+                &Svalues 
+            );
+            local_nnz = Svalues.size();
             if(proc_rank == 0) {
-                cout << "Total Nonzeros Generated: " << total_nnz << endl;
+                cout << "Generated " << total_nnz << " nonzeros." << endl;
             }
-
-            local_nnz = G->seq().getnnz();
-            delete DEL;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
         MPI_Bcast(&local_nnz, 1, MPI_INT, 0, grid->GetFiberWorld());
-
-        rCoords.resize(local_nnz);
-        cCoords.resize(local_nnz);
-
-        // Step 5: Sort and unpack the coordinates on the lowest level of the grid 
-        if(grid->GetRankInFiber() == 0) {
-            SpTuples<int64_t,int> tups(G->seq()); 
-            tups.SortColBased();
-
-            tuple<int64_t, int64_t, int>* values = tups.tuples;  
-            
-            for(int i = 0; i < tups.getnnz(); i++) {
-                rCoords[i] = get<0>(values[i]);
-                cCoords[i] = get<1>(values[i]); 
-            }
-            delete G;
-        }
 
         // Step 6: broadcast the sparse matrices (the coordinates, not the values)
         MPI_Bcast(rCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
@@ -162,11 +129,9 @@ public:
         nrowsB = this->N / sqrtpc + 1;
         ncolsLocal = this->R / c;
 
-        localA          = new double[nrowsA * ncolsLocal]; 
-        localB          = new double[nrowsB * ncolsLocal];
-        localResult     = new double[local_nnz]; 
-        recvResultSlice = new double[local_nnz]; 
-
+        new (&localA) DenseMatrix(nrowsA, ncolsLocal);
+        new (&localB) DenseMatrix(nrowsB, ncolsLocal);
+        new (&result) VectorXd(local_nnz);
     }
 
     void reset_performance_timers() {
@@ -179,16 +144,6 @@ public:
         }
     }
 
-    chrono::time_point<std::chrono::steady_clock> start_clock() {
-        return std::chrono::steady_clock::now();
-    }
-
-    void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, double* timer) {
-        auto end = std::chrono::steady_clock::now();
-        std::chrono::duration<double> diff = end - start;
-        *timer += diff.count();
-    }
-
     /*
      * Hmmm... this looks very similar to Johnson's algorithm. What's the difference between
      * this and Edgar's 2.5D algorithms? 
@@ -198,6 +153,7 @@ public:
         nruns++;
 
         if(proc_rank == 0 && verbose) {
+            cout << "Benchmarking 2.5D Replicating ABC Algorithm..." << endl;
             cout << "Matrix Dimensions: " 
             << this->M << " x " << this->N << endl;
             cout << "Nonzeros Per row: " << nnz_per_row << endl;
@@ -213,26 +169,37 @@ public:
         shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
 
         auto t = start_clock();
-        MPI_Bcast((void*) localA, nrowsA * ncolsLocal, MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
-        MPI_Bcast((void*) localB, nrowsB * ncolsLocal, MPI_DOUBLE, 0, commGridLayer->GetColWorld());
+        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
+        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, commGridLayer->GetColWorld());
         stop_clock_and_add(t, &broadcast_time);
 
         // Perform a local SDDMM 
         t = start_clock();
         nnz_processed += kernel(rCoords.data(),
             cCoords.data(),
-            localA,
-            localB,
+            localA.data(),
+            localB.data(),
             ncolsLocal,
-            localResult,
+            result.data(),
             0, 
             local_nnz); 
         stop_clock_and_add(t, &computation_time);
 
         // Reduction across layers (fiber world)
         t = start_clock();
-        MPI_Reduce(localResult, recvResultSlice, local_nnz, MPI_DOUBLE,
+
+        void* sendBuf, *recvBuf;
+        if(grid->GetRankInFiber() == 0) {
+            sendBuf = MPI_IN_PLACE;
+            recvBuf = result.data();
+        }
+        else {
+            sendBuf = result.data();
+            recvBuf = NULL;
+        }
+        MPI_Reduce(sendBuf, recvBuf, result.size(), MPI_DOUBLE,
                 MPI_SUM, 0, grid->GetFiberWorld());
+
         stop_clock_and_add(t, &reduction_time);
 
         // Debugging only: print out the total number of dot products taken, but reduce 
@@ -270,6 +237,7 @@ public:
             << sum_broadcast_time << "\t"
             << sum_comp_time << "\t"
             << sum_reduce_time << endl;
+            cout << "=================================" << endl;
         }
     }
 
@@ -283,16 +251,10 @@ public:
             algorithm(false);
         }
         print_statistics();
-        if(proc_rank == 0) {
-            cout << "=================================" << endl;
-        }
     }
 
     ~Sparse25D() {
-        delete[] localA;
-        delete[] localB;
-        delete[] localResult;
-        delete[] recvResultSlice;
+        // Destructor 
     }
 };
 

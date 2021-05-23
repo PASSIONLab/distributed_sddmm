@@ -32,14 +32,10 @@ using namespace Eigen;
 class Sparse15D {
 public:
     // Matrix Dimensions, R is the short inner dimension
-    int M;
-    int N;
-    int R;
-
+    int M, N, R;
     int nnz_per_row;
 
-    int p; // Total number of processes 
-    int c; // Number of Layers
+    int p, c; // Total number of processes, number of layers
 
     int proc_rank;     // Global process rank
 
@@ -48,14 +44,12 @@ public:
 
     // Parallel coordinate arrays for the sparse matrix
     int64_t local_nnz; 
-    vector<int64_t> rCoords;
-    vector<int64_t> cCoords; 
+    vector<int64_t> rCoords, cCoords;
     vector<int64_t> blockStarts;
 
     // Values of the sparse matrix, and the final result
     // of the calculation 
     VectorXd Svalues, result;
-
     DenseMatrix localA, localB;
     
     // Local dimensions
@@ -64,10 +58,10 @@ public:
 
     // Performance timers 
     int nruns;
-    double broadcast_time;
-    double cyclic_shift_time;
-    double computation_time;
-    double reduction_time;
+    double  broadcast_time,
+            cyclic_shift_time,
+            computation_time,
+            reduction_time;
 
     // Initiates the algorithm for a Graph500 benchmark 
     Sparse15D(int logM, int nnz_per_row, int R, int c) {
@@ -96,7 +90,6 @@ public:
         // edge list. Only the bottom-most layer needs to do the
         // generation, we can broadcast it to everybody else
 
-        PSpMat_s32p64_Int * G;
         if(grid->GetRankInFiber() == 0) {
             int total_nnz;
             generateRandomMatrix(logM, nnz_per_row,
@@ -168,11 +161,9 @@ public:
 
     void algorithm(bool verbose) {
         nruns++;
-        if(proc_rank == 0 && verbose) {
-            cout << "Benchmarking 1.5D Algorithm..." << endl;
-        }
 
         if(proc_rank == 0 && verbose) {
+            cout << "Benchmarking 1.5D Replicating ABC Algorithm..." << endl;
             cout << "Matrix Dimensions: " 
             << this->M << " x " << this->N << endl;
             cout << "Nonzeros Per row: " << nnz_per_row << endl;
