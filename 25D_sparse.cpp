@@ -22,6 +22,11 @@
 using namespace std;
 using namespace combblas;
 
+/*
+ * Clients are responsible for allreducing their results and keeping
+ * matrices in sync. Data fields are exposed public to permit this. 
+ */
+
 class Sparse25D {
 public:
     // Matrix Dimensions, R is the small inner dimension
@@ -46,8 +51,8 @@ public:
     // and the buffer for the local nonzeros 
     int nrowsA, nrowsB, ncolsLocal;
 
-    VectorXd Svalues, result;
-    DenseMatrix localA, localB;
+    VectorXd Svalues, sddmm_result;
+    DenseMatrix localA, localB, spmm_result;
 
     // Performance timers 
     int nruns;
@@ -128,7 +133,9 @@ public:
 
         new (&localA) DenseMatrix(nrowsA, ncolsLocal);
         new (&localB) DenseMatrix(nrowsB, ncolsLocal);
-        new (&result) VectorXd(local_nnz);
+
+        new (&sddmm_result) VectorXd(local_nnz);
+        new (&spmm_result) DenseMatrix(nrowsA, ncolsLocal);
     }
 
     void reset_performance_timers() {
@@ -141,16 +148,22 @@ public:
         }
     }
 
+    void initial_broadcast() {
+        shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
+        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
+        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, commGridLayer->GetColWorld());
+    }
+
     /*
      * Hmmm... this looks very similar to Johnson's algorithm. What's the difference between
      * this and Edgar's 2.5D algorithms? 
      */
-    void algorithm(bool verbose) {
+    void sddmm(bool verbose) {
         int nnz_processed = 0;
         nruns++;
 
         if(proc_rank == 0 && verbose) {
-            cout << "Benchmarking 2.5D Replicating ABC Algorithm..." << endl;
+            cout << "Benchmarking 2.5D Striped Algorithm..." << endl;
             cout << "Matrix Dimensions: " 
             << this->M << " x " << this->N << endl;
             cout << "Nonzeros Per row: " << nnz_per_row << endl;
@@ -163,41 +176,17 @@ public:
         // Assume that the matrices begin distributed across two faces of the 3D grid,
         // but not distributed yet
 
-        shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
-
-        auto t = start_clock();
-        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
-        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, commGridLayer->GetColWorld());
-        stop_clock_and_add(t, &broadcast_time);
-
         // Perform a local SDDMM 
-        t = start_clock();
+        auto t = start_clock();
         nnz_processed += kernel(rCoords.data(),
             cCoords.data(),
             localA.data(),
             localB.data(),
             ncolsLocal,
-            result.data(),
+            sddmm_result.data(),
             0, 
             local_nnz); 
         stop_clock_and_add(t, &computation_time);
-
-        // Reduction across layers (fiber world)
-        t = start_clock();
-
-        void* sendBuf, *recvBuf;
-        if(grid->GetRankInFiber() == 0) {
-            sendBuf = MPI_IN_PLACE;
-            recvBuf = result.data();
-        }
-        else {
-            sendBuf = result.data();
-            recvBuf = NULL;
-        }
-        MPI_Reduce(sendBuf, recvBuf, result.size(), MPI_DOUBLE,
-                MPI_SUM, 0, grid->GetFiberWorld());
-
-        stop_clock_and_add(t, &reduction_time);
 
         // Debugging only: print out the total number of dot products taken, but reduce 
         // across the layer world 
@@ -239,13 +228,13 @@ public:
     }
 
     void benchmark() {
-        algorithm(true);
+        sddmm(true);
 
         reset_performance_timers();
 
         int nruns = 10;
         for(int i = 0; i < nruns; i++) {
-            algorithm(false);
+            sddmm(false);
         }
         print_statistics();
     }

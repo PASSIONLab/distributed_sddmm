@@ -17,6 +17,11 @@
 
 // This code implements a 1.5D Sparse Matrix Multiplication Algorithm
 
+/*
+ * Clients are responsible for allreducing their results and keeping
+ * matrices in sync. Data fields are exposed public to permit this. 
+ */
+
 // CombBLAS includes 
 #include <memory>
 #include "CombBLAS/CombBLAS.h"
@@ -43,10 +48,9 @@ public:
     vector<int64_t> rCoords, cCoords;
     vector<int64_t> blockStarts;
 
-    // Values of the sparse matrix, and the final result
-    // of the calculation 
-    VectorXd Svalues, result;
-    DenseMatrix localA, localB;
+    // Values of the sparse matrix, and results of SpMM, SDDMM
+    VectorXd Svalues, sddmm_result;
+    DenseMatrix localA, localB, spmm_result;
     
     // Local dimensions
     int64_t localSrows;
@@ -58,6 +62,8 @@ public:
             cyclic_shift_time,
             computation_time,
             reduction_time;
+
+    int rankInFiber, rankInLayer, shift;
 
     // Initiates the algorithm for a Graph500 benchmark 
     Sparse15D(int logM, int nnz_per_row, int R, int c) {
@@ -130,18 +136,14 @@ public:
         }
 
         // Step 7: Allocate buffers to receive entries. 
-
         new (&localA) DenseMatrix(localSrows, R);
         new (&localB) DenseMatrix(localBrows, R);
-        new (&result) VectorXd(local_nnz);
+        new (&sddmm_result) VectorXd(local_nnz);
+        new (&spmm_result) DenseMatrix(localSrows, R);
 
-        // Randomly initialize; should find a better way to handle this later...
-        for(int i = 0; i < localA.rows() * localA.cols(); i++) {
-            localA.data()[i] = rand();
-        }
-        for(int i = 0; i < localB.rows() * localB.cols(); i++) {
-            localB.data()[i] = rand();
-        }
+        rankInFiber = grid->GetRankInFiber();
+        rankInLayer = grid->GetRankInLayer();
+        shift = rankInFiber * p / (c * c);
     };
 
     void reset_performance_timers() {
@@ -155,44 +157,59 @@ public:
         }
     }
 
-    void algorithm(bool verbose) {
+    void print_algorithm_info() {
+        cout << "1.5D Replicating ABC Algorithm..." << endl;
+        cout << "Matrix Dimensions: " 
+        << this->M << " x " << this->N << endl;
+        cout << "Nonzeros Per row: " << nnz_per_row << endl;
+        cout << "R-Value: " << this->R << endl;
+        cout << "Grid Dimensions: " << p / c << " x " << c << endl;
+    }
+
+    // Forget the initial broadcast now... 
+    void initial_broadcast() {
+        MPI_Bcast((void*) Svalues.data(), Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+
+        DenseMatrix recvRowSlice(localB.rows(), localB.cols());
+
+        MPI_Request send_request;
+        MPI_Request recv_request;
+
+        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
+                    (rankInLayer + shift) % (p / c), 0,
+                    grid->GetLayerWorld(), &send_request);
+
+        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
+                0, grid->GetLayerWorld(), &recv_request);
+
+        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
+        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+
+        localB = recvRowSlice;
+    }
+
+    void sddmm(bool verbose) {
         nruns++;
 
         if(proc_rank == 0 && verbose) {
-            cout << "Benchmarking 1.5D Replicating ABC Algorithm..." << endl;
-            cout << "Matrix Dimensions: " 
-            << this->M << " x " << this->N << endl;
-            cout << "Nonzeros Per row: " << nnz_per_row << endl;
-            cout << "R-Value: " << this->R << endl;
-            cout << "Grid Dimensions: "
-            << p / c << " x " << c << endl;
+            print_algorithm_info();
+            cout << "Executing SDDMM..." << endl;
         }
 
         MPI_Status stat;
         MPI_Request send_request;
         MPI_Request recv_request;
-
-        int rankInFiber = grid->GetRankInFiber();
-        int rankInLayer = grid->GetRankInLayer();
-
-        int shift = rankInFiber * p / (c * c);
     
         int nnz_processed = 0;
-
-        auto t = start_clock();
-        // This assumes that the matrices permanently live in the bottom processor layer 
-        MPI_Bcast((void*) Svalues.data(), Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
-
-        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-        stop_clock_and_add(t, &broadcast_time);
 
         // Initial shift
 
         // Temporary buffer to hold the received portion of matrix B.
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
 
-        t = start_clock();
+        auto t = start_clock();
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                     (rankInLayer + shift) % (p / c), 0,
                     grid->GetLayerWorld(), &send_request);
@@ -221,7 +238,7 @@ public:
                 localA.data(),
                 localB.data(),
                 R,
-                result.data(),
+                sddmm_result.data(),
                 blockStarts[block_id],
                 blockStarts[block_id + 1]);
 
@@ -243,24 +260,6 @@ public:
 
             MPI_Barrier(MPI_COMM_WORLD);
         }
-
-        // Reduction across layers
-        t = start_clock();
-
-        void* sendBuf, *recvBuf;
-        if(grid->GetRankInFiber() == 0) {
-            sendBuf = MPI_IN_PLACE;
-            recvBuf = result.data();
-        }
-        else {
-            sendBuf = result.data();
-            recvBuf = NULL;
-        }
-        MPI_Reduce(sendBuf, recvBuf, result.size(), MPI_DOUBLE,
-                MPI_SUM, 0, grid->GetFiberWorld());
-        stop_clock_and_add(t, &reduction_time);
-
-        // Debugging only: print out the total number of dot products taken 
 
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
@@ -310,12 +309,12 @@ public:
     }
 
     void benchmark() {
-        algorithm(true);
+        sddmm(true);
         reset_performance_timers();
 
         int nruns = 10;
         for(int i = 0; i < nruns; i++) {
-            algorithm(false);
+            sddmm(false);
         }
         print_statistics();
     }

@@ -21,10 +21,11 @@ include_directories(
 link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib)
 
-add_executable(25D_sparse 25D_sparse.cpp sddmm.cpp) 
-target_compile_options(25D_sparse PRIVATE -O3 -march=knl -O3) 
-target_link_libraries(25D_sparse PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
-
 add_executable(15D_sparse 15D_sparse.cpp sddmm.cpp) 
-target_compile_options(15D_sparse PRIVATE -O3 -march=knl -O3) 
-target_link_libraries(15D_sparse PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
+add_executable(25D_sparse 25D_sparse.cpp sddmm.cpp) 
+add_executable(serial_conjgrad serial_conjgrad.cpp) 
+
+foreach(TARGET 15D_sparse 25D_sparse serial_conjgrad)
+    target_compile_options(${TARGET} PRIVATE -O3 -march=knl -O3) 
+    target_link_libraries(${TARGET} PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
+endforeach()
