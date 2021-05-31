@@ -10,7 +10,7 @@
 #include <mpi.h>
 #include <Eigen/Dense>
 
-#include "sddmm.h"
+#include "sparse_kernels.h"
 #include "common.h"
 #include "io_utils.h"
 #include "pack.h"
@@ -128,7 +128,7 @@ public:
                 currentStart += localBrows;
             }
 
-            // So that indexing in the kernel becomes easier...
+            // This modding step makes indexing easier 
             cCoords[i] %= localBrows;
         }
         while(blockStarts.size() < p / c + 1) {
@@ -233,12 +233,12 @@ public:
             assert(blockStarts[block_id] < local_nnz);
             assert(blockStarts[block_id + 1] <= local_nnz);
 
-            nnz_processed += kernel(rCoords.data(),
+            nnz_processed += sddmm_local(rCoords.data(),
                 cCoords.data(),
-                localA.data(),
-                localB.data(),
-                R,
-                sddmm_result.data(),
+                Svalues,
+                localA,
+                localB,
+                sddmm_result,
                 blockStarts[block_id],
                 blockStarts[block_id + 1]);
 
@@ -342,4 +342,6 @@ int main(int argc, char** argv) {
 
     Sparse15D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
     x.benchmark();
+
+    MPI_Finalize();
 }

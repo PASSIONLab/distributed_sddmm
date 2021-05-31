@@ -1,7 +1,11 @@
 #include <iostream>
+#include <memory>
 #include <Eigen/Dense>
 
-#include "common.h"
+#include "mpi.h"
+#include "io_utils.h"
+#include "sparse_kernels.h"
+#include "CombBLAS/CombBLAS.h"
 
 using namespace std;
 using namespace Eigen;
@@ -12,7 +16,7 @@ using namespace Eigen;
 // Demmel, Applied Numerical Linear Algebra: Conjugate Gradient Algorithm
 // is on page 312 
 
-int main(int argc, char** argv) {
+void conjugate_gradients() {
     cout << "Starting serial conjugate gradient algorithm!" << endl; 
 
     int rows = 50;
@@ -47,7 +51,6 @@ int main(int argc, char** argv) {
         r -= alpha * Ap;
         double rsnew = r.dot(r);
 
-        
         if(sqrt(rsnew) < tol) {
             max_iterations_exceeded = false;
             break;
@@ -66,7 +69,68 @@ int main(int argc, char** argv) {
 
     VectorXd solution = A.colPivHouseholderQr().solve(b);
 
-    // cout << A * r - b << endl;
-    cout << A * solution - b << endl;
+    cout << A * x - b << endl;
+    // cout << A * solution - b << endl;
+}
 
+void test_single_process_factorization(int logM, int nnz_per_row, int r) {
+    // Generate latent factor Matrices
+
+    int n = 1 << logM;
+
+    // Generate two random sets of latent factors
+    DenseMatrix A(n, r);
+    DenseMatrix B(n, r);
+    A.setRandom();
+    B.setRandom();
+    A /= r;
+    B /= r;
+
+    // Generate a random sparse matrix using CombBLAS
+    shared_ptr<CommGrid> grid;
+    grid.reset(new CommGrid(MPI_COMM_WORLD, 1, 1));
+    vector<int64_t> rCoords;
+    vector<int64_t> cCoords;
+    VectorXd Svalues;
+    int total_nnz;
+
+    generateRandomMatrix(logM, 
+        nnz_per_row,
+        grid,
+        &total_nnz,
+        &rCoords,
+        &cCoords,
+        &Svalues 
+    );
+
+    // Compute a ground truth using an SDDMM, setting all sparse values to 1 
+    VectorXd initial_sparse_contents = VectorXd::Constant(total_nnz, 1.0);
+    VectorXd ground_truth(total_nnz);
+
+    sddmm_local(rCoords.data(),
+                cCoords.data(),
+                initial_sparse_contents,
+                A,
+                B,
+                ground_truth,
+                0, 
+                total_nnz);
+
+    // For now, all weights are uniform due to the Erdos Renyi Random matrix,
+    // so just test for convergence.
+
+
+    
+
+
+}
+
+
+int main(int argc, char** argv) {
+    //conjugate_gradients();
+    MPI_Init(&argc, &argv);
+
+    test_single_process_factorization(8, 8, 128);
+
+    MPI_Finalize();
 }

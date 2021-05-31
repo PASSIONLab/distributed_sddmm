@@ -11,7 +11,7 @@
 #include <cblas.h>
 #include <algorithm>
 
-#include "sddmm.h"
+#include "sparse_kernels.h"
 #include "common.h"
 #include "io_utils.h"
 
@@ -178,12 +178,12 @@ public:
 
         // Perform a local SDDMM 
         auto t = start_clock();
-        nnz_processed += kernel(rCoords.data(),
+        nnz_processed += sddmm_local(rCoords.data(),
             cCoords.data(),
-            localA.data(),
-            localB.data(),
-            ncolsLocal,
-            sddmm_result.data(),
+            Svalues,
+            localA,
+            localB,
+            sddmm_result,
             0, 
             local_nnz); 
         stop_clock_and_add(t, &computation_time);
@@ -261,4 +261,6 @@ int main(int argc, char** argv) {
 
     Sparse25D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
     x.benchmark();
+
+    MPI_Finalize();
 }
