@@ -48,7 +48,7 @@ size_t sddmm_local(int64_t* rCoords,
 }
 
 // Parameters: output row, input row, coefficient
-inline double row_fmadd(double* A, double* B, double coeff, size_t r) {
+inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
         __m512d lane1;
 
         #pragma GCC unroll 20
@@ -60,7 +60,6 @@ inline double row_fmadd(double* A, double* B, double coeff, size_t r) {
 
             _mm512_storeu_pd(A + j, Avec1);
         }
-        return (_mm512_reduce_add_pd(lane1));
 }
 
 
@@ -69,6 +68,7 @@ size_t spmm_local(int64_t* rCoords,
     VectorXd Svalues,
     DenseMatrix A,
     DenseMatrix B,
+    int mode,
     int start,
     int end) {
 
@@ -82,9 +82,20 @@ size_t spmm_local(int64_t* rCoords,
     // #pragma omp parallel for
     for(int i = start; i < end; i++) {
         processed++;
-        double* Arow = Aptr + r * rCoords[i];
-        double* Brow = Bptr + r * cCoords[i]; 
-        row_fmadd(Arow, Brow, Sptr[i], r); 
+
+        if(mode == 0) {
+            double* Arow = Aptr + r * rCoords[i];
+            double* Brow = Bptr + r * cCoords[i]; 
+            row_fmadd(Arow, Brow, Sptr[i], r); 
+        }
+        else if(mode == 1) {
+            double* Arow = Aptr + r * cCoords[i];
+            double* Brow = Bptr + r * rCoords[i]; 
+            row_fmadd(Brow, Arow, Sptr[i], r); 
+        }
+        else {
+            assert(false);
+        }
     }
     return processed;
 }
