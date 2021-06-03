@@ -16,7 +16,7 @@ using namespace Eigen;
 // Demmel, Applied Numerical Linear Algebra: Conjugate Gradient Algorithm
 // is on page 312 
 
-void conjugate_gradients() {
+void batch_conjugate_gradient_step(MatrixXd vectors, MatrixXd queries) {
     cout << "Starting serial conjugate gradient algorithm!" << endl; 
 
     int rows = 50;
@@ -59,19 +59,9 @@ void conjugate_gradients() {
         p = r + (rsnew / rsold) * p;
         rsold = rsnew;
     }
-
-    if(max_iterations_exceeded) {
-        cout << "CG algorithm exceeded maximum number of iterations!" << endl;
-    }
-    else {
-        cout << "CG algorithm converged in " << k << " iterations!" << endl;
-    }
-
-    VectorXd solution = A.colPivHouseholderQr().solve(b);
-
-    cout << A * x - b << endl;
-    // cout << A * solution - b << endl;
 }
+
+void 
 
 void initialize_dense_matrix(DenseMatrix &X) {
     X.setRandom();
