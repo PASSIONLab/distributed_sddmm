@@ -101,7 +101,8 @@ void computeQueries(spmat_local_t &S,
                 sddmm_result,
                 0, 
                 S.local_nnz);
-    spmm_local(S, sddmm_result, result, B, 0, 0, S.local_nnz); 
+    spmm_local(S, sddmm_result, result, B, 0, 0, S.local_nnz);
+    result += 0.01 * x;
 }
 
 VectorXd batch_dot_product(DenseMatrix &A, DenseMatrix &B) {
@@ -161,13 +162,15 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     initialize_dense_matrix(B);
 
     cout << "Algorithm Initialized!" << endl;
+    cout << "True Residual: " << computeResidual(Agt, Bgt, S, ground_truth) << endl;
 
     DenseMatrix rhs(A.rows(), A.cols());
-    DenseMatrix queries(A.rows(), A.cols());
+    DenseMatrix Ax(A.rows(), A.cols());
     DenseMatrix Ap(A.rows(), A.cols());
 
-    computeQueries(S, B, A, queries);
-    DenseMatrix r = rhs - queries;
+    computeQueries(S, B, A, Ax);
+
+    DenseMatrix r = rhs - Ax;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r); 
 
@@ -175,7 +178,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
 
     // First optimize for A
     for(int cg_iter = 0; cg_iter < 2; cg_iter++) {
-        cout << computeResidual(A, B, S, ground_truth) << endl;
+        cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
 
         computeQueries(S, B, p, Ap);
         VectorXd alpha = rsold.cwiseQuotient(batch_dot_product(p, Ap));
@@ -184,9 +187,12 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
         r -= scale_matrix_rows(alpha, Ap);
 
         VectorXd rsnew = batch_dot_product(r, r); 
+
+        cout << rsnew << endl;
+
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
-        cout << "Residual: " << rsnew_norm_sqrt << endl;
+        cout << "Blah: " << rsnew_norm_sqrt << endl;
 
         if(rsnew_norm_sqrt < tol) {
             break;
