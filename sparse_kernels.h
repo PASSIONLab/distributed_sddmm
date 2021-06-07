@@ -22,8 +22,8 @@ size_t sddmm_local(
  * S is m x n
  * A is m x r
  * B is n x r 
- * When mode is 0, A = S B
- * When mode is 1, B = S^T A
+ * When mode is 0, A = S B (output is A)
+ * When mode is 1, B = S^T A (output is B)
  *
  */
 size_t spmm_local(

@@ -86,13 +86,39 @@ double computeResidual(
     return (sddmm_result - gt).norm();
 }
 
-void test_single_process_factorization(int logM, int nnz_per_row, int r) {
+void computeQueries(spmat_local_t &S, 
+                    DenseMatrix &B, 
+                    DenseMatrix &x, 
+                    DenseMatrix &result) {
+    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+
+    VectorXd sddmm_result(S.local_nnz);
+
+    sddmm_local(S, 
+                ones,
+                x,
+                B,
+                sddmm_result,
+                0, 
+                S.local_nnz);
+    spmm_local(S, sddmm_result, result, B, 0, 0, S.local_nnz); 
+}
+
+VectorXd batch_dot_product(DenseMatrix &A, DenseMatrix &B) {
+    return A.cwiseProduct(B).rowwise().sum();
+} 
+
+DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
+    return scale_vector.asDiagonal() * mat;
+}
+
+void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     // Generate latent factor Matrices
     int n = 1 << logM;
 
     // Generate two random sets of latent factors
-    DenseMatrix Agt(n, r);
-    DenseMatrix Bgt(n, r);
+    DenseMatrix Agt(n, R);
+    DenseMatrix Bgt(n, R);
 
     initialize_dense_matrix(Agt);
     initialize_dense_matrix(Bgt);
@@ -112,18 +138,16 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     );
 
     // Compute a ground truth using an SDDMM, setting all sparse values to 1 
-    VectorXd initial_sparse_contents = VectorXd::Constant(S.local_nnz, 1.0);
+    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
     VectorXd ground_truth(S.local_nnz);
 
-    int processed = sddmm_local(S,
-                initial_sparse_contents,
+    sddmm_local(S,
+                ones,
                 Agt,
                 Bgt,
                 ground_truth,
                 0, 
                 S.local_nnz);
-
-    cout << ground_truth.norm() << endl;
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
@@ -131,17 +155,43 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     double lambda = 0.1;
     
     // Initialize our guesses for A, B
-    DenseMatrix A(n, r);
-    DenseMatrix B(n, r);
+    DenseMatrix A(n, R);
+    DenseMatrix B(n, R);
     initialize_dense_matrix(A);
     initialize_dense_matrix(B);
 
-    cout << "Algorithm Initialization Complete!" << endl;
-    cout << computeResidual(Agt, Bgt, S, ground_truth) << endl;
+    cout << "Algorithm Initialized!" << endl;
 
+    DenseMatrix rhs(A.rows(), A.cols());
+    DenseMatrix queries(A.rows(), A.cols());
+    DenseMatrix Ap(A.rows(), A.cols());
 
-    for(int cg_iter = 0; cg_iter < 1; cg_iter++) {
-        // First optimize for A
+    computeQueries(S, B, A, queries);
+    DenseMatrix r = rhs - queries;
+    DenseMatrix p = r;
+    VectorXd rsold = batch_dot_product(r, r); 
+
+    double tol = 1e-8;
+
+    // First optimize for A
+    for(int cg_iter = 0; cg_iter < 2; cg_iter++) {
+        cout << computeResidual(A, B, S, ground_truth) << endl;
+
+        computeQueries(S, B, p, Ap);
+        VectorXd alpha = rsold.cwiseQuotient(batch_dot_product(p, Ap));
+
+        A += scale_matrix_rows(alpha, p);
+        r -= scale_matrix_rows(alpha, Ap);
+
+        VectorXd rsnew = batch_dot_product(r, r); 
+        double rsnew_norm_sqrt = sqrt(rsnew.sum());
+        
+        if(rsnew_norm_sqrt < tol) {
+            break;
+        }
+
+        p = r + scale_matrix_rows(rsnew.cwiseQuotient(rsold), p);
+        rsold = rsnew;
     }
 }
 
