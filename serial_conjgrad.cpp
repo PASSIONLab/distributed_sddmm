@@ -185,12 +185,16 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
 
         VectorXd rsnew = batch_dot_product(r, r); 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
-        
+
+        cout << "Residual: " << rsnew_norm_sqrt << endl;
+
         if(rsnew_norm_sqrt < tol) {
             break;
         }
 
-        p = r + scale_matrix_rows(rsnew.cwiseQuotient(rsold), p);
+        VectorXd coeffs = rsnew.cwiseQuotient(rsold);
+
+        p = r + scale_matrix_rows(coeffs, p);
         rsold = rsnew;
     }
 }
