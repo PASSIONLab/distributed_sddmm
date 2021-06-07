@@ -24,11 +24,6 @@ typedef struct {
     vector<int64_t> rCoords;
     vector<int64_t> cCoords;
 
-    /*
-     * This is the local portion of a larger sparse matrix. How many nonzeros
-     * are there across the entire sparse matrix? vvv This variable gives that
-     * quantity
-     */
     int local_nnz;
     int dist_nnz;
 

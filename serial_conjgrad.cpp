@@ -115,17 +115,15 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     VectorXd initial_sparse_contents = VectorXd::Constant(S.local_nnz, 1.0);
     VectorXd ground_truth(S.local_nnz);
 
-    sddmm_local(S,
+    int processed = sddmm_local(S,
                 initial_sparse_contents,
                 Agt,
                 Bgt,
                 ground_truth,
                 0, 
                 S.local_nnz);
-    
-    cout << Agt << endl;
-    cout << Bgt << endl;
 
+    cout << ground_truth.norm() << endl;
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 

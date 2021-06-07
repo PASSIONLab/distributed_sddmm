@@ -14,7 +14,7 @@ size_t sddmm_local(
     VectorXd &SValues, 
     DenseMatrix &A,
     DenseMatrix &B,
-    VectorXd result,
+    VectorXd &result,
     int start,
     int end);
 
