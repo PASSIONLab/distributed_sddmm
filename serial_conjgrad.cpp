@@ -66,10 +66,25 @@ void initialize_dense_matrix(DenseMatrix &X) {
     X /= X.cols();
 }
 
-/*DenseMatrix computeQueries(DenseMatrix &v) {
+double computeResidual(
+    DenseMatrix &A, 
+    DenseMatrix &B, 
+    spmat_local_t &S,
+    VectorXd &gt
+) {
+    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+    VectorXd sddmm_result(S.local_nnz);
 
-}*/
-
+    sddmm_local(S,
+                ones,
+                A,
+                B,
+                sddmm_result,
+                0, 
+                S.local_nnz);
+    
+    return (sddmm_result - gt).norm();
+}
 
 void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     // Generate latent factor Matrices
@@ -107,6 +122,10 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
                 ground_truth,
                 0, 
                 S.local_nnz);
+    
+    cout << Agt << endl;
+    cout << Bgt << endl;
+
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
@@ -119,10 +138,9 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     initialize_dense_matrix(A);
     initialize_dense_matrix(B);
 
-    VectorXd sddmm_result(S.local_nnz);
+    cout << "Algorithm Initialization Complete!" << endl;
+    cout << computeResidual(Agt, Bgt, S, ground_truth) << endl;
 
-    DenseMatrix spmmA(n, r);
-    DenseMatrix spmmB(n, r);
 
     for(int cg_iter = 0; cg_iter < 1; cg_iter++) {
         // First optimize for A
@@ -133,7 +151,7 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
     //conjugate_gradients();
-    //test_single_process_factorization(8, 8, 128);
+    test_single_process_factorization(4, 4, 8);
 
     MPI_Finalize();
 }
