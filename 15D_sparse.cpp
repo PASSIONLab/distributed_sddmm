@@ -43,7 +43,7 @@ public:
     // Communicators and grids
     unique_ptr<CommGrid3D> grid;
 
-    spmat_local_t spmat_local;
+    spmat_local_t S;
     vector<int64_t> blockStarts;
 
     // Values of the sparse matrix, and results of SpMM, SDDMM
@@ -94,45 +94,45 @@ public:
             int total_nnz;
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
-                spmat_local
+                S
             );
-            localSrows = output.nrows;
+            localSrows = S.nrows;
             if(proc_rank == 0) {
                 cout << "Generated " << total_nnz << " nonzeros." << endl;
             }
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
-        MPI_Bcast(&(spmat_local.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
         MPI_Bcast(&localSrows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
         localBrows = (int) ceil((float) N  * c / p);
 
-        spmat_local.rCoords.resize(local_nnz);
-        spmat_local.cCoords.resize(local_nnz);
+        S.rCoords.resize(S.local_nnz);
+        S.cCoords.resize(S.local_nnz);
 
         // Step 5: broadcast the sparse matrices (the coordinates, not the values)
-        MPI_Bcast(spmat_local.rCoords.data(), spmat_local.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        MPI_Bcast(spmat_local.cCoords.data(), spmat_local.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(S.cCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         // Step 6: Locate block starts within the sparse matrix 
         int currentStart = 0;
-        for(int i = 0; i < local_nnz; i++) {
-            while(spmat_local.cCoords[i] >= currentStart) {
+        for(int i = 0; i < S.local_nnz; i++) {
+            while(S.cCoords[i] >= currentStart) {
                 blockStarts.push_back(i);
                 currentStart += localBrows;
             }
 
             // This modding step makes indexing easier 
-            spmat_local.cCoords[i] %= localBrows;
+            S.cCoords[i] %= localBrows;
         }
         while(blockStarts.size() < p / c + 1) {
-            blockStarts.push_back(local_nnz);
+            blockStarts.push_back(S.local_nnz);
         }
 
         // Step 7: Allocate buffers to receive entries. 
         new (&localA) DenseMatrix(localSrows, R);
         new (&localB) DenseMatrix(localBrows, R);
-        new (&sddmm_result) VectorXd(local_nnz);
+        new (&sddmm_result) VectorXd(S.local_nnz);
         new (&spmm_result) DenseMatrix(localSrows, R);
 
         rankInFiber = grid->GetRankInFiber();
@@ -162,7 +162,7 @@ public:
 
     // Forget the initial broadcast now... 
     void initial_broadcast() {
-        MPI_Bcast((void*) spmat_local.Svalues.data(), spmat_local.Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+        MPI_Bcast((void*) S.Svalues.data(), S.Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
 
@@ -224,12 +224,11 @@ public:
 
             int block_id = ( (p / c) + rankInLayer - shift - i) % (p / c);
 
-            assert(blockStarts[block_id] < local_nnz);
-            assert(blockStarts[block_id + 1] <= local_nnz);
+            assert(blockStarts[block_id] < S.local_nnz);
+            assert(blockStarts[block_id + 1] <= S.local_nnz);
 
-            nnz_processed += sddmm_local(rCoords.data(),
-                cCoords.data(),
-                Svalues,
+            nnz_processed += sddmm_local(
+                S,
                 localA,
                 localB,
                 sddmm_result,

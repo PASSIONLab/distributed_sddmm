@@ -43,7 +43,7 @@ public:
     // Communicators and grids
     unique_ptr<CommGrid3D> grid;
 
-    spmat_local_t spmat_local;
+    spmat_local_t S;
 
     // These are the local dense matrix buffers (first two)
     // and the buffer for the local nonzeros 
@@ -105,23 +105,23 @@ public:
             int total_nnz;
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
-                spmat_local
+                S
             );
             if(proc_rank == 0) {
-                cout << "Generated " << spmat_local.total_nnz << " nonzeros." << endl;
+                cout << "Generated " << S.dist_nnz << " nonzeros." << endl;
             }
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate the SpMat arrays 
-        MPI_Bcast(&(spmat_local.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
 
-        // Step 5: What's going on here???
-        spmat_local.rCoords.resize(spmat_local.local_nnz);
-        spmat_local.cCoords.resize(spmat_local.local_nnz);
+        // Step 5: These two steps weren't here earlier... why?
+        S.rCoords.resize(S.local_nnz);
+        S.cCoords.resize(S.local_nnz);
 
         // Step 6: broadcast the sparse matrices (the coordinates, not the values)
-        MPI_Bcast(spmat_local.rCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        MPI_Bcast(spmat_local.cCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(S.cCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         // Step 7: allocate buffers for the dense matrices; over-allocate the dense matrices,
         // that's ok. Although we do have better tools to do this... see the 1.5D allocation.
@@ -132,7 +132,7 @@ public:
         new (&localA) DenseMatrix(nrowsA, ncolsLocal);
         new (&localB) DenseMatrix(nrowsB, ncolsLocal);
 
-        new (&sddmm_result) VectorXd(local_nnz);
+        new (&sddmm_result) VectorXd(S.local_nnz);
         new (&spmm_result) DenseMatrix(nrowsA, ncolsLocal);
     }
 
@@ -177,12 +177,12 @@ public:
         // Perform a local SDDMM 
         auto t = start_clock();
         nnz_processed += sddmm_local(
-            spmat_local,
+            S,
             localA,
             localB,
             sddmm_result,
             0, 
-            local_nnz); 
+            S.local_nnz); 
         stop_clock_and_add(t, &computation_time);
 
         // Debugging only: print out the total number of dot products taken, but reduce 

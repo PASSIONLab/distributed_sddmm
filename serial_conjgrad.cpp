@@ -66,9 +66,9 @@ void initialize_dense_matrix(DenseMatrix &X) {
     X /= X.cols();
 }
 
-DenseMatrix computeQueries(DenseMatrix &v) {
+/*DenseMatrix computeQueries(DenseMatrix &v) {
 
-}
+}*/
 
 
 void test_single_process_factorization(int logM, int nnz_per_row, int r) {
@@ -91,14 +91,14 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     VectorXd Svalues;
     int total_nnz;
 
-    generateRandomMatrix(logM, 
+    /*generateRandomMatrix(logM, 
         nnz_per_row,
         grid,
         &total_nnz,
         &rCoords,
         &cCoords,
         &Svalues 
-    );
+    );*/
 
     // Compute a ground truth using an SDDMM, setting all sparse values to 1 
     VectorXd initial_sparse_contents = VectorXd::Constant(total_nnz, 1.0);
@@ -139,7 +139,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
-    conjugate_gradients();
+    //conjugate_gradients();
 
 
     //test_single_process_factorization(8, 8, 128);
