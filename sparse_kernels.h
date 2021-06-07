@@ -9,9 +9,8 @@
 
 using namespace std;
 
-size_t sddmm_local(int64_t* rCoords,
-    int64_t* cCoords,
-    VectorXd Svalues,
+size_t sddmm_local(
+    spmat_local_t &S, 
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd result,
@@ -26,9 +25,8 @@ size_t sddmm_local(int64_t* rCoords,
  * When mode is 1, B = S^T A
  *
  */
-size_t spmm_local(int64_t* rCoords,
-    int64_t* cCoords,
-    VectorXd Svalues,
+size_t spmm_local(
+    spmat_local_t &S,
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,

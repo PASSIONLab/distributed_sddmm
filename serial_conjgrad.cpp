@@ -30,7 +30,7 @@ void batch_conjugate_gradient_step(MatrixXd vectors, MatrixXd queries) {
     b.setRandom(rows);
 
     VectorXd x = VectorXd::Zero(rows);
-    DenseMatrix A = 0.01 * MatrixXd::Identity(rows, rows) + (X * X.transpose());// .selfadjointView<Eigen::Upper>();
+    DenseMatrix A = 0.01 * MatrixXd::Identity(rows, rows) + (X * X.transpose());
 
     double tol = 1e-10;
     int max_iter = 10000;
@@ -61,12 +61,15 @@ void batch_conjugate_gradient_step(MatrixXd vectors, MatrixXd queries) {
     }
 }
 
-void 
-
 void initialize_dense_matrix(DenseMatrix &X) {
     X.setRandom();
     X /= X.cols();
 }
+
+DenseMatrix computeQueries(DenseMatrix &v) {
+
+}
+
 
 void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     // Generate latent factor Matrices
@@ -101,7 +104,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     VectorXd initial_sparse_contents = VectorXd::Constant(total_nnz, 1.0);
     VectorXd ground_truth(total_nnz);
 
-    sddmm_local(rCoords.data(),
+    /*sddmm_local(rCoords.data(),
                 cCoords.data(),
                 initial_sparse_contents,
                 Agt,
@@ -109,6 +112,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
                 ground_truth,
                 0, 
                 total_nnz);
+    */
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
@@ -128,34 +132,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
 
     for(int cg_iter = 0; cg_iter < 1; cg_iter++) {
         // First optimize for A
-        spmmA.setZero();
-        spmmB.setZero();
-        sddmm_local(rCoords.data(),
-                    cCoords.data(),
-                    ground_truth,
-                    A,
-                    B,
-                    sddmm_result,
-                    0, 
-                    total_nnz);
-        
-        spmm_local( rCoords.data(),
-                    cCoords.data(),
-                    sddmm_result,
-                    spmmA,
-                    B,
-                    sddmm_result,
-                    0, // Mode is 0
-                    0, 
-                    total_nnz);
-
-        DenseMatrix v = 
-            (lambda * nnz_per_row) * A + spmmA;
-            
-
     }
-
-
 }
 
 

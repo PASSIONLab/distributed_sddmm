@@ -21,9 +21,8 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         return (_mm512_reduce_add_pd(lane1));
 }
 
-size_t sddmm_local(int64_t* rCoords,
-    int64_t* cCoords,
-    VectorXd Svalues,
+size_t sddmm_local(
+    spmat_local_t &S, 
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd result,
@@ -34,14 +33,14 @@ size_t sddmm_local(int64_t* rCoords,
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = Svalues.data();
+    double* Sptr = S.Svalues.data();
     int r = A.cols();
 
     // #pragma omp parallel for
     for(int i = start; i < end; i++) {
         processed++;
-        double* Arow = Aptr + r * rCoords[i];
-        double* Brow = Bptr + r * cCoords[i]; 
+        double* Arow = Aptr + r * S.rCoords[i];
+        double* Brow = Bptr + r * S.cCoords[i]; 
         result[i] = Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
     }
     return processed;
@@ -63,11 +62,10 @@ inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
 }
 
 
-size_t spmm_local(int64_t* rCoords,
-    int64_t* cCoords,
-    VectorXd Svalues,
-    DenseMatrix A,
-    DenseMatrix B,
+size_t spmm_local(
+    spmat_local_t &S,
+    DenseMatrix &A,
+    DenseMatrix &B,
     int mode,
     int start,
     int end) {
@@ -76,7 +74,7 @@ size_t spmm_local(int64_t* rCoords,
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = Svalues.data();
+    double* Sptr = S.Svalues.data();
     int r = A.cols();
 
     // #pragma omp parallel for
@@ -84,13 +82,13 @@ size_t spmm_local(int64_t* rCoords,
         processed++;
 
         if(mode == 0) {
-            double* Arow = Aptr + r * rCoords[i];
-            double* Brow = Bptr + r * cCoords[i]; 
+            double* Arow = Aptr + r * S.rCoords[i];
+            double* Brow = Bptr + r * S.cCoords[i]; 
             row_fmadd(Arow, Brow, Sptr[i], r); 
         }
         else if(mode == 1) {
-            double* Arow = Aptr + r * cCoords[i];
-            double* Brow = Bptr + r * rCoords[i]; 
+            double* Arow = Aptr + r * S.cCoords[i];
+            double* Brow = Bptr + r * S.rCoords[i]; 
             row_fmadd(Brow, Arow, Sptr[i], r); 
         }
         else {

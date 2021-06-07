@@ -18,10 +18,7 @@ using namespace std;
 void generateRandomMatrix(int logM, 
     int nnz_per_row,
     shared_ptr<CommGrid> layerGrid,
-    int* total_nnz,
-    vector<int64_t> *rCoords,
-    vector<int64_t> *cCoords,
-    VectorXd* Svalues 
+    spmat_local_t &output
 ) {
 
     PSpMat_s32p64_Int * G; 
@@ -36,26 +33,33 @@ void generateRandomMatrix(int logM,
     RenameVertices(*DEL);	
     G = new PSpMat_s32p64_Int(*DEL, false);
 
-    *total_nnz = G->getnnz(); 
-    int64_t local_nnz = G->seq().getnnz();
     delete DEL;
 
-    rCoords->resize(local_nnz);
-    cCoords->resize(local_nnz);
+    // Everything after this point is just unpacking into a convenient format;
+    // Also: should look into using the RowSplit(), colSplit() functions... 
+    output.dist_nnz = G->getnnz(); 
+    output.local_nnz = G->seq().getnnz();
+    output.nrows = G->seq().getnrow();
+    output.ncols = G->seq().getncol();
 
-    new (Svalues) VectorXd(local_nnz);
+    new (&(output.rCoords)) vector<int64_t>; 
+    new (&(output.cCoords)) vector<int64_t>; 
+    new (&(output.Svalues)) VectorXd(output.local_nnz);
+
+    output.rCoords.resize(output.local_nnz);
+    output.cCoords.resize(output.local_nnz);
 
     SpTuples<int64_t,int> tups(G->seq()); 
     tups.SortColBased();
 
-    tuple<int64_t, int64_t, int>* values = tups.tuples;  
+    tuple<int64_t, int64_t, int>* values = tups.tuples;
     
     for(int i = 0; i < tups.getnnz(); i++) {
-        (*rCoords)[i] = get<0>(values[i]);
-        (*cCoords)[i] = get<1>(values[i]); 
+        output.rCoords[i] = get<0>(values[i]);
+        output.cCoords[i] = get<1>(values[i]); 
+        output.Svalues(i) = get<2>(values[i]); 
     }
 
-    // TODO: Fill Svalues here!
     delete G;
 }
 

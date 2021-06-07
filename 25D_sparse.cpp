@@ -43,15 +43,13 @@ public:
     // Communicators and grids
     unique_ptr<CommGrid3D> grid;
 
-    // Parallel coordinate arrays for the sparse matrix
-    int64_t local_nnz; 
-    vector<int64_t> rCoords, cCoords;
+    spmat_local_t spmat_local;
 
     // These are the local dense matrix buffers (first two)
     // and the buffer for the local nonzeros 
     int nrowsA, nrowsB, ncolsLocal;
 
-    VectorXd Svalues, sddmm_result;
+    VectorXd sddmm_result;
     DenseMatrix localA, localB, spmm_result;
 
     // Performance timers 
@@ -107,23 +105,23 @@ public:
             int total_nnz;
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
-                &total_nnz,
-                &rCoords,
-                &cCoords,
-                &Svalues 
+                spmat_local
             );
-            local_nnz = Svalues.size();
             if(proc_rank == 0) {
-                cout << "Generated " << total_nnz << " nonzeros." << endl;
+                cout << "Generated " << spmat_local.total_nnz << " nonzeros." << endl;
             }
         }
 
-        // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
-        MPI_Bcast(&local_nnz, 1, MPI_INT, 0, grid->GetFiberWorld());
+        // Step 4: broadcast nonzero counts across fibers, allocate the SpMat arrays 
+        MPI_Bcast(&(spmat_local.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
+
+        // Step 5: What's going on here???
+        spmat_local.rCoords.resize(spmat_local.local_nnz);
+        spmat_local.cCoords.resize(spmat_local.local_nnz);
 
         // Step 6: broadcast the sparse matrices (the coordinates, not the values)
-        MPI_Bcast(rCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        MPI_Bcast(cCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(spmat_local.rCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(spmat_local.cCoords.data(), local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         // Step 7: allocate buffers for the dense matrices; over-allocate the dense matrices,
         // that's ok. Although we do have better tools to do this... see the 1.5D allocation.
@@ -178,9 +176,8 @@ public:
 
         // Perform a local SDDMM 
         auto t = start_clock();
-        nnz_processed += sddmm_local(rCoords.data(),
-            cCoords.data(),
-            Svalues,
+        nnz_processed += sddmm_local(
+            spmat_local,
             localA,
             localB,
             sddmm_result,
