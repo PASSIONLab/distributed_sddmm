@@ -33,11 +33,9 @@ void generateRandomMatrix(int logM,
     RenameVertices(*DEL);	
     G = new PSpMat_s32p64_Int(*DEL, false);
 
-    delete DEL;
-
     // Everything after this point is just unpacking into a convenient format;
     // Also: should look into using the RowSplit(), colSplit() functions... 
-    output.dist_nnz = G->getnnz(); 
+    output.dist_nnz = G->getnnz();
     output.local_nnz = G->seq().getnnz();
     output.nrows = G->seq().getnrow();
     output.ncols = G->seq().getncol();
@@ -59,7 +57,7 @@ void generateRandomMatrix(int logM,
         output.cCoords[i] = get<1>(values[i]); 
         output.Svalues(i) = get<2>(values[i]); 
     }
-
+    delete DEL;
     delete G;
 }
 

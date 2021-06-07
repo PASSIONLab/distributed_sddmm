@@ -102,7 +102,6 @@ public:
         // generation, we can broadcast it to everybody else
 
         if(grid->GetRankInFiber() == 0) {
-            int total_nnz;
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
                 S
@@ -256,8 +255,10 @@ int main(int argc, char** argv) {
     // 3. R-Dimension Length
     // 4. Replication factor
 
-    Sparse25D x(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
-    x.benchmark();
+    Sparse25D* x = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    x->benchmark();
+
+    delete x;
 
     MPI_Finalize();
 }
