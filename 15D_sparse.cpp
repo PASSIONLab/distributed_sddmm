@@ -47,7 +47,7 @@ public:
     vector<int64_t> blockStarts;
 
     // Values of the sparse matrix, and results of SpMM, SDDMM
-    VectorXd sddmm_result;
+    VectorXd SValues, sddmm_result;
     DenseMatrix localA, localB, spmm_result;
     
     // Local dimensions
@@ -93,7 +93,8 @@ public:
         if(grid->GetRankInFiber() == 0) {
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
-                S
+                S,
+                SValues
             );
             localSrows = S.nrows;
             if(proc_rank == 0) {
@@ -131,6 +132,7 @@ public:
         // Step 7: Allocate buffers to receive entries. 
         new (&localA) DenseMatrix(localSrows, R);
         new (&localB) DenseMatrix(localBrows, R);
+        new (&SValues) VectorXd(S.local_nnz);
         new (&sddmm_result) VectorXd(S.local_nnz);
         new (&spmm_result) DenseMatrix(localSrows, R);
 
@@ -161,7 +163,7 @@ public:
 
     // Forget the initial broadcast now... 
     void initial_broadcast() {
-        MPI_Bcast((void*) S.Svalues.data(), S.Svalues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+        MPI_Bcast((void*) SValues.data(), SValues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
 
@@ -228,6 +230,7 @@ public:
 
             nnz_processed += sddmm_local(
                 S,
+                SValues,
                 localA,
                 localB,
                 sddmm_result,

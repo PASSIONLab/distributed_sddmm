@@ -10,7 +10,8 @@
 using namespace std;
 
 size_t sddmm_local(
-    spmat_local_t &S, 
+    spmat_local_t &S,
+    VectorXd &SValues, 
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd result,
@@ -27,6 +28,7 @@ size_t sddmm_local(
  */
 size_t spmm_local(
     spmat_local_t &S,
+    VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,

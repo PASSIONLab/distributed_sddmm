@@ -23,7 +23,6 @@ void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, do
 typedef struct {
     vector<int64_t> rCoords;
     vector<int64_t> cCoords;
-    VectorXd Svalues;
 
     /*
      * This is the local portion of a larger sparse matrix. How many nonzeros

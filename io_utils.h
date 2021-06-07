@@ -18,7 +18,8 @@ using namespace std;
 void generateRandomMatrix(int logM, 
     int nnz_per_row,
     shared_ptr<CommGrid> layerGrid,
-    spmat_local_t &output
+    spmat_local_t &output,
+    VectorXd &Svalues
 ) {
 
     PSpMat_s32p64_Int * G; 
@@ -42,7 +43,7 @@ void generateRandomMatrix(int logM,
 
     new (&(output.rCoords)) vector<int64_t>; 
     new (&(output.cCoords)) vector<int64_t>; 
-    new (&(output.Svalues)) VectorXd(output.local_nnz);
+    new (&Svalues) VectorXd(output.local_nnz);
 
     output.rCoords.resize(output.local_nnz);
     output.cCoords.resize(output.local_nnz);
@@ -55,7 +56,7 @@ void generateRandomMatrix(int logM,
     for(int i = 0; i < tups.getnnz(); i++) {
         output.rCoords[i] = get<0>(values[i]);
         output.cCoords[i] = get<1>(values[i]); 
-        output.Svalues(i) = get<2>(values[i]); 
+        Svalues(i) = get<2>(values[i]); 
     }
     delete DEL;
     delete G;

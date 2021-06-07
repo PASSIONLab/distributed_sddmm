@@ -49,7 +49,7 @@ public:
     // and the buffer for the local nonzeros 
     int nrowsA, nrowsB, ncolsLocal;
 
-    VectorXd sddmm_result;
+    VectorXd SValues, sddmm_result;
     DenseMatrix localA, localB, spmm_result;
 
     // Performance timers 
@@ -104,7 +104,8 @@ public:
         if(grid->GetRankInFiber() == 0) {
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
-                S
+                S,
+                SValues
             );
             if(proc_rank == 0) {
                 cout << "Generated " << S.dist_nnz << " nonzeros." << endl;
@@ -128,11 +129,11 @@ public:
         nrowsB = this->N / sqrtpc + 1;
         ncolsLocal = this->R / c;
 
-        new (&localA) DenseMatrix(nrowsA, ncolsLocal);
-        new (&localB) DenseMatrix(nrowsB, ncolsLocal);
-
+        new (&localA)       DenseMatrix(nrowsA, ncolsLocal);
+        new (&localB)       DenseMatrix(nrowsB, ncolsLocal);
+        new (&SValues)      VectorXd(S.local_nnz);
         new (&sddmm_result) VectorXd(S.local_nnz);
-        new (&spmm_result) DenseMatrix(nrowsA, ncolsLocal);
+        new (&spmm_result)  DenseMatrix(nrowsA, ncolsLocal);
     }
 
     void reset_performance_timers() {
@@ -177,6 +178,7 @@ public:
         auto t = start_clock();
         nnz_processed += sddmm_local(
             S,
+            SValues,
             localA,
             localB,
             sddmm_result,

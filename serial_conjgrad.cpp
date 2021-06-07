@@ -73,7 +73,6 @@ void initialize_dense_matrix(DenseMatrix &X) {
 
 void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     // Generate latent factor Matrices
-
     int n = 1 << logM;
 
     // Generate two random sets of latent factors
@@ -86,33 +85,28 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     // Generate a random sparse matrix using CombBLAS
     shared_ptr<CommGrid> grid;
     grid.reset(new CommGrid(MPI_COMM_WORLD, 1, 1));
-    vector<int64_t> rCoords;
-    vector<int64_t> cCoords;
-    VectorXd Svalues;
-    int total_nnz;
 
-    /*generateRandomMatrix(logM, 
+    spmat_local_t S;
+    VectorXd SValues;
+
+    generateRandomMatrix(logM, 
         nnz_per_row,
         grid,
-        &total_nnz,
-        &rCoords,
-        &cCoords,
-        &Svalues 
-    );*/
+        S,
+        SValues
+    );
 
     // Compute a ground truth using an SDDMM, setting all sparse values to 1 
-    VectorXd initial_sparse_contents = VectorXd::Constant(total_nnz, 1.0);
-    VectorXd ground_truth(total_nnz);
+    VectorXd initial_sparse_contents = VectorXd::Constant(S.local_nnz, 1.0);
+    VectorXd ground_truth(S.local_nnz);
 
-    /*sddmm_local(rCoords.data(),
-                cCoords.data(),
+    sddmm_local(S,
                 initial_sparse_contents,
                 Agt,
                 Bgt,
                 ground_truth,
                 0, 
-                total_nnz);
-    */
+                S.local_nnz);
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
@@ -125,7 +119,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     initialize_dense_matrix(A);
     initialize_dense_matrix(B);
 
-    VectorXd sddmm_result(total_nnz);
+    VectorXd sddmm_result(S.local_nnz);
 
     DenseMatrix spmmA(n, r);
     DenseMatrix spmmB(n, r);
@@ -135,13 +129,10 @@ void test_single_process_factorization(int logM, int nnz_per_row, int r) {
     }
 }
 
-
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
     //conjugate_gradients();
-
-
     //test_single_process_factorization(8, 8, 128);
 
     MPI_Finalize();

@@ -21,8 +21,10 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         return (_mm512_reduce_add_pd(lane1));
 }
 
+// TODO: Add assertions making sure all of the sizes match 
 size_t sddmm_local(
     spmat_local_t &S, 
+    VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd result,
@@ -33,7 +35,7 @@ size_t sddmm_local(
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = S.Svalues.data();
+    double* Sptr = SValues.data();
     int r = A.cols();
 
     // #pragma omp parallel for
@@ -64,6 +66,7 @@ inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
 
 size_t spmm_local(
     spmat_local_t &S,
+    VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,
@@ -74,7 +77,7 @@ size_t spmm_local(
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = S.Svalues.data();
+    double* Sptr = SValues.data();
     int r = A.cols();
 
     // #pragma omp parallel for
