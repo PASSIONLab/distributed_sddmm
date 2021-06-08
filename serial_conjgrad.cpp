@@ -86,6 +86,30 @@ double computeResidual(
     return (sddmm_result - gt).norm();
 }
 
+double computeResidualDense(DenseMatrix &A, DenseMatrix &B, DenseMatrix &mask, DenseMatrix &C_mat) {
+    DenseMatrix sddmm = (A * B.transpose()).cwiseProduct(mask);
+    return (C_mat - sddmm).norm();
+}
+
+DenseMatrix makeDense(spmat_local_t &S, VectorXd &values) {
+    DenseMatrix res(S.nrows, S.ncols);
+    res.setZero();
+    for(int i = 0; i < S.rCoords.size(); i++) {
+        res(S.rCoords[i], S.cCoords[i]) = values(i); 
+    }
+    return res;
+}
+
+void computeQueriesDense(
+                    DenseMatrix &S, 
+                    DenseMatrix &B, 
+                    DenseMatrix &x, 
+                    DenseMatrix &result) {
+
+    DenseMatrix sddmm = (x * B.transpose()).cwiseProduct(S);
+    result = sddmm * B + 0.1 * x;
+}
+
 void computeQueries(spmat_local_t &S, 
                     DenseMatrix &B, 
                     DenseMatrix &x, 
@@ -142,13 +166,18 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
     VectorXd ground_truth(S.local_nnz);
 
-    sddmm_local(S,
+    DenseMatrix mask = makeDense(S, ones);
+    DenseMatrix C_mat = (Agt * Bgt.transpose()).cwiseProduct(mask);
+
+    /*sddmm_local(S,
                 ones,
                 Agt,
                 Bgt,
                 ground_truth,
                 0, 
                 S.local_nnz);
+    */
+
 
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
@@ -162,35 +191,42 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     initialize_dense_matrix(B);
 
     cout << "Algorithm Initialized!" << endl;
+    cout << "Testing Residual Computation: " << computeResidualDense(Agt, Bgt, mask, C_mat) << endl;
 
     DenseMatrix rhs(A.rows(), A.cols());
     DenseMatrix Ax(A.rows(), A.cols());
     DenseMatrix Ap(A.rows(), A.cols());
 
-    spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
+    //spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
+    rhs = C_mat * B;
 
-    computeQueries(S, B, A, Ax);
+    cout << mask << endl;
 
+    // computeQueries(S, B, A, Ax);
+    computeQueriesDense(mask, B, A, Ax);
     DenseMatrix r = rhs - Ax;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r); 
 
     double tol = 1e-8;
 
-    cout << rsold << endl;
-
     // First optimize for A
     for(int cg_iter = 0; cg_iter < 2; cg_iter++) {
-        cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
+        //cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
+        cout << "True Residual: " << computeResidualDense(A, B, mask, C_mat) << endl;
 
-        computeQueries(S, B, p, Ap);
-        VectorXd alpha = rsold.cwiseQuotient(batch_dot_product(p, Ap));
+
+        // computeQueries(S, B, p, Ap);
+        computeQueriesDense(mask, B, p, Ap);
+        VectorXd bdot = batch_dot_product(p, Ap);
+        bdot.array() += 1e-14; // For numerical stability 
+        VectorXd alpha = rsold.cwiseQuotient(bdot);
 
         A += scale_matrix_rows(alpha, p);
         r -= scale_matrix_rows(alpha, Ap);
 
         VectorXd rsnew = batch_dot_product(r, r); 
-
+        
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
         cout << "Stopping Condition Residual: " << rsnew_norm_sqrt << endl;
