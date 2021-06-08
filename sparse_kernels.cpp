@@ -89,8 +89,8 @@ size_t spmm_local(
             row_fmadd(Arow, Brow, Sptr[i], r); 
         }
         else if(mode == 1) {
-            double* Arow = Aptr + r * S.cCoords[i];
-            double* Brow = Bptr + r * S.rCoords[i]; 
+            double* Arow = Aptr + r * S.rCoords[i];
+            double* Brow = Bptr + r * S.cCoords[i]; 
             row_fmadd(Brow, Arow, Sptr[i], r); 
         }
         else {
