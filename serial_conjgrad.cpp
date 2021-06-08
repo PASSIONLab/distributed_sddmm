@@ -63,7 +63,7 @@ void batch_conjugate_gradient_step(MatrixXd vectors, MatrixXd queries) {
 
 void initialize_dense_matrix(DenseMatrix &X) {
     X.setRandom();
-    X /= X.cols();
+    //X /= X.cols();
 }
 
 double computeResidual(
@@ -162,11 +162,12 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     initialize_dense_matrix(B);
 
     cout << "Algorithm Initialized!" << endl;
-    cout << "True Residual: " << computeResidual(Agt, Bgt, S, ground_truth) << endl;
 
     DenseMatrix rhs(A.rows(), A.cols());
     DenseMatrix Ax(A.rows(), A.cols());
     DenseMatrix Ap(A.rows(), A.cols());
+
+    spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
 
     computeQueries(S, B, A, Ax);
 
@@ -175,6 +176,8 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     VectorXd rsold = batch_dot_product(r, r); 
 
     double tol = 1e-8;
+
+    cout << rsold << endl;
 
     // First optimize for A
     for(int cg_iter = 0; cg_iter < 2; cg_iter++) {
@@ -188,11 +191,9 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
 
         VectorXd rsnew = batch_dot_product(r, r); 
 
-        cout << rsnew << endl;
-
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
-        cout << "Blah: " << rsnew_norm_sqrt << endl;
+        cout << "Stopping Condition Residual: " << rsnew_norm_sqrt << endl;
 
         if(rsnew_norm_sqrt < tol) {
             break;

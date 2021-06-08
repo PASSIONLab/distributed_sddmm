@@ -9,7 +9,7 @@
 using namespace std;
 
 inline double vectorized_dot_product(double* A, double* B, size_t r) {
-        __m512d lane1;
+        __m512d lane1 = _mm512_setzero_pd();
 
         #pragma GCC unroll 20
         for(int j = 0; j < r; j+=8) {
@@ -36,6 +36,7 @@ size_t sddmm_local(
     double* Aptr = A.data();
     double* Bptr = B.data();
     double* Sptr = SValues.data();
+    double* res = result.data();
     int r = A.cols();
 
     // #pragma omp parallel for
@@ -43,15 +44,13 @@ size_t sddmm_local(
         processed++;
         double* Arow = Aptr + r * S.rCoords[i];
         double* Brow = Bptr + r * S.cCoords[i]; 
-        result[i] = Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
+        res[i] = Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
     }
     return processed;
 }
 
 // Parameters: output row, input row, coefficient
 inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
-        __m512d lane1;
-
         #pragma GCC unroll 20
         for(int j = 0; j < r; j+=8) {
             __m512d Avec1 = _mm512_loadu_pd(A + j);
