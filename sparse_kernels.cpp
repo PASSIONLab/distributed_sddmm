@@ -39,27 +39,25 @@ size_t sddmm_local(
     double* res = result.data();
     int r = A.cols();
 
-    // #pragma omp parallel for
     for(int i = start; i < end; i++) {
         processed++;
         double* Arow = Aptr + r * S.rCoords[i];
         double* Brow = Bptr + r * S.cCoords[i]; 
-        res[i] = Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
+        res[i] += Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
     }
     return processed;
 }
 
 // Parameters: output row, input row, coefficient
 inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
-        #pragma GCC unroll 20
-        for(int j = 0; j < r; j+=8) {
-            __m512d Avec1 = _mm512_loadu_pd(A + j);
-            __m512d Bvec1 = _mm512_loadu_pd(B + j);
+    for(int j = 0; j < r; j+=8) {
+        __m512d Avec1 = _mm512_loadu_pd(A + j);
+        __m512d Bvec1 = _mm512_loadu_pd(B + j);
 
-            Avec1 = _mm512_fmadd_pd(_mm512_set1_pd(coeff), Bvec1, Avec1);
+        Avec1 = _mm512_fmadd_pd(_mm512_set1_pd(coeff), Bvec1, Avec1);
 
-            _mm512_storeu_pd(A + j, Avec1);
-        }
+        _mm512_storeu_pd(A + j, Avec1);
+    }
 }
 
 

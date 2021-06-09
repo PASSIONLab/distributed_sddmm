@@ -73,7 +73,7 @@ double computeResidual(
     VectorXd &gt
 ) {
     VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
-    VectorXd sddmm_result(S.local_nnz);
+    VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
 
     sddmm_local(S,
                 ones,
@@ -115,8 +115,10 @@ void computeQueries(spmat_local_t &S,
                     DenseMatrix &x, 
                     DenseMatrix &result) {
 
+
     VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
-    VectorXd sddmm_result(S.local_nnz);
+    result.setZero();
+    VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
 
     sddmm_local(S, 
                 ones,
@@ -125,6 +127,7 @@ void computeQueries(spmat_local_t &S,
                 sddmm_result,
                 0, 
                 S.local_nnz);
+
     spmm_local(S, sddmm_result, result, B, 0, 0, S.local_nnz);
     result += 0.00001 * x;
 }
@@ -195,11 +198,15 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     DenseMatrix Ax(A.rows(), A.cols());
     DenseMatrix Ap(A.rows(), A.cols());
 
-    spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
-    //rhs = C_mat * B;
+    //rhs.setZero();
+    //spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
+    DenseMatrix realValue = C_mat * B;
+    rhs = C_mat * B;
 
-    // computeQueries(S, B, A, Ax);
-    computeQueriesDense(mask, B, A, Ax);
+    //cout << realValue - rhs << endl; 
+
+    computeQueries(S, B, A, Ax);
+    //computeQueriesDense(mask, B, A, Ax);
     DenseMatrix r = rhs - Ax;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r); 
@@ -211,8 +218,8 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
         cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
         cout << r.norm() << endl;
 
-        //computeQueries(S, B, p, Ap);
-        computeQueriesDense(mask, B, p, Ap);
+        computeQueries(S, B, p, Ap);
+        //computeQueriesDense(mask, B, p, Ap);
         VectorXd bdot = batch_dot_product(p, Ap);
         bdot.array() += 1e-14; // For numerical stability 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
