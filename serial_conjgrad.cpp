@@ -195,19 +195,14 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     cout << "Testing Residual Computation: " << computeResidualDense(Agt, Bgt, mask, C_mat) << endl;
 
     DenseMatrix rhs(A.rows(), A.cols());
-    DenseMatrix Ax(A.rows(), A.cols());
-    DenseMatrix Ap(A.rows(), A.cols());
+    DenseMatrix Mx(A.rows(), A.cols());
+    DenseMatrix Mp(A.rows(), A.cols());
 
-    //rhs.setZero();
-    //spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
-    DenseMatrix realValue = C_mat * B;
-    rhs = C_mat * B;
+    rhs.setZero();
+    spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
+    computeQueries(S, B, A, Mx);
 
-    //cout << realValue - rhs << endl; 
-
-    computeQueries(S, B, A, Ax);
-    //computeQueriesDense(mask, B, A, Ax);
-    DenseMatrix r = rhs - Ax;
+    DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r); 
 
@@ -218,14 +213,13 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
         cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
         cout << r.norm() << endl;
 
-        computeQueries(S, B, p, Ap);
-        //computeQueriesDense(mask, B, p, Ap);
-        VectorXd bdot = batch_dot_product(p, Ap);
+        computeQueries(S, B, p, Mp);
+        VectorXd bdot = batch_dot_product(p, Mp);
         bdot.array() += 1e-14; // For numerical stability 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
 
         A += scale_matrix_rows(alpha, p);
-        r -= scale_matrix_rows(alpha, Ap);
+        r -= scale_matrix_rows(alpha, Mp);
 
         VectorXd rsnew = batch_dot_product(r, r); 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
