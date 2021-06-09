@@ -39,30 +39,6 @@ double computeResidual(
     return (sddmm_result - gt).norm();
 }
 
-double computeResidualDense(DenseMatrix &A, DenseMatrix &B, DenseMatrix &mask, DenseMatrix &C_mat) {
-    DenseMatrix sddmm = (A * B.transpose()).cwiseProduct(mask);
-    return (C_mat - sddmm).norm();
-}
-
-DenseMatrix makeDense(spmat_local_t &S, VectorXd &values) {
-    DenseMatrix res(S.nrows, S.ncols);
-    res.setZero();
-    for(int i = 0; i < S.rCoords.size(); i++) {
-        res(S.rCoords[i], S.cCoords[i]) = values(i); 
-    }
-    return res;
-}
-
-void computeQueriesDense(
-                    DenseMatrix &S, 
-                    DenseMatrix &B, 
-                    DenseMatrix &x, 
-                    DenseMatrix &result) {
-
-    DenseMatrix sddmm = (x * B.transpose()).cwiseProduct(S);
-    result = sddmm * B + 0.00001 * x;
-}
-
 void computeQueries(spmat_local_t &S, 
                     DenseMatrix &A,
                     DenseMatrix &B,
@@ -182,7 +158,7 @@ void cg_optimizer(  spmat_local_t &S,
 void gen_synthetic_factorization_matrix(
     int logM, 
     int nnz_per_row, 
-    int R
+    int R,
     spmat_local_t &S,
     VectorXd &ground_truth
     ) {
@@ -200,8 +176,7 @@ void gen_synthetic_factorization_matrix(
     shared_ptr<CommGrid> grid;
     grid.reset(new CommGrid(MPI_COMM_WORLD, 1, 1));
 
-    spmat_local_t S;
-    VectorXd SValues;
+    VectorXd SValues; // We discard and generate ourselves 
 
     generateRandomMatrix(logM, 
         nnz_per_row,
@@ -222,19 +197,29 @@ void gen_synthetic_factorization_matrix(
                 0, 
                 S.local_nnz);
 
-    // TODO: May want to corrupt entries with i.i.d. Gaussian noise
+    // TODO: Maybe I should corrupt the entries with some random noise?
 }
-
 
 void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
 
+    spmat_local_t S;
+    VectorXd ground_truth;
+
+    gen_synthetic_factorization_matrix(
+        logM, 
+        nnz_per_row, 
+        R,
+        S,
+        ground_truth
+        );
+
     double lambda = 0.1;
     
     // Initialize our guesses for A, B
-    DenseMatrix A(n, R);
-    DenseMatrix B(n, R);
+    DenseMatrix A(S.nrows, R);
+    DenseMatrix B(S.ncols, R);
     initialize_dense_matrix(A);
     initialize_dense_matrix(B);
 
