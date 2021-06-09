@@ -32,4 +32,7 @@ typedef struct {
 
 } spmat_local_t;
 
+typedef enum {Amat, Bmat} MatMode;
+
+
 #endif

@@ -1,7 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <Eigen/Dense>
-
+#include <cassert>
 #include "mpi.h"
 #include "io_utils.h"
 #include "sparse_kernels.h"
@@ -10,57 +10,10 @@
 using namespace std;
 using namespace Eigen;
 
-// The simplest possible program: solves a random dense linear system using
-// conjugate gradients, and compares it to an exact solution. 
-
-// Demmel, Applied Numerical Linear Algebra: Conjugate Gradient Algorithm
-// is on page 312 
-
-void batch_conjugate_gradient_step(MatrixXd vectors, MatrixXd queries) {
-    cout << "Starting serial conjugate gradient algorithm!" << endl; 
-
-    int rows = 50;
-    int cols = 20;
-
-    DenseMatrix X(rows, cols);
-    VectorXd b(rows);
-    VectorXd z(cols);
-
-    X.setRandom(rows, cols);
-    b.setRandom(rows);
-
-    VectorXd x = VectorXd::Zero(rows);
-    DenseMatrix A = 0.01 * MatrixXd::Identity(rows, rows) + (X * X.transpose());
-
-    double tol = 1e-10;
-    int max_iter = 10000;
-    int k = 0;
-
-    // Conjugate gradient algorithm taken directly from Wikipedia 
-    VectorXd r = b;
-    VectorXd p = r;
-    double rsold = r.dot(r);
-
-    bool max_iterations_exceeded = true; 
-    while(k < b.size()) {
-        k++;
-        VectorXd Ap = A * p;
-        
-        double alpha = rsold / p.dot(Ap);
-        x += alpha * p;
-        r -= alpha * Ap;
-        double rsnew = r.dot(r);
-
-        if(sqrt(rsnew) < tol) {
-            max_iterations_exceeded = false;
-            break;
-        }
-
-        p = r + (rsnew / rsold) * p;
-        rsold = rsnew;
-    }
-}
-
+/*
+ * Vivek TODO: Change this to something fancier like a Glorot
+ * initializer?
+ */
 void initialize_dense_matrix(DenseMatrix &X) {
     X.setRandom();
     X /= X.cols();
@@ -111,10 +64,12 @@ void computeQueriesDense(
 }
 
 void computeQueries(spmat_local_t &S, 
-                    DenseMatrix &B, 
-                    DenseMatrix &x, 
+                    DenseMatrix &A,
+                    DenseMatrix &B,
+                    MatMode matrix_to_optimize,
                     DenseMatrix &result) {
 
+    double lambda = 1e-6;
 
     VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
     result.setZero();
@@ -122,14 +77,20 @@ void computeQueries(spmat_local_t &S,
 
     sddmm_local(S, 
                 ones,
-                x,
+                A,
                 B,
                 sddmm_result,
                 0, 
                 S.local_nnz);
 
-    spmm_local(S, sddmm_result, result, B, 0, 0, S.local_nnz);
-    result += 0.00001 * x;
+    if(matrix_to_optimize == Amat) {
+        spmm_local(S, sddmm_result, result, B, Amat, 0, S.local_nnz);
+        result += lambda * A;
+    }
+    else if(matrix_to_optimize == Bmat) {
+        spmm_local(S, sddmm_result, A, result, Bmat, 0, S.local_nnz);
+        result += lambda * B;
+    }
 }
 
 VectorXd batch_dot_product(DenseMatrix &A, DenseMatrix &B) {
@@ -140,7 +101,91 @@ DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
     return scale_vector.asDiagonal() * mat;
 }
 
-void test_single_process_factorization(int logM, int nnz_per_row, int R) {
+void cg_optimizer(  spmat_local_t &S, 
+                    VectorXd &ground_truth, 
+                    DenseMatrix &A,
+                    DenseMatrix &B,
+                    MatMode matrix_to_optimize,
+                    int cg_max_iter
+                    ) {
+    double cg_residual_tol = 1e-5;
+    double nan_avoidance_constant = 1e-14;
+    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+
+    int nrows, ncols;
+    ncols = A.cols();                // A and B have the same # of columns 
+    if(matrix_to_optimize == Amat) {
+        nrows = A.rows();
+    }
+    else {
+        nrows = B.rows(); 
+    }
+
+    DenseMatrix rhs(nrows, ncols);
+    DenseMatrix Mx(nrows, ncols);
+    DenseMatrix Mp(nrows, ncols);
+
+    rhs.setZero();
+
+    if(matrix_to_optimize == Amat) {
+        spmm_local(S, ground_truth, rhs, B, Amat, 0, S.local_nnz);
+    }
+    else {
+        spmm_local(S, ground_truth, A, rhs, Bmat, 0, S.local_nnz);
+    }
+    computeQueries(S, A, B, matrix_to_optimize, Mx);
+
+    DenseMatrix r = rhs - Mx;
+    DenseMatrix p = r;
+    VectorXd rsold = batch_dot_product(r, r); 
+
+    // TODO: restabilize the residual to avoid numerical error
+    // after a certain number of iterations
+
+    int cg_iter;
+    for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
+
+        if(matrix_to_optimize == Amat) {
+            computeQueries(S, p, B, Amat, Mp);
+        }
+        else {
+            computeQueries(S, A, p, Bmat, Mp);
+        }
+        VectorXd bdot = batch_dot_product(p, Mp);
+        bdot.array() += nan_avoidance_constant; 
+        VectorXd alpha = rsold.cwiseQuotient(bdot);
+
+        if(matrix_to_optimize == Amat) {
+            A += scale_matrix_rows(alpha, p);
+        }
+        else {
+            B += scale_matrix_rows(alpha, p);
+        }
+        r -= scale_matrix_rows(alpha, Mp);
+
+        VectorXd rsnew = batch_dot_product(r, r); 
+        double rsnew_norm_sqrt = sqrt(rsnew.sum());
+        if(rsnew_norm_sqrt < cg_residual_tol) {
+            break;
+        }
+
+        VectorXd coeffs = rsnew.cwiseQuotient(rsold);
+        p = r + scale_matrix_rows(coeffs, p);
+        rsold = rsnew;
+    }
+    if (cg_iter == cg_max_iter) {
+        cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
+             << "in max iteration count." << endl;
+    }
+}
+
+void gen_synthetic_factorization_matrix(
+    int logM, 
+    int nnz_per_row, 
+    int R
+    spmat_local_t &S,
+    VectorXd &ground_truth
+    ) {
     // Generate latent factor Matrices
     int n = 1 << logM;
 
@@ -167,10 +212,7 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
 
     // Compute a ground truth using an SDDMM, setting all sparse values to 1 
     VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
-    VectorXd ground_truth(S.local_nnz);
-
-    DenseMatrix mask = makeDense(S, ones);
-    DenseMatrix C_mat = (Agt * Bgt.transpose()).cwiseProduct(mask);
+    new (&ground_truth) VectorXd(S.local_nnz);
 
     sddmm_local(S,
                 ones,
@@ -180,6 +222,11 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
                 0, 
                 S.local_nnz);
 
+    // TODO: May want to corrupt entries with i.i.d. Gaussian noise
+}
+
+
+void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
     // so just test for convergence of the uniformly weighted configuration. 
 
@@ -192,55 +239,20 @@ void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     initialize_dense_matrix(B);
 
     cout << "Algorithm Initialized!" << endl;
-    cout << "Testing Residual Computation: " << computeResidualDense(Agt, Bgt, mask, C_mat) << endl;
+    cout << "Initial Residual: " << computeResidual(A, B, S, ground_truth) << endl;
 
-    DenseMatrix rhs(A.rows(), A.cols());
-    DenseMatrix Mx(A.rows(), A.cols());
-    DenseMatrix Mp(A.rows(), A.cols());
-
-    rhs.setZero();
-    spmm_local(S, ground_truth, rhs, B, 0, 0, S.local_nnz);
-    computeQueries(S, B, A, Mx);
-
-    DenseMatrix r = rhs - Mx;
-    DenseMatrix p = r;
-    VectorXd rsold = batch_dot_product(r, r); 
-
-    double tol = 1e-8;
-
-    // First optimize for A
-    for(int cg_iter = 0; cg_iter < 20; cg_iter++) {
-        cout << "True Residual: " << computeResidual(A, B, S, ground_truth) << endl;
-        cout << r.norm() << endl;
-
-        computeQueries(S, B, p, Mp);
-        VectorXd bdot = batch_dot_product(p, Mp);
-        bdot.array() += 1e-14; // For numerical stability 
-        VectorXd alpha = rsold.cwiseQuotient(bdot);
-
-        A += scale_matrix_rows(alpha, p);
-        r -= scale_matrix_rows(alpha, Mp);
-
-        VectorXd rsnew = batch_dot_product(r, r); 
-        double rsnew_norm_sqrt = sqrt(rsnew.sum());
-
-        cout << "Stopping Condition Residual: " << rsnew_norm_sqrt << endl;
-
-        if(rsnew_norm_sqrt < tol) {
-            break;
-        }
-
-        VectorXd coeffs = rsnew.cwiseQuotient(rsold);
-
-        p = r + scale_matrix_rows(coeffs, p);
-        rsold = rsnew;
+    int num_alternating_steps = 5;
+    for(int i = 0; i < num_alternating_steps; i++) {
+        cg_optimizer(S, ground_truth, A, B, Amat, 40);
+        cout << "Residual: " << computeResidual(A, B, S, ground_truth) << endl;
+        cg_optimizer(S, ground_truth, A, B, Bmat, 40);
+        cout << "Residual: " << computeResidual(A, B, S, ground_truth) << endl;
     }
 }
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
-    //conjugate_gradients();
     test_single_process_factorization(4, 4, 16);
 
     MPI_Finalize();
