@@ -1,9 +1,22 @@
 #include "als_conjugate_gradients.h"
+#include "common.h"
+#include <iostream>
+#include <Eigen/Dense>
+
+using namespace Eigen;
+using namespace std;
+
+VectorXd batch_dot_product(DenseMatrix &A, DenseMatrix &B) {
+    return A.cwiseProduct(B).rowwise().sum();
+} 
+
+DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
+    return scale_vector.asDiagonal() * mat;
+}
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     double cg_residual_tol = 1e-5;
     double nan_avoidance_constant = 1e-14;
-    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
 
     int nrows, ncols;
     ncols = A.cols();                // A and B have the same # of columns 
@@ -19,7 +32,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     DenseMatrix Mp(nrows, ncols);
 
     rhs.setZero();
-    computeRHS(matrix_to_optimize, rhs)
+    computeRHS(matrix_to_optimize, rhs);
     computeQueries(matrix_to_optimize, Mx);
 
     DenseMatrix r = rhs - Mx;
@@ -74,5 +87,18 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     if (cg_iter == cg_max_iter) {
         cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
              << "in max iteration count." << endl;
+    }
+}
+
+void ALS_CG::run_cg(int n_alternating_steps) {
+    initializeEmbeddings();
+    cout << "Embeddings Initialized!" << endl;
+    cout << "Initial Residual: " << computeResidual() << endl;
+
+    for(int i = 0; i < n_alternating_steps; i++) {
+        cg_optimizer(Amat, 40);
+        cout << "Residual: " << computeResidual() << endl;
+        cg_optimizer(Bmat, 40);
+        cout << "Residual: " << computeResidual() << endl;
     }
 }

@@ -26,13 +26,24 @@ public:
     MPI_Comm A_R_split_world;
     MPI_Comm B_R_split_world;
 
+
+
     virtual void computeRHS(MatMode matrix_to_optimize,
-                            DenseMatrix &rhs);
+                            DenseMatrix &rhs) = 0;
 
     virtual void computeQueries(MatMode matrix_to_optimize,
-                                DenseMatrix &result);
+                                DenseMatrix &result) = 0;
+
+    virtual double computeResidual() = 0;
+
+    virtual void initializeEmbeddings() = 0;
 
     void cg_optimizer(  MatMode matrix_to_optimize,
                         int cg_max_iter
                         );
-}
+
+    void run_cg(int n_alternating_steps);
+
+    
+    virtual ~ALS_CG() { }
+};
