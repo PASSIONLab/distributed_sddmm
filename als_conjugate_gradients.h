@@ -31,8 +31,10 @@ public:
     virtual void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs) = 0;
 
-    virtual void computeQueries(MatMode matrix_to_optimize,
-                                DenseMatrix &queries,
+    // TODO: I know these variable names shadow, I need to fix that... 
+    virtual void computeQueries(DenseMatrix &A,
+                                DenseMatrix &B, 
+                                MatMode matrix_to_optimize,
                                 DenseMatrix &result) = 0;
 
     virtual double computeResidual() = 0;

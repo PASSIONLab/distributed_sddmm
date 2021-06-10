@@ -14,8 +14,8 @@ DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
     return scale_vector.asDiagonal() * mat;
 }
 
-void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
-    double cg_residual_tol = 1e-5;
+void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
+    double cg_residual_tol = 1e-3;
     double nan_avoidance_constant = 1e-14;
 
     int nrows, ncols;
@@ -27,45 +27,32 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         nrows = B.rows(); 
     }
 
-    MPI_Comm reduction_world;
-    if(matrix_to_optimize == Amat) {
-        reduction_world = A_R_split_world;
-    }
-    else {
-        reduction_world = B_R_split_world;	
-    }
-
     DenseMatrix rhs(nrows, ncols);
     DenseMatrix Mx(nrows, ncols);
     DenseMatrix Mp(nrows, ncols);
 
     rhs.setZero();
-    computeRHS(matrix_to_optimize, rhs);
 
-    if(matrix_to_optimize == Amat) {
-        computeQueries(matrix_to_optimize, A, Mx);
-    }
-    else {
-        computeQueries(matrix_to_optimize, B, Mx);
-    }
+    computeRHS(matrix_to_optimize, rhs);
+    computeQueries(A, B, matrix_to_optimize, Mx);
 
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r); 
 
-    //MPI_Allreduce(MPI_IN_PLACE, rsold.data(), rsold.size(),
-    // MPI_DOUBLE, MPI_SUM, reduction_world);
-
     // TODO: restabilize the residual to avoid numerical error
     // after a certain number of iterations
+
     int cg_iter;
     for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
-        computeQueries(matrix_to_optimize, p, Mp);
 
+        if(matrix_to_optimize == Amat) {
+            computeQueries(p, B, Amat, Mp);
+        }
+        else {
+            computeQueries(A, p, Bmat, Mp);
+        }
         VectorXd bdot = batch_dot_product(p, Mp);
-        //MPI_Allreduce(MPI_IN_PLACE, bdot.data(), bdot.size(),
-        //            MPI_DOUBLE, MPI_SUM, reduction_world);
-
         bdot.array() += nan_avoidance_constant; 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
 
@@ -77,10 +64,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         }
         r -= scale_matrix_rows(alpha, Mp);
 
-        VectorXd rsnew = batch_dot_product(r, r);
-        //MPI_Allreduce(MPI_IN_PLACE, rsnew.data(), rsnew.size(),
-        //    MPI_DOUBLE, MPI_SUM, reduction_world);
-
+        VectorXd rsnew = batch_dot_product(r, r); 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
         if(rsnew_norm_sqrt < cg_residual_tol) {
             break;
@@ -92,15 +76,13 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     }
     if (cg_iter == cg_max_iter) {
         cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
-             << "in max iteration count." << endl;
+            << "in max iteration count." << endl;
     }
 }
 
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
-    cout << "Embeddings Initialized!" << endl;
-    cout << "Initial Residual: " << computeResidual() << endl;
-
+    cout << "Embeddings initialized" << endl;
     for(int i = 0; i < n_alternating_steps; i++) {
         cg_optimizer(Amat, 40);
         cout << "Residual: " << computeResidual() << endl;
