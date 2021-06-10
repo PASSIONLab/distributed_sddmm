@@ -11,11 +11,19 @@
 using namespace std;
 using namespace Eigen;
 
+VectorXd b_dot(DenseMatrix &A, DenseMatrix &B) {
+    return A.cwiseProduct(B).rowwise().sum();
+} 
+
+DenseMatrix scale_rows(VectorXd &scale_vector, DenseMatrix &mat) {
+    return scale_vector.asDiagonal() * mat;
+}
+
 class SingleNodeALS : public ALS_CG {
+public:
     spmat_local_t S;
     VectorXd ground_truth;
     int R;
-public:
     // This constructor tests with a random matrix. 
 
     void initialize_dense_matrix(DenseMatrix &X) {
@@ -79,6 +87,8 @@ public:
     void initializeEmbeddings() {
         new (&A) DenseMatrix(S.nrows, R);
         new (&B) DenseMatrix(S.ncols, R);
+        initialize_dense_matrix(A);
+        initialize_dense_matrix(B);
     }
 
     double computeResidual() {
@@ -97,6 +107,7 @@ public:
     }
 
     void computeQueries(MatMode matrix_to_optimize,
+                        DenseMatrix &queries,
                         DenseMatrix &result) {
 
         double lambda = 1e-6;
@@ -105,34 +116,76 @@ public:
         result.setZero();
         VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
 
-        sddmm_local(S, 
-                    ones,
-                    A,
-                    B,
-                    sddmm_result,
-                    0, 
-                    S.local_nnz);
-
         if(matrix_to_optimize == Amat) {
+            sddmm_local(S, 
+                        ones,
+                        queries,
+                        B,
+                        sddmm_result,
+                        0, 
+                        S.local_nnz);
+
             spmm_local(S, sddmm_result, result, B, Amat, 0, S.local_nnz);
             result += lambda * A;
         }
         else if(matrix_to_optimize == Bmat) {
+            sddmm_local(S, 
+                        ones,
+                        A,
+                        queries,
+                        sddmm_result,
+                        0, 
+                        S.local_nnz);
+
             spmm_local(S, sddmm_result, A, result, Bmat, 0, S.local_nnz);
             result += lambda * B;
         }
     }
 
+
+
     ~SingleNodeALS() {
         // Empty destructor
     }
-};
 
-/*
-void cg_optimizer(  spmat_local_t &S, 
-                    VectorXd &ground_truth, 
+
+void computeQueriesControl(
+                    spmat_local_t &S,
                     DenseMatrix &A,
                     DenseMatrix &B,
+                    MatMode matrix_to_optimize,
+                    DenseMatrix &result) {
+
+    double lambda = 1e-6;
+
+    VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+    result.setZero();
+    VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
+
+    sddmm_local(S, 
+                ones,
+                A,
+                B,
+                sddmm_result,
+                0, 
+                S.local_nnz);
+
+    if(matrix_to_optimize == Amat) {
+        spmm_local(S, sddmm_result, result, B, Amat, 0, S.local_nnz);
+        result += lambda * A;
+    }
+    else if(matrix_to_optimize == Bmat) {
+        spmm_local(S, sddmm_result, A, result, Bmat, 0, S.local_nnz);
+        result += lambda * B;
+    }
+}
+
+
+void cg_optimizer_control(
+                    spmat_local_t &S,
+                    VectorXd ground_truth,
+                    DenseMatrix &A,
+                    DenseMatrix &B, 
                     MatMode matrix_to_optimize,
                     int cg_max_iter
                     ) {
@@ -161,11 +214,12 @@ void cg_optimizer(  spmat_local_t &S,
     else {
         spmm_local(S, ground_truth, A, rhs, Bmat, 0, S.local_nnz);
     }
-    computeQueries(S, A, B, matrix_to_optimize, Mx);
+
+    computeQueriesControl(S, A, B, matrix_to_optimize, Mx);
 
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
-    VectorXd rsold = batch_dot_product(r, r); 
+    VectorXd rsold = b_dot(r, r); 
 
     // TODO: restabilize the residual to avoid numerical error
     // after a certain number of iterations
@@ -174,39 +228,42 @@ void cg_optimizer(  spmat_local_t &S,
     for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
 
         if(matrix_to_optimize == Amat) {
-            computeQueries(S, p, B, Amat, Mp);
+            computeQueriesControl(S, p, B, Amat, Mp);
         }
         else {
-            computeQueries(S, A, p, Bmat, Mp);
+            computeQueriesControl(S, A, p, Bmat, Mp);
         }
-        VectorXd bdot = batch_dot_product(p, Mp);
+        VectorXd bdot = b_dot(p, Mp);
         bdot.array() += nan_avoidance_constant; 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
 
         if(matrix_to_optimize == Amat) {
-            A += scale_matrix_rows(alpha, p);
+            A += scale_rows(alpha, p);
         }
         else {
-            B += scale_matrix_rows(alpha, p);
+            B += scale_rows(alpha, p);
         }
-        r -= scale_matrix_rows(alpha, Mp);
+        r -= scale_rows(alpha, Mp);
 
-        VectorXd rsnew = batch_dot_product(r, r); 
+        VectorXd rsnew = b_dot(r, r); 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
         if(rsnew_norm_sqrt < cg_residual_tol) {
             break;
         }
 
         VectorXd coeffs = rsnew.cwiseQuotient(rsold);
-        p = r + scale_matrix_rows(coeffs, p);
+        p = r + scale_rows(coeffs, p);
         rsold = rsnew;
     }
     if (cg_iter == cg_max_iter) {
         cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
-             << "in max iteration count." << endl;
+            << "in max iteration count." << endl;
     }
 }
-*/
+};
+
+
+
 
 /*void test_single_process_factorization(int logM, int nnz_per_row, int R) {
     // For now, all weights are uniform due to the Erdos Renyi Random matrix,
@@ -247,7 +304,17 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
     SingleNodeALS test(4, 4, 16);
-    test.run_cg(5);
+    test.initializeEmbeddings();
+    //test.run_cg(5);
+
+
+    int num_alternating_steps = 5;
+    for(int i = 0; i < num_alternating_steps; i++) {
+        test.cg_optimizer_control(test.S, test.ground_truth, test.A, test.B, Amat, 40);
+        cout << "Residual: " << test.computeResidual() << endl;
+        test.cg_optimizer_control(test.S, test.ground_truth, test.A, test.B, Bmat, 40);
+        cout << "Residual: " << test.computeResidual() << endl;
+    }
 
     //test_single_process_factorization(4, 4, 16);
 

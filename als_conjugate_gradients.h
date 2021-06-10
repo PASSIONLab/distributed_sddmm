@@ -32,6 +32,7 @@ public:
                             DenseMatrix &rhs) = 0;
 
     virtual void computeQueries(MatMode matrix_to_optimize,
+                                DenseMatrix &queries,
                                 DenseMatrix &result) = 0;
 
     virtual double computeResidual() = 0;
