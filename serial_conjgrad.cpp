@@ -110,7 +110,7 @@ public:
                         MatMode matrix_to_optimize,
                         DenseMatrix &result) {
 
-        double lambda = 1e-6;
+        double lambda = 1e-7;
 
         VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
         result.setZero();
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
     SingleNodeALS test(12, 8, 16);
-    test.run_cg(5);
+    test.run_cg(20);
 
     MPI_Finalize();
 }

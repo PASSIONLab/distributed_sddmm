@@ -83,10 +83,11 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
     cout << "Embeddings initialized" << endl;
+    cout << "Initial Residual: " << computeResidual() << endl;
+
     for(int i = 0; i < n_alternating_steps; i++) {
         cg_optimizer(Amat, 40);
-        cout << "Residual: " << computeResidual() << endl;
         cg_optimizer(Bmat, 40);
-        cout << "Residual: " << computeResidual() << endl;
+        cout << "Residual after step " << i << " : " << computeResidual() << endl;
     }
 }
