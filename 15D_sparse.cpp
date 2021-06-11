@@ -45,21 +45,15 @@ public:
 
     spmat_local_t S;
     vector<int64_t> blockStarts;
-
-    // Values of the sparse matrix, and results of SpMM, SDDMM
-    VectorXd SValues, sddmm_result;
-    DenseMatrix localA, localB, spmm_result;
-    
+ 
     // Local dimensions
     int64_t localSrows;
     int64_t localBrows;
 
     // Performance timers 
     int nruns;
-    double  broadcast_time,
-            cyclic_shift_time,
-            computation_time,
-            reduction_time;
+    double  cyclic_shift_time,
+            computation_time;
 
     int rankInFiber, rankInLayer, shift;
 
@@ -114,7 +108,8 @@ public:
         MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
         MPI_Bcast(S.cCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
-        // Step 6: Locate block starts within the sparse matrix 
+        // Step 6: Locate block starts within the local sparse matrix (i.e. divide a long
+        // block row into subtiles) 
         int currentStart = 0;
         for(int i = 0; i < S.local_nnz; i++) {
             while(S.cCoords[i] >= currentStart) {
@@ -122,31 +117,40 @@ public:
                 currentStart += localBrows;
             }
 
-            // This modding step makes indexing easier 
+            // This modding step helps indexing. 
             S.cCoords[i] %= localBrows;
         }
         while(blockStarts.size() < p / c + 1) {
             blockStarts.push_back(S.local_nnz);
         }
 
-        // Step 7: Allocate buffers to receive entries. 
-        new (&localA) DenseMatrix(localSrows, R);
-        new (&localB) DenseMatrix(localBrows, R);
-        new (&SValues) VectorXd(S.local_nnz);
-        new (&sddmm_result) VectorXd(S.local_nnz);
-        new (&spmm_result) DenseMatrix(localSrows, R);
-
         rankInFiber = grid->GetRankInFiber();
         rankInLayer = grid->GetRankInLayer();
         shift = rankInFiber * p / (c * c);
     };
 
+    // Factory functions: allocate dense matrices that can be used
+    // as buffers with the algorithm
+
+    VectorXd like_S_values(VectorXd &to_fill) {
+        VectorXd res(S.local_nnz);
+        return res; 
+    }
+
+    DenseMatrix like_A_matrix(DenseMatrix &to_fill) {
+        DenseMatrix res(localSrows, R); 
+        return res;
+    }
+
+    DenseMatrix like_B_matrix(DenseMatrix &to_fill) {
+        DenseMatrix res(localBrows, R); 
+        return res;
+    }
+
     void reset_performance_timers() {
         nruns = 0;
-        broadcast_time = 0;
         cyclic_shift_time = 0;
-        computation_time = 0;
-        reduction_time = 0;
+        computation_time  = 0;
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
@@ -162,30 +166,17 @@ public:
     }
 
     // Forget the initial broadcast now... 
-    void initial_broadcast() {
+    void initial_broadcast(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
         MPI_Bcast((void*) SValues.data(), SValues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-
-        DenseMatrix recvRowSlice(localB.rows(), localB.cols());
-
-        MPI_Request send_request;
-        MPI_Request recv_request;
-
-        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                    (rankInLayer + shift) % (p / c), 0,
-                    grid->GetLayerWorld(), &send_request);
-
-        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
-                0, grid->GetLayerWorld(), &recv_request);
-
-        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-
-        localB = recvRowSlice;
     }
 
-    void sddmm(bool verbose) {
+    int pMod(int num, int denom) {
+        return ((num % denom) + denom) % denom;
+    }
+
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result, bool verbose) {
         nruns++;
 
         if(proc_rank == 0 && verbose) {
@@ -198,8 +189,6 @@ public:
         MPI_Request recv_request;
     
         int nnz_processed = 0;
-
-        // Initial shift
 
         // Temporary buffer to hold the received portion of matrix B.
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
@@ -266,10 +255,7 @@ public:
     }
 
     void print_statistics() {
-        double sum_broadcast_time, sum_comp_time, sum_shift_time, sum_reduce_time;
-
-        MPI_Allreduce(&broadcast_time, &sum_broadcast_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        double sum_comp_time, sum_shift_time; 
 
         MPI_Allreduce(&cyclic_shift_time, &sum_shift_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -277,26 +263,18 @@ public:
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Allreduce(&reduction_time, &sum_reduce_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-
         if(proc_rank == 0) {
-            cout << "Avg. Broadcast Time\t"
-                << "Avg. Cyclic Shift Time\t"
-                << "Avg. Computation Time\t"
-                << "Avg. Reduction Time" << endl;
+            cout << "Avg. Cyclic Shift Time\t"
+                 << "Avg. Computation Time" << endl;
+                
 
-            sum_broadcast_time /= p * nruns;
+
             sum_shift_time     /= p * nruns;
             sum_comp_time      /= p * nruns;
-            sum_reduce_time    /= p * nruns;
 
             cout 
-            << sum_broadcast_time << "\t"
             << sum_shift_time << "\t"
-            << sum_comp_time << "\t"
-            << sum_reduce_time << endl;
+            << sum_comp_time << "\t" << endl;
 
             cout << "=================================" << endl;
         }
@@ -304,12 +282,12 @@ public:
     }
 
     void benchmark() {
-        sddmm(true);
+        //sddmm(true);
         reset_performance_timers();
 
         int nruns = 10;
         for(int i = 0; i < nruns; i++) {
-            sddmm(false);
+            //sddmm(false);
         }
         print_statistics();
     }
@@ -318,7 +296,6 @@ public:
         // Destructor
     }
 };
-
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
