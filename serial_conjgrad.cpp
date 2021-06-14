@@ -13,10 +13,12 @@ using namespace Eigen;
 
 class SingleNodeALS : public ALS_CG {
 public:
+    // This constructor tests with a random matrix. 
     spmat_local_t S;
     VectorXd ground_truth;
     int R;
-    // This constructor tests with a random matrix. 
+
+    StandardKernel spOps;
 
     void initialize_dense_matrix(DenseMatrix &X) {
         X.setRandom();
@@ -52,7 +54,7 @@ public:
         VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
         new (&ground_truth) VectorXd(S.local_nnz);
 
-        sddmm_local(S,
+        spOps.sddmm_local(S,
                     ones,
                     Agt,
                     Bgt,
@@ -69,10 +71,10 @@ public:
     void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs) {
         if(matrix_to_optimize == Amat) {
-            spmm_local(S, ground_truth, rhs, B, Amat, 0, S.local_nnz);
+            spOps.spmm_local(S, ground_truth, rhs, B, Amat, 0, S.local_nnz);
         }
         else {
-            spmm_local(S, ground_truth, A, rhs, Bmat, 0, S.local_nnz);
+            spOps.spmm_local(S, ground_truth, A, rhs, Bmat, 0, S.local_nnz);
         }
     }
 
@@ -91,7 +93,7 @@ public:
         VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
         VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
 
-        sddmm_local(S,
+        spOps.sddmm_local(S,
                     ones,
                     A,
                     B,
@@ -101,8 +103,6 @@ public:
         
         return (sddmm_result - ground_truth).norm();
     }
-
-
 
     void computeQueries(
                         DenseMatrix &A,
@@ -116,7 +116,7 @@ public:
         result.setZero();
         VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
 
-        sddmm_local(S, 
+        spOps.sddmm_local(S, 
                     ones,
                     A,
                     B,
@@ -125,11 +125,11 @@ public:
                     S.local_nnz);
 
         if(matrix_to_optimize == Amat) {
-            spmm_local(S, sddmm_result, result, B, Amat, 0, S.local_nnz);
+            spOps.spmm_local(S, sddmm_result, result, B, Amat, 0, S.local_nnz);
             result += lambda * A;
         }
         else if(matrix_to_optimize == Bmat) {
-            spmm_local(S, sddmm_result, A, result, Bmat, 0, S.local_nnz);
+            spOps.spmm_local(S, sddmm_result, A, result, Bmat, 0, S.local_nnz);
             result += lambda * B;
         }
     }

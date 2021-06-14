@@ -14,6 +14,7 @@
 #include "common.h"
 #include "io_utils.h"
 #include "pack.h"
+#include "als_conjugate_gradients.h"
 
 // This code implements a 1.5D Sparse Matrix Multiplication Algorithm
 
@@ -29,6 +30,8 @@
 using namespace std;
 using namespace combblas;
 using namespace Eigen;
+
+#define VERBOSE true
 
 class Sparse15D {
 public:
@@ -57,8 +60,12 @@ public:
 
     int rankInFiber, rankInLayer, shift;
 
+    // Pointer to object implementing the local SDDMM / SPMM Operations 
+    KernelImplementation *kernel; 
+
     // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D(int logM, int nnz_per_row, int R, int c) {
+    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k) {
+        this->kernel = k;
         this->M = 1 << logM;
         this->N = this->M;
         this->R = R;
@@ -84,6 +91,7 @@ public:
         // edge list. Only the bottom-most layer needs to do the
         // generation, we can broadcast it to everybody else
 
+        VectorXd SValues;                 // For the R-Mat generator, ignore the actual values 
         if(grid->GetRankInFiber() == 0) {
             generateRandomMatrix(logM, nnz_per_row,
                 grid->GetCommGridLayer(),
@@ -132,17 +140,17 @@ public:
     // Factory functions: allocate dense matrices that can be used
     // as buffers with the algorithm
 
-    VectorXd like_S_values(VectorXd &to_fill) {
+    VectorXd like_S_values() {
         VectorXd res(S.local_nnz);
         return res; 
     }
 
-    DenseMatrix like_A_matrix(DenseMatrix &to_fill) {
+    DenseMatrix like_A_matrix() {
         DenseMatrix res(localSrows, R); 
         return res;
     }
 
-    DenseMatrix like_B_matrix(DenseMatrix &to_fill) {
+    DenseMatrix like_B_matrix() {
         DenseMatrix res(localBrows, R); 
         return res;
     }
@@ -165,9 +173,9 @@ public:
         cout << "Grid Dimensions: " << p / c << " x " << c << endl;
     }
 
-    // Forget the initial broadcast now... 
-    void initial_broadcast(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        MPI_Bcast((void*) SValues.data(), SValues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+    // Synchronizes data across three levels of the processor grid
+    void initial_broadcast(DenseMatrix &localA, DenseMatrix &localB) {
+        //MPI_Bcast((void*) SValues.data(), SValues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
     }
@@ -176,10 +184,36 @@ public:
         return ((num % denom) + denom) % denom;
     }
 
-    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result, bool verbose) {
+    void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        algorithm(localA, localB, SValues, nullptr, k_spmmA);
+        MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+    }
+
+
+    void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        algorithm(localA, localB, SValues, nullptr, k_spmmB);
+        MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+    }
+
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) {
+        algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
+        MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+    }
+
+    /*
+     * Set the mode to take an SDDMM, SpMM with A as the output matrix, or 
+     * SpMM with B as the output matrix. 
+     */
+    void algorithm(         DenseMatrix &localA, 
+                            DenseMatrix &localB, 
+                            VectorXd &SValues, 
+                            VectorXd *sddmm_result_ptr, 
+                            KernelMode mode
+                            ) {
+  
         nruns++;
 
-        if(proc_rank == 0 && verbose) {
+        if(proc_rank == 0 && VERBOSE) {
             print_algorithm_info();
             cout << "Executing SDDMM..." << endl;
         }
@@ -195,7 +229,7 @@ public:
 
         auto t = start_clock();
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                    (rankInLayer + shift) % (p / c), 0,
+                    pMod(rankInLayer + shift, p / c), 0,
                     grid->GetLayerWorld(), &send_request);
 
         MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
@@ -210,27 +244,49 @@ public:
         MPI_Barrier(MPI_COMM_WORLD);
 
         for(int i = 0; i < p / (c * c); i++) {
-            t = start_clock();
 
-            int block_id = ( (p / c) + rankInLayer - shift - i) % (p / c);
+            int block_id = pMod(rankInLayer - shift - i, p / c);
 
             assert(blockStarts[block_id] < S.local_nnz);
             assert(blockStarts[block_id + 1] <= S.local_nnz);
 
-            nnz_processed += sddmm_local(
-                S,
-                SValues,
-                localA,
-                localB,
-                sddmm_result,
-                blockStarts[block_id],
-                blockStarts[block_id + 1]);
+            t = start_clock();
+            if(mode == k_sddmm) {
+                nnz_processed += kernel->sddmm_local(
+                    S,
+                    SValues,
+                    localA,
+                    localB,
+                    *sddmm_result_ptr,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+            }
+            else if(mode == k_spmmA) {
+                nnz_processed += kernel->spmm_local(
+                    S,
+                    SValues,
+                    localA,
+                    localB,
+                    Amat,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+            }
+            else if(mode == k_spmmB) {
+                nnz_processed += kernel->spmm_local(
+                    S,
+                    SValues,
+                    localA,
+                    localB,
+                    Bmat,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+            }
 
             stop_clock_and_add(t, &computation_time);
 
             t = start_clock();
             MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                        ((p/c) + rankInLayer + 1) % (p/c), 0,
+                        pMod(rankInLayer + 1, p / c), 0,
                         grid->GetLayerWorld(), &send_request);
 
             MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
@@ -245,11 +301,25 @@ public:
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
+        // Send the B matrix back to its original position
+        t = start_clock();
+        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
+                    pMod(rankInLayer - (p / c * c) - shift, p / c), 0,
+                    grid->GetLayerWorld(), &send_request);
+
+        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
+                0, grid->GetLayerWorld(), &recv_request);
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
+        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+        stop_clock_and_add(t, &cyclic_shift_time);
+
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
                 MPI_SUM, 0, MPI_COMM_WORLD);
 
-        if(proc_rank == 0 && verbose) {
+        if(proc_rank == 0 && VERBOSE) {
             cout << "Total Nonzeros Processed: " << total_processed << endl;
         }
     }
@@ -267,8 +337,6 @@ public:
             cout << "Avg. Cyclic Shift Time\t"
                  << "Avg. Computation Time" << endl;
                 
-
-
             sum_shift_time     /= p * nruns;
             sum_comp_time      /= p * nruns;
 
@@ -282,12 +350,18 @@ public:
     }
 
     void benchmark() {
-        //sddmm(true);
+        VectorXd Svals        = like_S_values();
+        VectorXd sddmm_result = like_S_values();
+
+        DenseMatrix A = like_A_matrix(); 
+        DenseMatrix B = like_B_matrix(); 
+
+        spmmB(A, B, Svals);
         reset_performance_timers();
 
         int nruns = 10;
         for(int i = 0; i < nruns; i++) {
-            //sddmm(false);
+            spmmB(A, B, Svals);
         }
         print_statistics();
     }
@@ -296,6 +370,96 @@ public:
         // Destructor
     }
 };
+
+
+class ALS15D : public ALS_CG {
+public:
+    Sparse15D spOps;
+    StandardKernel kernel;
+
+    DenseMatrix A;
+    DenseMatrix B;
+
+    VectorXd ground_truth;
+
+    void initialize_dense_matrix(DenseMatrix &X) {
+        X.setRandom();
+        // X /= X.cols();
+    }
+
+    ALS15D(int logM, int nnz_per_row, int R, int c) { 
+        new (&spOps) Sparse15D(logM, nnz_per_row, R, c, &kernel);
+
+        DenseMatrix Agt = spOps.like_A_matrix();
+        DenseMatrix Bgt = spOps.like_B_matrix();
+
+        initialize_dense_matrix(Agt);
+        initialize_dense_matrix(Bgt);
+
+        // Compute a ground truth using an SDDMM, setting all sparse values to 1 
+        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0); 
+
+        ground_truth = spOps.like_S_values(); 
+        ground_truth.setZero();
+
+        spOps.initial_broadcast(Agt, Bgt);
+        spOps.sddmm(Agt, Bgt, ones, ground_truth);
+    }
+
+    void computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
+        if(matrix_to_optimize == Amat) {
+            spOps.spmmA(A, B, ground_truth);
+        }
+        else if(matrix_to_optimize == Bmat) {
+            spOps.spmmA(A, B, ground_truth);
+        }
+    } 
+
+    double computeResidual() {
+        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0);
+        VectorXd sddmm_result = VectorXd::Zero(spOps.S.local_nnz);
+        spOps.sddmm(A, B, ones, sddmm_result);
+
+        double sqnorm = (sddmm_result - ground_truth).squarednorm();
+        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->getLayerWorld());
+        
+        return sqrt(sqnorm);
+    }
+
+    void initializeEmbeddings() {
+        A = spOps.like_A_matrix();
+        B = spOps.like_B_matrix();
+
+        initialize_dense_matrix(A);
+        initialize_dense_matrix(B);
+        spOps.initial_broadcast(A, B);
+    }
+
+    void computeQueries(
+                        DenseMatrix &A,
+                        DenseMatrix &B,
+                        MatMode matrix_to_optimize,
+                        DenseMatrix &result) {
+
+        double lambda = 1e-7;
+
+        VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+        result.setZero();
+        VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
+
+        spOps.sddmm(A, B, ones, sddmm_result);
+
+        if(matrix_to_optimize == Amat) {
+            spOps.spmmA(result, B, sddmm_result);
+            result += lambda * A;
+        }
+        else if(matrix_to_optimize == Bmat) {
+            spOps.spmmB(A, result, sddmm_result);
+            result += lambda * B;
+        }
+    }
+}
+
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -312,7 +476,9 @@ int main(int argc, char** argv) {
     // 3. R-Dimension Length
     // 4. Replication factor
 
-    Sparse15D* x = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    StandardKernel kernel;
+    Sparse15D* x = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &kernel);
+
     x->benchmark();
 
     delete x;

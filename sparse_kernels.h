@@ -9,30 +9,62 @@
 
 using namespace std;
 
-size_t sddmm_local(
-    spmat_local_t &S,
-    VectorXd &SValues, 
-    DenseMatrix &A,
-    DenseMatrix &B,
-    VectorXd &result,
-    int start,
-    int end);
+class KernelImplementation {
+public:
+    // Performs an operation that looks like a local SDDMM
+    // and returns the number of nonzeros processed 
+    virtual size_t sddmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues, 
+        DenseMatrix &A,
+        DenseMatrix &B,
+        VectorXd &result,
+        int start,
+        int end) = 0;
+
+    /*
+    * S is m x n
+    * A is m x r
+    * B is n x r 
+    * When mode is 0, A = S B (output is A)
+    * When mode is 1, B = S^T A (output is B)
+    *
+    */
+    virtual size_t spmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues,
+        DenseMatrix &A,
+        DenseMatrix &B,
+        int mode,
+        int start,
+        int end) = 0;
+};
 
 /*
- * S is m x n
- * A is m x r
- * B is n x r 
- * When mode is 0, A = S B (output is A)
- * When mode is 1, B = S^T A (output is B)
- *
+ * Exactly the algebra on the box, no funny business. 
  */
-size_t spmm_local(
-    spmat_local_t &S,
-    VectorXd &SValues,
-    DenseMatrix &A,
-    DenseMatrix &B,
-    int mode,
-    int start,
-    int end);
+class StandardKernel : public KernelImplementation {
+public:
+    size_t sddmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues, 
+        DenseMatrix &A,
+        DenseMatrix &B,
+        VectorXd &result,
+        int start,
+        int end);
+
+    size_t spmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues,
+        DenseMatrix &A,
+        DenseMatrix &B,
+        int mode,
+        int start,
+        int end);
+};
+
+typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
+
 
 #endif

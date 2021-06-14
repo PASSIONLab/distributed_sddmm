@@ -4,6 +4,7 @@
 #include <omp.h>
 #include <iostream>
 
+#include "sparse_kernels.h"
 #include "common.h"
 
 using namespace std;
@@ -22,7 +23,7 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
 }
 
 // TODO: Add assertions making sure all of the sizes match 
-size_t sddmm_local(
+size_t StandardKernel::sddmm_local(
     spmat_local_t &S, 
     VectorXd &SValues,
     DenseMatrix &A,
@@ -61,7 +62,7 @@ inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
 }
 
 
-size_t spmm_local(
+size_t StandardKernel::spmm_local(
     spmat_local_t &S,
     VectorXd &SValues,
     DenseMatrix &A,

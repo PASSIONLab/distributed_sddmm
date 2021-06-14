@@ -52,20 +52,25 @@ public:
     VectorXd SValues, sddmm_result;
     DenseMatrix localA, localB, spmm_result;
 
+    // Pointer to object implementing the local SDDMM / SPMM Operations 
+    KernelImplementation *kernel; 
+
+
     // Performance timers 
     int nruns;
     double broadcast_time;
     double computation_time;
     double reduction_time;
 
-    Sparse25D(int logM, int nnz_per_row, int R, int c) {
+    Sparse25D(int logM, int nnz_per_row, int R, int c, KernelImplementation *k) {
         
         /*
          * Vivek: should we rename nnz_per_row to edgefactor, since that interpretation
          * may not be correct for general R-mat matrices/ 
          */
 
-        // Assume square matrix for now... 
+        // This constructor produces a square matrix. 
+        this->kernel = k;
         this->M = 1 << logM;
         this->N = this->M;
         this->R = R;
@@ -176,7 +181,7 @@ public:
 
         // Perform a local SDDMM 
         auto t = start_clock();
-        nnz_processed += sddmm_local(
+        nnz_processed += kernel->sddmm_local(
             S,
             SValues,
             localA,
@@ -257,7 +262,8 @@ int main(int argc, char** argv) {
     // 3. R-Dimension Length
     // 4. Replication factor
 
-    Sparse25D* x = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    StandardKernel kernel;
+    Sparse25D* x = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &kernel);
     x->benchmark();
 
     delete x;
