@@ -65,10 +65,18 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         r -= scale_matrix_rows(alpha, Mp);
 
         VectorXd rsnew = batch_dot_product(r, r); 
+
+        /*
+         * If we're going to do the early stopping, need to Allreduce
+         * the norm, or it won't work. 
+         *
+         *
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
+
         if(rsnew_norm_sqrt < cg_residual_tol) {
             break;
         }
+        */
 
         VectorXd coeffs = rsnew.cwiseQuotient(rsold);
         p = r + scale_matrix_rows(coeffs, p);
@@ -83,17 +91,19 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
 
+    double residual = computeResidual();
     if(proc_rank == 0) {
         cout << "Embeddings initialized" << endl;
-        cout << "Initial Residual: " << computeResidual() << endl;
+        cout << "Initial Residual: " << residual << endl;
     }
 
     for(int i = 0; i < n_alternating_steps; i++) {
         cg_optimizer(Amat, 40);
         cg_optimizer(Bmat, 40);
 
+        residual = computeResidual();
         if(proc_rank == 0) {
-            cout << "Residual after step " << i << " : " << computeResidual() << endl;
+            cout << "Residual after step " << i << " : " << residual << endl;
         }
     }
 }
