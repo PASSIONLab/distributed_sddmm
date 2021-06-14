@@ -74,20 +74,26 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         p = r + scale_matrix_rows(coeffs, p);
         rsold = rsnew;
     }
-    if (cg_iter == cg_max_iter) {
-        cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
-            << "in max iteration count." << endl;
-    }
+    //if (cg_iter == cg_max_iter) {
+    //    cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
+    //        << "in max iteration count." << endl;
+    //}
 }
 
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
-    cout << "Embeddings initialized" << endl;
-    cout << "Initial Residual: " << computeResidual() << endl;
+
+    if(proc_rank == 0) {
+        cout << "Embeddings initialized" << endl;
+        cout << "Initial Residual: " << computeResidual() << endl;
+    }
 
     for(int i = 0; i < n_alternating_steps; i++) {
         cg_optimizer(Amat, 40);
         cg_optimizer(Bmat, 40);
-        cout << "Residual after step " << i << " : " << computeResidual() << endl;
+
+        if(proc_rank == 0) {
+            cout << "Residual after step " << i << " : " << computeResidual() << endl;
+        }
     }
 }

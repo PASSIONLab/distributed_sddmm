@@ -31,7 +31,7 @@ using namespace std;
 using namespace combblas;
 using namespace Eigen;
 
-#define VERBOSE true
+#define VERBOSE false
 
 class Sparse15D {
 public:
@@ -377,19 +377,19 @@ public:
     Sparse15D spOps;
     StandardKernel kernel;
 
-    DenseMatrix A;
-    DenseMatrix B;
-
     VectorXd ground_truth;
 
     void initialize_dense_matrix(DenseMatrix &X) {
         X.setRandom();
-        // X /= X.cols();
+        X /= X.cols();
     }
 
-    ALS15D(int logM, int nnz_per_row, int R, int c) { 
-        new (&spOps) Sparse15D(logM, nnz_per_row, R, c, &kernel);
+    ALS15D(int logM, int nnz_per_row, int R, int c) :
+        spOps(logM, nnz_per_row, R, c, &kernel) 
+     { 
+        //new (&spOps) Sparse15D(logM, nnz_per_row, R, c, &kernel);
 
+        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         DenseMatrix Agt = spOps.like_A_matrix();
         DenseMatrix Bgt = spOps.like_B_matrix();
 
@@ -404,14 +404,19 @@ public:
 
         spOps.initial_broadcast(Agt, Bgt);
         spOps.sddmm(Agt, Bgt, ones, ground_truth);
+
+        // TODO: Need to set the communicators below!
+
+        //A_R_split_world = spOps.grid->getLayerWorld();
+        //B_R_split_world = ;
     }
 
     void computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
         if(matrix_to_optimize == Amat) {
-            spOps.spmmA(A, B, ground_truth);
+            spOps.spmmA(rhs, B, ground_truth);
         }
         else if(matrix_to_optimize == Bmat) {
-            spOps.spmmA(A, B, ground_truth);
+            spOps.spmmB(A, rhs, ground_truth);
         }
     } 
 
@@ -420,8 +425,8 @@ public:
         VectorXd sddmm_result = VectorXd::Zero(spOps.S.local_nnz);
         spOps.sddmm(A, B, ones, sddmm_result);
 
-        double sqnorm = (sddmm_result - ground_truth).squarednorm();
-        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->getLayerWorld());
+        double sqnorm = (sddmm_result - ground_truth).squaredNorm();
+        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->GetLayerWorld());
         
         return sqrt(sqnorm);
     }
@@ -441,11 +446,12 @@ public:
                         MatMode matrix_to_optimize,
                         DenseMatrix &result) {
 
-        double lambda = 1e-7;
+        double lambda = 1e-8;
 
-        VectorXd ones = VectorXd::Constant(S.local_nnz, 1.0);
+        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0);
         result.setZero();
-        VectorXd sddmm_result = VectorXd::Zero(S.local_nnz);
+        VectorXd sddmm_result = spOps.like_S_values(); 
+        sddmm_result.setZero();
 
         spOps.sddmm(A, B, ones, sddmm_result);
 
@@ -458,8 +464,7 @@ public:
             result += lambda * B;
         }
     }
-}
-
+};
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -476,11 +481,9 @@ int main(int argc, char** argv) {
     // 3. R-Dimension Length
     // 4. Replication factor
 
-    StandardKernel kernel;
-    Sparse15D* x = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &kernel);
-
-    x->benchmark();
-
+    //StandardKernel kernel;
+    ALS15D* x = new ALS15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    x->run_cg(20);
     delete x;
 
     MPI_Finalize();

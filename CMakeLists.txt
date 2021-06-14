@@ -21,7 +21,7 @@ include_directories(
 link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib)
 
-add_executable(15D_sparse 15D_sparse.cpp sparse_kernels.cpp common.cpp) 
+add_executable(15D_sparse 15D_sparse.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
 add_executable(25D_sparse 25D_sparse.cpp sparse_kernels.cpp common.cpp) 
 add_executable(serial_conjgrad serial_conjgrad.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
 
