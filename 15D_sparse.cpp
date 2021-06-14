@@ -407,6 +407,8 @@ public:
 
         // TODO: Need to set the communicators below!
 
+        residual_reduction_world = spOps.grid->GetLayerWorld();
+
         //A_R_split_world = spOps.grid->getLayerWorld();
         //B_R_split_world = ;
     }

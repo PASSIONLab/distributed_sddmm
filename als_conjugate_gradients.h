@@ -25,6 +25,8 @@ public:
 
     MPI_Comm A_R_split_world;
     MPI_Comm B_R_split_world;
+    MPI_Comm residual_reduction_world;
+
 
     int proc_rank;
 

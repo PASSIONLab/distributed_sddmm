@@ -66,6 +66,7 @@ public:
 
         A_R_split_world = MPI_COMM_WORLD;
         B_R_split_world = MPI_COMM_WORLD;
+        residual_reduction_world = MPI_COMM_WORLD;
     }
   
     void computeRHS(MatMode matrix_to_optimize,

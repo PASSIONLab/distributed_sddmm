@@ -65,18 +65,18 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         r -= scale_matrix_rows(alpha, Mp);
 
         VectorXd rsnew = batch_dot_product(r, r); 
-
-        /*
-         * If we're going to do the early stopping, need to Allreduce
-         * the norm, or it won't work. 
-         *
-         *
+ 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
+
+        MPI_Allreduce(
+            MPI_IN_PLACE, 
+            &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+
+        rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);
 
         if(rsnew_norm_sqrt < cg_residual_tol) {
             break;
         }
-        */
 
         VectorXd coeffs = rsnew.cwiseQuotient(rsold);
         p = r + scale_matrix_rows(coeffs, p);
