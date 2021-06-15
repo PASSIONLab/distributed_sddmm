@@ -30,6 +30,10 @@ typedef struct {
     int nrows;
     int ncols;
 
+    int distrows;
+    int distcols;
+
+
 } spmat_local_t;
 
 typedef enum {Amat, Bmat} MatMode;

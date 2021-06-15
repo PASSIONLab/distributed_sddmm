@@ -61,13 +61,11 @@ public:
     int rankInFiber, rankInLayer, shift;
 
     // Pointer to object implementing the local SDDMM / SPMM Operations 
-    KernelImplementation *kernel; 
+    KernelImplementation *kernel;
 
-    // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k) {
+    // We can either read from a file or use the R-mat generator for testing purposes
+    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, KernelImplementation* k) {
         this->kernel = k;
-        this->M = 1 << logM;
-        this->N = this->M;
         this->R = R;
         this->c = c;
         this->nnz_per_row = nnz_per_row; 
@@ -93,15 +91,27 @@ public:
 
         VectorXd SValues;                 // For the R-Mat generator, ignore the actual values 
         if(grid->GetRankInFiber() == 0) {
-            generateRandomMatrix(logM, nnz_per_row,
-                grid->GetCommGridLayer(),
-                S,
-                SValues
-            );
-            localSrows = S.nrows;
-            if(proc_rank == 0) {
-                cout << "Generated " << S.dist_nnz << " nonzeros." << endl;
+            if(! readFromFile) {
+                generateRandomMatrix(logM, nnz_per_row,
+                    grid->GetCommGridLayer(),
+                    S,
+                    SValues
+                );
+
+                if(proc_rank == 0) {
+                    cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
+                }
             }
+            else {
+                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, SValues);
+                if(proc_rank == 0) {
+                    cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
+                }
+
+            }
+            this->M = S.distrows;
+            this->N = S.distcols;
+            localSrows = S.nrows;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
@@ -135,7 +145,17 @@ public:
         rankInFiber = grid->GetRankInFiber();
         rankInLayer = grid->GetRankInLayer();
         shift = rankInFiber * p / (c * c);
-    };
+    }
+
+    // Initiates the algorithm for a Graph500 benchmark 
+    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k) {
+        constructor_helper(true , logM, nnz_per_row, "", R, c, k);
+    }
+
+    // Reads the underlying sparse matrix from a file
+    Sparse15D(string &filename, int R, int c, KernelImplementation* k) {
+        constructor_helper(false, 0, 0, filename, R, c, k);
+    }
 
     // Factory functions: allocate dense matrices that can be used
     // as buffers with the algorithm
