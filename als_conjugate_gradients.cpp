@@ -107,3 +107,90 @@ void ALS_CG::run_cg(int n_alternating_steps) {
         }
     }
 }
+
+
+void initialize_dense_matrix(DenseMatrix &X) {
+    X.setRandom();
+    X /= X.cols();
+}
+
+Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops) {
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+
+    this->d_ops = d_ops;
+
+    DenseMatrix Agt = d_ops->like_A_matrix(0.0);
+    DenseMatrix Bgt = d_ops->like_B_matrix(0.0);
+
+    initialize_dense_matrix(Agt);
+    initialize_dense_matrix(Bgt);
+
+    // Compute a ground truth using an SDDMM, setting all sparse values to 1 
+    VectorXd ones = d_ops->like_S_values(1.0);
+    ground_truth = d_ops->like_S_values(0.0); 
+
+    d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
+    d_ops->sddmm(Agt, Bgt, ones, ground_truth);
+
+    // TODO: Need to set the communicators below!
+    // residual_reduction_world = spOps.grid->GetLayerWorld();
+
+    //A_R_split_world = spOps.grid->getLayerWorld();
+    //B_R_split_world = ;
+}
+
+void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
+    if(matrix_to_optimize == Amat) {
+        d_ops->spmmA(rhs, B, ground_truth);
+    }
+    else if(matrix_to_optimize == Bmat) {
+        d_ops->spmmB(A, rhs, ground_truth);
+    }
+} 
+
+double Distributed_ALS::computeResidual() {
+    VectorXd ones = d_ops->like_S_values(1.0);
+    VectorXd sddmm_result = d_ops->like_S_values(0.0); 
+    d_ops->sddmm(A, B, ones, sddmm_result);
+
+    double sqnorm = (sddmm_result - ground_truth).squaredNorm();
+
+    // TODO: Fix this VVVV
+    // MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->GetLayerWorld());
+    
+    return sqrt(sqnorm);
+}
+
+void Distributed_ALS::initializeEmbeddings() {
+    A = d_ops->like_A_matrix(0.0);
+    B = d_ops->like_B_matrix(0.0);
+
+    initialize_dense_matrix(A);
+    initialize_dense_matrix(B);
+    d_ops->initial_synchronize(&A, &B, nullptr);
+}
+
+void Distributed_ALS::computeQueries(
+                    DenseMatrix &A,
+                    DenseMatrix &B,
+                    MatMode matrix_to_optimize,
+                    DenseMatrix &result) {
+
+    double lambda = 1e-8;
+
+    result.setZero();
+    VectorXd sddmm_result = d_ops->like_S_values(0.0); 
+    VectorXd ones = d_ops->like_S_values(1.0);
+
+    d_ops->sddmm(A, B, ones, sddmm_result);
+
+    if(matrix_to_optimize == Amat) {
+        d_ops->spmmA(result, B, sddmm_result);
+        result += lambda * A;
+    }
+    else if(matrix_to_optimize == Bmat) {
+        d_ops->spmmB(A, result, sddmm_result);
+        result += lambda * B;
+    }
+}
+

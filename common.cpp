@@ -11,3 +11,8 @@ void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, do
     std::chrono::duration<double> diff = end - start;
     *timer += diff.count();
 }
+
+
+int pMod(int num, int denom) {
+    return ((num % denom) + denom) % denom;
+}

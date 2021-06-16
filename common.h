@@ -38,5 +38,6 @@ typedef struct {
 
 typedef enum {Amat, Bmat} MatMode;
 
+int pMod(int num, int denom);
 
 #endif

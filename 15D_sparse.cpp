@@ -15,6 +15,7 @@
 #include "io_utils.h"
 #include "pack.h"
 #include "als_conjugate_gradients.h"
+#include "distributed_sparse.h"
 
 // This code implements a 1.5D Sparse Matrix Multiplication Algorithm
 
@@ -33,7 +34,7 @@ using namespace Eigen;
 
 #define VERBOSE false
 
-class Sparse15D {
+class Sparse15D : public Distributed_Sparse {
 public:
     // Matrix Dimensions, R is the short inner dimension
     int M, N, R;
@@ -61,8 +62,6 @@ public:
 
     int rankInFiber, rankInLayer, shift;
 
-    // Pointer to object implementing the local SDDMM / SPMM Operations 
-    KernelImplementation *kernel;
 
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, KernelImplementation* k) {
@@ -193,14 +192,13 @@ public:
     }
 
     // Synchronizes data across three levels of the processor grid
-    void initial_broadcast(DenseMatrix &localA, DenseMatrix &localB) {
-        //MPI_Bcast((void*) SValues.data(), SValues.size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
-        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-    }
+    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
+        MPI_Bcast((void*) localA->data(), localA->rows() * localA->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+        MPI_Bcast((void*) localB->data(), localB->rows() * localB->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
 
-    int pMod(int num, int denom) {
-        return ((num % denom) + denom) % denom;
+        if(SValues != nullptr) {
+            MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+        }
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
@@ -380,131 +378,14 @@ public:
 
     }
 
-    void benchmark() {
-        VectorXd Svals        = like_S_values(1.0);
-        VectorXd sddmm_result = like_S_values(1.0);
-
-        DenseMatrix A = like_A_matrix(1.0); 
-        DenseMatrix B = like_B_matrix(1.0); 
-
-        spmmB(A, B, Svals);
-        reset_performance_timers();
-
-        int nruns = 10;
-        for(int i = 0; i < nruns; i++) {
-            spmmB(A, B, Svals);
-        }
-        print_statistics();
-    }
-
     ~Sparse15D() {
         // Destructor
     }
 };
 
 
-class ALS15D : public ALS_CG {
-public:
-    Sparse15D spOps;
-    StandardKernel kernel;
-
-    VectorXd ground_truth;
-
-    void initialize_dense_matrix(DenseMatrix &X) {
-        X.setRandom();
-        X /= X.cols();
-    }
-
-    ALS15D(int logM, int nnz_per_row, int R, int c) :
-        spOps(logM, nnz_per_row, R, c, &kernel) 
-     { 
-        //new (&spOps) Sparse15D(logM, nnz_per_row, R, c, &kernel);
-
-        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-        DenseMatrix Agt = spOps.like_A_matrix(0.0);
-        DenseMatrix Bgt = spOps.like_B_matrix(0.0);
-
-        initialize_dense_matrix(Agt);
-        initialize_dense_matrix(Bgt);
-
-        // Compute a ground truth using an SDDMM, setting all sparse values to 1 
-        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0); 
-
-        ground_truth = spOps.like_S_values(0.0); 
-
-        spOps.initial_broadcast(Agt, Bgt);
-        spOps.sddmm(Agt, Bgt, ones, ground_truth);
-
-        // TODO: Need to set the communicators below!
-
-        residual_reduction_world = spOps.grid->GetLayerWorld();
-
-        //A_R_split_world = spOps.grid->getLayerWorld();
-        //B_R_split_world = ;
-    }
-
-    void computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
-        if(matrix_to_optimize == Amat) {
-            spOps.spmmA(rhs, B, ground_truth);
-        }
-        else if(matrix_to_optimize == Bmat) {
-            spOps.spmmB(A, rhs, ground_truth);
-        }
-    } 
-
-    double computeResidual() {
-        VectorXd ones = spOps.like_S_values(1.0);
-        VectorXd sddmm_result = spOps.like_S_values(0.0); 
-        spOps.sddmm(A, B, ones, sddmm_result);
-
-        double sqnorm = (sddmm_result - ground_truth).squaredNorm();
-        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->GetLayerWorld());
-        
-        return sqrt(sqnorm);
-    }
-
-    void initializeEmbeddings() {
-        A = spOps.like_A_matrix(0.0);
-        B = spOps.like_B_matrix(0.0);
-
-        initialize_dense_matrix(A);
-        initialize_dense_matrix(B);
-        spOps.initial_broadcast(A, B);
-    }
-
-    void computeQueries(
-                        DenseMatrix &A,
-                        DenseMatrix &B,
-                        MatMode matrix_to_optimize,
-                        DenseMatrix &result) {
-
-        double lambda = 1e-8;
-
-        result.setZero();
-        VectorXd sddmm_result = spOps.like_S_values(0.0); 
-        VectorXd ones = spOps.like_S_values(1.0);
-
-        spOps.sddmm(A, B, ones, sddmm_result);
-
-        if(matrix_to_optimize == Amat) {
-            spOps.spmmA(result, B, sddmm_result);
-            result += lambda * A;
-        }
-        else if(matrix_to_optimize == Bmat) {
-            spOps.spmmB(A, result, sddmm_result);
-            result += lambda * B;
-        }
-    }
-};
-
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
-
-    int proc_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-
-    int num_procs;
-    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
     // Arguments:
     // 1. Log of side length of sparse matrix
@@ -513,9 +394,9 @@ int main(int argc, char** argv) {
     // 4. Replication factor
 
     //StandardKernel kernel;
-    ALS15D* x = new ALS15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+/*    ALS15D* x = new ALS15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
     x->run_cg(20);
-    delete x;
+    delete x;*/
 
     MPI_Finalize();
 }

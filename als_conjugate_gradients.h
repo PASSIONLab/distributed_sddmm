@@ -1,5 +1,6 @@
 #include "common.h"
 #include "mpi.h"
+#include "distributed_sparse.h"
 #include <Eigen/Dense>
 
 using namespace std;
@@ -50,4 +51,28 @@ public:
     void run_cg(int n_alternating_steps);
  
     virtual ~ALS_CG() { }
+};
+
+
+class Distributed_ALS : public ALS_CG {
+public:
+    Distributed_Sparse* d_ops;
+    VectorXd ground_truth;
+    int proc_rank;
+
+    Distributed_ALS(Distributed_Sparse* d_ops);
+
+    void computeRHS(MatMode matrix_to_optimize,
+                            DenseMatrix &rhs);
+
+    // TODO: I know these variable names shadow, I need to fix that... 
+    void computeQueries(DenseMatrix &A,
+                                DenseMatrix &B, 
+                                MatMode matrix_to_optimize,
+                                DenseMatrix &result);
+
+    double computeResidual();
+
+    void initializeEmbeddings();
+
 };
