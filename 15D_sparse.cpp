@@ -56,7 +56,8 @@ public:
     // Performance timers 
     int nruns;
     double  cyclic_shift_time,
-            computation_time;
+            computation_time,
+            reduction_time;
 
     int rankInFiber, rankInLayer, shift;
 
@@ -160,25 +161,23 @@ public:
     // Factory functions: allocate dense matrices that can be used
     // as buffers with the algorithm
 
-    VectorXd like_S_values() {
-        VectorXd res(S.local_nnz);
-        return res; 
+    VectorXd like_S_values(double value) {
+        return VectorXd::Constant(S.local_nnz, value); 
     }
 
-    DenseMatrix like_A_matrix() {
-        DenseMatrix res(localSrows, R); 
-        return res;
+    DenseMatrix like_A_matrix(double value) {
+        return DenseMatrix::Constant(localSrows, R, value);  
     }
 
-    DenseMatrix like_B_matrix() {
-        DenseMatrix res(localBrows, R); 
-        return res;
+    DenseMatrix like_B_matrix(double value) {
+        return DenseMatrix::Constant(localBrows, R, value);  
     }
 
     void reset_performance_timers() {
         nruns = 0;
         cyclic_shift_time = 0;
         computation_time  = 0;
+        reduction_time = 0;
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
@@ -206,18 +205,23 @@ public:
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
+        auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+        stop_clock_and_add(t, &reduction_time);
     }
-
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
+        auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+        stop_clock_and_add(t, &reduction_time);
     }
 
-    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) {
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
-        MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+        auto t = start_clock();
+        MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
+        stop_clock_and_add(t, &reduction_time);
     }
 
     /*
@@ -345,24 +349,31 @@ public:
     }
 
     void print_statistics() {
-        double sum_comp_time, sum_shift_time; 
+        double sum_comp_time, sum_reduction_time, sum_shift_time; 
 
         MPI_Allreduce(&cyclic_shift_time, &sum_shift_time, 1,
+                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+        MPI_Allreduce(&reduction_time, &sum_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+
         if(proc_rank == 0) {
             cout << "Avg. Cyclic Shift Time\t"
+                 << "Avg. Reduction Time\t" 
                  << "Avg. Computation Time" << endl;
                 
-            sum_shift_time     /= p * nruns;
-            sum_comp_time      /= p * nruns;
+            sum_shift_time          /= p * nruns;
+            sum_reduction_time      /= p * nruns;
+            sum_comp_time           /= p * nruns;
 
             cout 
             << sum_shift_time << "\t"
-            << sum_comp_time << "\t" << endl;
+            << sum_reduction_time << "\t" 
+            << sum_comp_time << endl;
 
             cout << "=================================" << endl;
         }
@@ -370,11 +381,11 @@ public:
     }
 
     void benchmark() {
-        VectorXd Svals        = like_S_values();
-        VectorXd sddmm_result = like_S_values();
+        VectorXd Svals        = like_S_values(1.0);
+        VectorXd sddmm_result = like_S_values(1.0);
 
-        DenseMatrix A = like_A_matrix(); 
-        DenseMatrix B = like_B_matrix(); 
+        DenseMatrix A = like_A_matrix(1.0); 
+        DenseMatrix B = like_B_matrix(1.0); 
 
         spmmB(A, B, Svals);
         reset_performance_timers();
@@ -410,8 +421,8 @@ public:
         //new (&spOps) Sparse15D(logM, nnz_per_row, R, c, &kernel);
 
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-        DenseMatrix Agt = spOps.like_A_matrix();
-        DenseMatrix Bgt = spOps.like_B_matrix();
+        DenseMatrix Agt = spOps.like_A_matrix(0.0);
+        DenseMatrix Bgt = spOps.like_B_matrix(0.0);
 
         initialize_dense_matrix(Agt);
         initialize_dense_matrix(Bgt);
@@ -419,8 +430,7 @@ public:
         // Compute a ground truth using an SDDMM, setting all sparse values to 1 
         VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0); 
 
-        ground_truth = spOps.like_S_values(); 
-        ground_truth.setZero();
+        ground_truth = spOps.like_S_values(0.0); 
 
         spOps.initial_broadcast(Agt, Bgt);
         spOps.sddmm(Agt, Bgt, ones, ground_truth);
@@ -443,8 +453,8 @@ public:
     } 
 
     double computeResidual() {
-        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0);
-        VectorXd sddmm_result = VectorXd::Zero(spOps.S.local_nnz);
+        VectorXd ones = spOps.like_S_values(1.0);
+        VectorXd sddmm_result = spOps.like_S_values(0.0); 
         spOps.sddmm(A, B, ones, sddmm_result);
 
         double sqnorm = (sddmm_result - ground_truth).squaredNorm();
@@ -454,8 +464,8 @@ public:
     }
 
     void initializeEmbeddings() {
-        A = spOps.like_A_matrix();
-        B = spOps.like_B_matrix();
+        A = spOps.like_A_matrix(0.0);
+        B = spOps.like_B_matrix(0.0);
 
         initialize_dense_matrix(A);
         initialize_dense_matrix(B);
@@ -470,10 +480,9 @@ public:
 
         double lambda = 1e-8;
 
-        VectorXd ones = VectorXd::Constant(spOps.S.local_nnz, 1.0);
         result.setZero();
-        VectorXd sddmm_result = spOps.like_S_values(); 
-        sddmm_result.setZero();
+        VectorXd sddmm_result = spOps.like_S_values(0.0); 
+        VectorXd ones = spOps.like_S_values(1.0);
 
         spOps.sddmm(A, B, ones, sddmm_result);
 
