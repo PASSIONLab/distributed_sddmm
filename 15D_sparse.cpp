@@ -163,9 +163,6 @@ public:
         constructor_helper(true, 0, 0, filename, R, c, k);
     }
 
-    // Factory functions: allocate dense matrices that can be used
-    // as buffers with the algorithm
-
     VectorXd like_S_values(double value) {
         return VectorXd::Constant(S.local_nnz, value); 
     }
@@ -254,18 +251,7 @@ public:
         // Temporary buffer to hold the received portion of matrix B.
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
 
-        DenseMatrix tester = localB;
-
         auto t = start_clock();
-
-        //localB(0, 0) = rankInLayer;
-
-        /*if(mode == k_sddmm) {
-            cout << "Rank in Fiber " << rankInFiber << 
-            ", Rank in Layer " << rankInLayer <<
-            ", B Value" << localB(0, 0) << endl; 
-        }*/
-
 
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                     pMod(rankInLayer + shift, p / c), 0,
@@ -279,18 +265,7 @@ public:
         stop_clock_and_add(t, &cyclic_shift_time);
 
         localB = recvRowSlice;
-
-        MPI_Barrier(MPI_COMM_WORLD);
         
-        /*if(proc_rank == 0) {
-            cout << "After shift..." << endl;
-        }*/
-
-        /*if(mode == k_sddmm) {
-            cout << "Rank in Fiber " << rankInFiber << 
-            ", Rank in Layer " << rankInLayer <<
-            ", B Value" << localB(0, 0) << endl; 
-        }*/
 
         MPI_Barrier(MPI_COMM_WORLD);
 
@@ -350,17 +325,7 @@ public:
                 localB = recvRowSlice;
 
                 MPI_Barrier(MPI_COMM_WORLD); 
-            }
-        
-            /*if(proc_rank == 0) {
-                cout << "After shift..." << endl;
-            }*/
-
-            /*if(mode == k_sddmm) {
-                cout << "Rank in Fiber " << rankInFiber << 
-                ", Rank in Layer " << rankInLayer <<
-                ", B Value" << localB(0, 0) << endl; 
-            }*/
+            } 
         }
 
         // Send the B matrix back to its original position
@@ -376,19 +341,6 @@ public:
         stop_clock_and_add(t, &cyclic_shift_time);
 
         localB = recvRowSlice;
-
-        if(mode == k_sddmm) {
-            cout << "Norm for SDDMM Operation: " << (localB - tester).norm() << endl; 
-        }
-
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        /*if(mode == k_sddmm) {
-            cout << "Rank in Fiber " << rankInFiber << 
-            ", Rank in Layer " << rankInLayer <<
-            ", B Value" << localB(0, 0) << endl; 
-        }*/
-
 
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
@@ -427,7 +379,6 @@ public:
 
             cout << "=================================" << endl;
         }
-
     }
 
     ~Sparse15D() {
@@ -443,7 +394,7 @@ int main(int argc, char** argv) {
     Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
     //d_ops->setVerbose(true);
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld());
-    x->run_cg(1);
+    x->run_cg(5);
 
     // Arguments:
     // 1. Log of side length of sparse matrix
