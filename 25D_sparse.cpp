@@ -14,6 +14,8 @@
 #include "sparse_kernels.h"
 #include "common.h"
 #include "io_utils.h"
+#include "als_conjugate_gradients.h"
+#include "distributed_sparse.h"
 
 // CombBLAS includes 
 #include <memory>
@@ -27,7 +29,7 @@ using namespace combblas;
  * matrices in sync. Data fields are exposed public to permit this. 
  */
 
-class Sparse25D {
+class Sparse25D : public Distributed_Sparse{
 public:
     // Matrix Dimensions, R is the small inner dimension
     int M, N, R;
@@ -43,14 +45,9 @@ public:
     // Communicators and grids
     unique_ptr<CommGrid3D> grid;
 
-    spmat_local_t S;
-
     // These are the local dense matrix buffers (first two)
     // and the buffer for the local nonzeros 
     int nrowsA, nrowsB, ncolsLocal;
-
-    VectorXd SValues, sddmm_result;
-    DenseMatrix localA, localB, spmm_result;
 
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel; 
@@ -58,27 +55,27 @@ public:
 
     // Performance timers 
     int nruns;
-    double broadcast_time;
     double computation_time;
-    double reduction_time;
+    double dense_reduction_time;
+    double sparse_reduction_time;
 
-    Sparse25D(int logM, int nnz_per_row, int R, int c, KernelImplementation *k) {
-        
-        /*
-         * Vivek: should we rename nnz_per_row to edgefactor, since that interpretation
-         * may not be correct for general R-mat matrices/ 
-         */
+    void constructor_helper(bool readFromFile, 
+            int logM, 
+            int nnz_per_row, 
+            string filename, 
+            int R, 
+            int c, 
+            KernelImplementation *k) {
 
-        // This constructor produces a square matrix. 
+
+        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &p);
+
         this->kernel = k;
-        this->M = 1 << logM;
-        this->N = this->M;
         this->R = R;
         this->c = c;
         this->nnz_per_row = nnz_per_row;
 
-        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &p);
 
         // STEP 1: Make sure the replication factor is valid for the number
         // of processes running
@@ -102,19 +99,28 @@ public:
         // Step 2: Create a communication grid
         grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, sqrtpc, sqrtpc));
 
-        // Step 3: Use the R-Mat generator to create a distributed
-        // edge list. Only the bottom-most layer needs to do the
-        // generation, we can broadcast it to everybody else
+        // Step 3: Use either the R-mat generator or a file reader to get a sparse matrix. 
 
         if(grid->GetRankInFiber() == 0) {
-            generateRandomMatrix(logM, nnz_per_row,
-                grid->GetCommGridLayer(),
-                S,
-                SValues
-            );
-            if(proc_rank == 0) {
-                cout << "Generated " << S.dist_nnz << " nonzeros." << endl;
+            if(! readFromFile) {
+                generateRandomMatrix(logM, nnz_per_row,
+                    grid->GetCommGridLayer(),
+                    S,
+                    input_Svalues 
+                );
+
+                if(proc_rank == 0) {
+                    cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
+                }
             }
+            else {
+                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, input_Svalues);
+                if(proc_rank == 0) {
+                    cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
+                }
+            }
+            this->M = S.distrows;
+            this->N = S.distcols;
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate the SpMat arrays 
@@ -123,6 +129,7 @@ public:
         // Step 5: These two steps weren't here earlier... why?
         S.rCoords.resize(S.local_nnz);
         S.cCoords.resize(S.local_nnz);
+        input_Svalues.resize(S.local_nnz);
 
         // Step 6: broadcast the sparse matrices (the coordinates, not the values)
         MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
@@ -134,65 +141,139 @@ public:
         nrowsB = this->N / sqrtpc + 1;
         ncolsLocal = this->R / c;
 
-        new (&localA)       DenseMatrix(nrowsA, ncolsLocal);
-        new (&localB)       DenseMatrix(nrowsB, ncolsLocal);
-        new (&SValues)      VectorXd(S.local_nnz);
-        new (&sddmm_result) VectorXd(S.local_nnz);
-        new (&spmm_result)  DenseMatrix(nrowsA, ncolsLocal);
+        // Step 8: Indicate which axes the A and B matrices are split along 
+        A_R_split_world = grid->GetFiberWorld();
+        B_R_split_world = grid->GetFiberWorld(); 
+    }
+
+    Sparse25D(int logM, int nnz_per_row, int R, int c, KernelImplementation *k) { 
+        constructor_helper(false, logM, nnz_per_row, "", R, c, k);
+    }
+
+    Sparse25D(string filename, int R, int c, KernelImplementation *k) {
+        constructor_helper(true, 0, 0, filename, R, c, k);
+    }
+
+    VectorXd like_S_values(double value) {
+        return VectorXd::Constant(S.local_nnz, value); 
+    }
+
+    DenseMatrix like_A_matrix(double value) {
+        return DenseMatrix::Constant(nrowsA, ncolsLocal, value);  
+    }
+
+    DenseMatrix like_B_matrix(double value) {
+        return DenseMatrix::Constant(nrowsB, ncolsLocal, value);  
     }
 
     void reset_performance_timers() {
-        nruns = 0;
-        broadcast_time = 0;
+        nruns = 0; 
         computation_time = 0;
-        reduction_time = 0;
+        dense_reduction_time = 0;
+        sparse_reduction_time = 0;
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
     }
 
-    void initial_broadcast() {
+    void print_algorithm_info() {
+        cout << "2.5D Striped AB Replicating S Algorithm..." << endl;
+        cout << "Matrix Dimensions: " 
+        << this->M << " x " << this->N << endl;
+        cout << "Nonzeros Per row: " << nnz_per_row << endl;
+        cout << "R-Value: " << this->R << endl;
+        cout << "Grid Dimensions: " << p / c << " x " << c << endl;
+    }
+
+    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
         shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
-        MPI_Bcast((void*) localA.data(), localA.rows() * localA.cols(), MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
-        MPI_Bcast((void*) localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 0, commGridLayer->GetColWorld());
+
+        if(localA != nullptr) {
+            MPI_Bcast((void*) localA->data(), localA->rows() * localA->cols(), MPI_DOUBLE, 0, commGridLayer->GetRowWorld());
+        }
+        if(localB != nullptr) {
+            MPI_Bcast((void*) localB->data(), localB->rows() * localB->cols(), MPI_DOUBLE, 0, commGridLayer->GetColWorld());
+        }
+        if(SValues != nullptr) {
+            MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
+        }
+    }
+
+    void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
+        algorithm(localA, localB, SValues, nullptr, k_spmmA);
+        auto t = start_clock();
+        MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, commGridLayer->GetRowWorld());
+        stop_clock_and_add(t, &dense_reduction_time);
+    }
+
+    void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
+        algorithm(localA, localB, SValues, nullptr, k_spmmB);
+        auto t = start_clock();
+        MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, commGridLayer->GetColWorld());
+        stop_clock_and_add(t, &dense_reduction_time);
+    }
+
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
+        auto t = start_clock();
+        MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
+        stop_clock_and_add(t, &sparse_reduction_time);
     }
 
     /*
-     * Hmmm... this looks very similar to Johnson's algorithm. What's the difference between
-     * this and Edgar's 2.5D algorithms? 
+     * Hmmm... should we just call this Johnson's Algorithm? 
+     *
      */
-    void sddmm(bool verbose) {
+    void algorithm(         DenseMatrix &localA, 
+                            DenseMatrix &localB, 
+                            VectorXd &SValues, 
+                            VectorXd *sddmm_result_ptr, 
+                            KernelMode mode
+                            ) {
+
         int nnz_processed = 0;
         nruns++;
-
-        if(proc_rank == 0 && verbose) {
-            cout << "Benchmarking 2.5D Striped Algorithm..." << endl;
-            cout << "Matrix Dimensions: " 
-            << this->M << " x " << this->N << endl;
-            cout << "Nonzeros Per row: " << nnz_per_row << endl;
-            cout << "R-Value: " << this->R << endl;
-            
-            cout << "Grid Dimensions: "
-            << sqrtpc << " x " << sqrtpc << " x " << c << endl;
-        }
-
-        // Assume that the matrices begin distributed across two faces of the 3D grid,
-        // but not distributed yet
-
+        
         // Perform a local SDDMM 
         auto t = start_clock();
-        nnz_processed += kernel->sddmm_local(
-            S,
-            SValues,
-            localA,
-            localB,
-            sddmm_result,
-            0, 
-            S.local_nnz); 
+
+        if(mode == k_sddmm) {
+            nnz_processed += kernel->sddmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                *sddmm_result_ptr,
+                0, 
+                S.local_nnz); 
+        }
+        else if(mode == k_spmmA) {
+            nnz_processed += kernel->spmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                Amat,
+                0,
+                S.local_nnz);
+        }
+        else if(mode == k_spmmB) {
+            nnz_processed += kernel->spmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                Bmat,
+                0,
+                S.local_nnz);
+        }
         stop_clock_and_add(t, &computation_time);
 
-        // Debugging only: print out the total number of dot products taken, but reduce 
-        // across the layer world 
+        // Debugging only: print out the total number of dot products taken, reduce across
+        // each layer world as a sanity check 
+
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
                 MPI_SUM, 0, grid->GetLayerWorld());
@@ -200,47 +281,40 @@ public:
         if(proc_rank == 0 && verbose) {
             cout << "Total Nonzeros Processed: " << total_processed << endl;
         } 
+
     }
 
     void print_statistics() {
-        double sum_broadcast_time, sum_comp_time, sum_reduce_time;
+        double sum_comp_time, sum_dense_reduction_time, sum_sparse_reduction_time; 
 
-        MPI_Allreduce(&broadcast_time, &sum_broadcast_time, 1,
+        MPI_Allreduce(&dense_reduction_time, &sum_dense_reduction_time, 1,
+                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+        MPI_Allreduce(&sparse_reduction_time, &sum_dense_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Allreduce(&reduction_time, &sum_reduce_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
         if(proc_rank == 0) {
-            cout << "Avg. Broadcast Time\t"
-                << "Avg. Computation Time\t"
-                << "Avg. Reduction Time" << endl;
-
-            sum_broadcast_time /= p * nruns;
-            sum_comp_time      /= p * nruns;
-            sum_reduce_time    /= p * nruns;
             cout 
-            << sum_broadcast_time << "\t"
-            << sum_comp_time << "\t"
-            << sum_reduce_time << endl;
+                 << "Avg. Dense Allreduction Time\t" 
+                 << "Avg. Sparse Allreduction Time\t" 
+                 << "Avg. Computation Time" << endl;
+                
+            sum_dense_reduction_time       /= p * nruns;
+            sum_sparse_reduction_time      /= p * nruns;
+            sum_comp_time                  /= p * nruns;
+
+            cout 
+            << sum_dense_reduction_time << "\t"
+            << sum_sparse_reduction_time << "\t" 
+            << sum_comp_time << endl;
+
             cout << "=================================" << endl;
         }
     }
 
-    void benchmark() {
-        sddmm(true);
-
-        reset_performance_timers();
-
-        int nruns = 10;
-        for(int i = 0; i < nruns; i++) {
-            sddmm(false);
-        }
-        print_statistics();
-    }
 
     ~Sparse25D() {
         // Destructor 
@@ -249,24 +323,16 @@ public:
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
+    string fname(argv[1]);
 
-    int proc_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+    StandardKernel local_ops;
+    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    Sparse25D* d_ops = new Sparse25D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
 
-    int num_procs;
-    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+    //d_ops->setVerbose(true);
 
-    // Arguments:
-    // 1. Log of side length of sparse matrix
-    // 2. NNZ per row
-    // 3. R-Dimension Length
-    // 4. Replication factor
-
-    StandardKernel kernel;
-    Sparse25D* x = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &kernel);
-    x->benchmark();
-
-    delete x;
+    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), false);
+    x->run_cg(5);
 
     MPI_Finalize();
 }

@@ -13,7 +13,6 @@
 #include "sparse_kernels.h"
 #include "common.h"
 #include "io_utils.h"
-#include "pack.h"
 #include "als_conjugate_gradients.h"
 #include "distributed_sparse.h"
 
@@ -55,7 +54,8 @@ public:
     int nruns;
     double  cyclic_shift_time,
             computation_time,
-            reduction_time;
+            dense_reduction_time,
+            sparse_reduction_time;
 
     int rankInFiber, rankInLayer, shift;
 
@@ -177,7 +177,8 @@ public:
         nruns = 0;
         cyclic_shift_time = 0;
         computation_time  = 0;
-        reduction_time = 0;
+        dense_reduction_time = 0;
+        sparse_reduction_time = 0;
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
@@ -209,21 +210,21 @@ public:
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
-        stop_clock_and_add(t, &reduction_time);
+        stop_clock_and_add(t, &dense_reduction_time);
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
-        stop_clock_and_add(t, &reduction_time);
+        stop_clock_and_add(t, &dense_reduction_time);
     }
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
-        stop_clock_and_add(t, &reduction_time);
+        stop_clock_and_add(t, &sparse_reduction_time);
     }
 
     /*
@@ -267,7 +268,6 @@ public:
 
         localB = recvRowSlice;
         
-
         MPI_Barrier(MPI_COMM_WORLD);
 
         for(int i = 0; i < p / (c * c); i++) {
@@ -353,12 +353,15 @@ public:
     }
 
     void print_statistics() {
-        double sum_comp_time, sum_reduction_time, sum_shift_time; 
+        double sum_comp_time, sum_dense_reduction_time, sum_sparse_reduction_time, sum_shift_time; 
 
         MPI_Allreduce(&cyclic_shift_time, &sum_shift_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Allreduce(&reduction_time, &sum_reduction_time, 1,
+        MPI_Allreduce(&dense_reduction_time, &sum_dense_reduction_time, 1,
+                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+        MPI_Allreduce(&sparse_reduction_time, &sum_dense_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
@@ -366,16 +369,19 @@ public:
 
         if(proc_rank == 0) {
             cout << "Avg. Cyclic Shift Time\t"
-                 << "Avg. Reduction Time\t" 
+                 << "Avg. Dense Allreduction Time\t" 
+                 << "Avg. Sparse Allreduction Time\t" 
                  << "Avg. Computation Time" << endl;
                 
-            sum_shift_time          /= p * nruns;
-            sum_reduction_time      /= p * nruns;
-            sum_comp_time           /= p * nruns;
+            sum_shift_time                 /= p * nruns;
+            sum_dense_reduction_time       /= p * nruns;
+            sum_sparse_reduction_time      /= p * nruns;
+            sum_comp_time                  /= p * nruns;
 
             cout 
             << sum_shift_time << "\t"
-            << sum_reduction_time << "\t" 
+            << sum_dense_reduction_time << "\t"
+            << sum_sparse_reduction_time << "\t" 
             << sum_comp_time << endl;
 
             cout << "=================================" << endl;

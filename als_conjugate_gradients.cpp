@@ -14,9 +14,21 @@ DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
     return scale_vector.asDiagonal() * mat;
 }
 
+void allreduceVector(VectorXd &vec, MPI_Comm comm) {
+    MPI_Allreduce(MPI_IN_PLACE, vec.data(), vec.size(), MPI_DOUBLE, MPI_SUM, comm);
+}
+
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
     double cg_residual_tol = 1e-3;
     double nan_avoidance_constant = 1e-2;
+
+    MPI_Comm reduction_world;
+    if(matrix_to_optimize == Amat) {
+        reduction_world = A_R_split_world; 
+    }
+    else if(matrix_to_optimize == Bmat){
+        reduction_world = B_R_split_world; 
+    }
 
     int nrows, ncols;
     ncols = A.cols();                // A and B have the same # of columns 
@@ -38,7 +50,8 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
 
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
-    VectorXd rsold = batch_dot_product(r, r); 
+    VectorXd rsold = batch_dot_product(r, r);
+    allreduceVector(rsold, reduction_world);
 
     // TODO: restabilize the residual to avoid numerical error
     // after a certain number of iterations
@@ -53,6 +66,8 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
             computeQueries(A, p, Bmat, Mp);
         }
         VectorXd bdot = batch_dot_product(p, Mp);
+        allreduceVector(bdot, reduction_world);
+
         bdot.array() += nan_avoidance_constant; 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
 
@@ -65,7 +80,8 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         r -= scale_matrix_rows(alpha, Mp);
 
         VectorXd rsnew = batch_dot_product(r, r); 
- 
+        allreduceVector(rsnew, reduction_world);
+
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
         MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
@@ -116,6 +132,9 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
     this->residual_reduction_world = residual_reduction_world;
+    this->A_R_split_world = d_ops->A_R_split_world;
+    this->B_R_split_world = d_ops->B_R_split_world;
+
     this->d_ops = d_ops;
 
     if(artificial_groundtruth) {
