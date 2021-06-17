@@ -45,7 +45,6 @@ public:
     // Communicators and grids
     unique_ptr<CommGrid3D> grid;
 
-    spmat_local_t S;
     vector<int64_t> blockStarts;
  
     // Local dimensions
@@ -88,13 +87,12 @@ public:
         // edge list. Only the bottom-most layer needs to do the
         // generation, we can broadcast it to everybody else
 
-        VectorXd SValues;                 // For the R-Mat generator, ignore the actual values 
         if(grid->GetRankInFiber() == 0) {
             if(! readFromFile) {
                 generateRandomMatrix(logM, nnz_per_row,
                     grid->GetCommGridLayer(),
                     S,
-                    SValues
+                    input_Svalues 
                 );
 
                 if(proc_rank == 0) {
@@ -102,11 +100,10 @@ public:
                 }
             }
             else {
-                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, SValues);
+                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, input_Svalues);
                 if(proc_rank == 0) {
                     cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
                 }
-
             }
             this->M = S.distrows;
             this->N = S.distcols;
@@ -124,6 +121,7 @@ public:
 
         S.rCoords.resize(S.local_nnz);
         S.cCoords.resize(S.local_nnz);
+        input_Svalues.resize(S.local_nnz);
 
         // Step 5: broadcast the sparse matrices (the coordinates, not the values)
         MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
@@ -196,9 +194,12 @@ public:
 
     // Synchronizes data across three levels of the processor grid
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        MPI_Bcast((void*) localA->data(), localA->rows() * localA->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-        MPI_Bcast((void*) localB->data(), localB->rows() * localB->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
-
+        if(localA != nullptr) {
+            MPI_Bcast((void*) localA->data(), localA->rows() * localA->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+        }
+        if(localB != nullptr) {
+            MPI_Bcast((void*) localB->data(), localB->rows() * localB->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+        }
         if(SValues != nullptr) {
             MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         }
@@ -389,11 +390,15 @@ public:
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
+    string fname(argv[1]);
 
     StandardKernel local_ops;
-    Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    Sparse15D* d_ops = new Sparse15D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
+
     //d_ops->setVerbose(true);
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld());
+
+    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), false);
     x->run_cg(5);
 
     // Arguments:

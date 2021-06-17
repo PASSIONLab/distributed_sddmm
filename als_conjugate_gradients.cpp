@@ -16,7 +16,7 @@ DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
     double cg_residual_tol = 1e-3;
-    double nan_avoidance_constant = 1e-14;
+    double nan_avoidance_constant = 1e-2;
 
     int nrows, ncols;
     ncols = A.cols();                // A and B have the same # of columns 
@@ -112,24 +112,30 @@ void initialize_dense_matrix(DenseMatrix &X) {
     X /= X.cols();
 }
 
-Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world) {
+Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artificial_groundtruth) {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
     this->residual_reduction_world = residual_reduction_world;
     this->d_ops = d_ops;
 
-    DenseMatrix Agt = d_ops->like_A_matrix(0.0);
-    DenseMatrix Bgt = d_ops->like_B_matrix(0.0);
+    if(artificial_groundtruth) {
+        DenseMatrix Agt = d_ops->like_A_matrix(0.0);
+        DenseMatrix Bgt = d_ops->like_B_matrix(0.0);
 
-    initialize_dense_matrix(Agt);
-    initialize_dense_matrix(Bgt);
+        initialize_dense_matrix(Agt);
+        initialize_dense_matrix(Bgt);
 
-    // Compute a ground truth using an SDDMM, setting all sparse values to 1 
-    VectorXd ones = d_ops->like_S_values(1.0);
-    ground_truth = d_ops->like_S_values(0.0); 
+        // Compute a ground truth using an SDDMM, setting all sparse values to 1 
+        VectorXd ones = d_ops->like_S_values(1.0);
+        ground_truth = d_ops->like_S_values(0.0); 
 
-    d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
-    d_ops->sddmm(Agt, Bgt, ones, ground_truth);
+        d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
+        d_ops->sddmm(Agt, Bgt, ones, ground_truth);
+    }
+    else {
+        ground_truth = d_ops->input_Svalues;
+        d_ops->initial_synchronize(nullptr, nullptr, &ground_truth);
+    }
 }
 
 void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
@@ -168,7 +174,7 @@ void Distributed_ALS::computeQueries(
                     MatMode matrix_to_optimize,
                     DenseMatrix &result) {
 
-    double lambda = 1e-8;
+    double lambda = 1e-3;
 
     result.setZero();
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 

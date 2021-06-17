@@ -11,6 +11,10 @@ using namespace Eigen;
 
 class Distributed_Sparse {
 public:
+
+    spmat_local_t S;
+    VectorXd input_Svalues;
+
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel;
 
