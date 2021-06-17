@@ -68,9 +68,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
  
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
-        MPI_Allreduce(
-            MPI_IN_PLACE, 
-            &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+        MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
 
         rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);
 
@@ -114,9 +112,10 @@ void initialize_dense_matrix(DenseMatrix &X) {
     X /= X.cols();
 }
 
-Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops) {
+Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world) {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
+    this->residual_reduction_world = residual_reduction_world;
     this->d_ops = d_ops;
 
     DenseMatrix Agt = d_ops->like_A_matrix(0.0);
@@ -131,12 +130,6 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops) {
 
     d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
     d_ops->sddmm(Agt, Bgt, ones, ground_truth);
-
-    // TODO: Need to set the communicators below!
-    // residual_reduction_world = spOps.grid->GetLayerWorld();
-
-    //A_R_split_world = spOps.grid->getLayerWorld();
-    //B_R_split_world = ;
 }
 
 void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
@@ -155,8 +148,7 @@ double Distributed_ALS::computeResidual() {
 
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
 
-    // TODO: Fix this VVVV
-    // MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, spOps.grid->GetLayerWorld());
+    MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
     
     return sqrt(sqnorm);
 }

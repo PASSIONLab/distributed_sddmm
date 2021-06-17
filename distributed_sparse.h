@@ -14,6 +14,14 @@ public:
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel;
 
+    MPI_Comm A_R_split_world, B_R_split_world;
+
+    bool verbose;
+
+    void setVerbose(bool value) {
+        verbose = value;
+    }
+
     virtual VectorXd like_S_values(double value) = 0;
 
     virtual DenseMatrix like_A_matrix(double value) = 0;
@@ -24,7 +32,7 @@ public:
 
     virtual void print_algorithm_info() = 0;
 
-    virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, DenseMatrix *localS) = 0;
+    virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;
 
     virtual void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
 

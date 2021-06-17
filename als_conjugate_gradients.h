@@ -24,10 +24,7 @@ public:
     DenseMatrix A;
     DenseMatrix B;
 
-    MPI_Comm A_R_split_world;
-    MPI_Comm B_R_split_world;
     MPI_Comm residual_reduction_world;
-
 
     int proc_rank;
 
@@ -58,9 +55,8 @@ class Distributed_ALS : public ALS_CG {
 public:
     Distributed_Sparse* d_ops;
     VectorXd ground_truth;
-    int proc_rank;
 
-    Distributed_ALS(Distributed_Sparse* d_ops);
+    Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world);
 
     void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs);
