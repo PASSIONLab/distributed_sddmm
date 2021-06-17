@@ -35,7 +35,7 @@ using namespace Eigen;
 class Sparse15D : public Distributed_Sparse {
 public:
     // Matrix Dimensions, R is the short inner dimension
-    int M, N, R;
+    int64_t M, N, R;
     int nnz_per_row;
 
     int p, c; // Total number of processes, number of layers
@@ -114,8 +114,12 @@ public:
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
+        MPI_Bcast(&(this->M), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(this->N), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+
         MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
         MPI_Bcast(&localSrows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+
         localBrows = (int) ceil((float) N  * c / p);
 
         S.rCoords.resize(S.local_nnz);
@@ -250,7 +254,19 @@ public:
         // Temporary buffer to hold the received portion of matrix B.
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
 
+        DenseMatrix tester = localB;
+
         auto t = start_clock();
+
+        //localB(0, 0) = rankInLayer;
+
+        /*if(mode == k_sddmm) {
+            cout << "Rank in Fiber " << rankInFiber << 
+            ", Rank in Layer " << rankInLayer <<
+            ", B Value" << localB(0, 0) << endl; 
+        }*/
+
+
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                     pMod(rankInLayer + shift, p / c), 0,
                     grid->GetLayerWorld(), &send_request);
@@ -263,6 +279,18 @@ public:
         stop_clock_and_add(t, &cyclic_shift_time);
 
         localB = recvRowSlice;
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        
+        /*if(proc_rank == 0) {
+            cout << "After shift..." << endl;
+        }*/
+
+        /*if(mode == k_sddmm) {
+            cout << "Rank in Fiber " << rankInFiber << 
+            ", Rank in Layer " << rankInLayer <<
+            ", B Value" << localB(0, 0) << endl; 
+        }*/
 
         MPI_Barrier(MPI_COMM_WORLD);
 
@@ -307,36 +335,60 @@ public:
 
             stop_clock_and_add(t, &computation_time);
 
-            t = start_clock();
-            MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                        pMod(rankInLayer + 1, p / c), 0,
-                        grid->GetLayerWorld(), &send_request);
+            if(i < p / (c * c) - 1) {
+                t = start_clock();
+                MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
+                            pMod(rankInLayer + 1, p / c), 0,
+                            grid->GetLayerWorld(), &send_request);
+                MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
+                        0, grid->GetLayerWorld(), &recv_request);
 
-            MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
-                    0, grid->GetLayerWorld(), &recv_request);
+                MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
+                MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+                stop_clock_and_add(t, &cyclic_shift_time);
 
-            MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-            MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-            stop_clock_and_add(t, &cyclic_shift_time);
+                localB = recvRowSlice;
 
-            localB = recvRowSlice;
+                MPI_Barrier(MPI_COMM_WORLD); 
+            }
+        
+            /*if(proc_rank == 0) {
+                cout << "After shift..." << endl;
+            }*/
 
-            MPI_Barrier(MPI_COMM_WORLD);
+            /*if(mode == k_sddmm) {
+                cout << "Rank in Fiber " << rankInFiber << 
+                ", Rank in Layer " << rankInLayer <<
+                ", B Value" << localB(0, 0) << endl; 
+            }*/
         }
 
         // Send the B matrix back to its original position
         t = start_clock();
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                    pMod(rankInLayer - (p / c * c) - shift, p / c), 0,
+                    pMod(rankInLayer - p / (c * c) - shift + 1, p / c), 0,
                     grid->GetLayerWorld(), &send_request);
-
         MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
                 0, grid->GetLayerWorld(), &recv_request);
-        MPI_Barrier(MPI_COMM_WORLD);
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
         stop_clock_and_add(t, &cyclic_shift_time);
+
+        localB = recvRowSlice;
+
+        if(mode == k_sddmm) {
+            cout << "Norm for SDDMM Operation: " << (localB - tester).norm() << endl; 
+        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        /*if(mode == k_sddmm) {
+            cout << "Rank in Fiber " << rankInFiber << 
+            ", Rank in Layer " << rankInLayer <<
+            ", B Value" << localB(0, 0) << endl; 
+        }*/
+
 
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
@@ -358,7 +410,6 @@ public:
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
 
         if(proc_rank == 0) {
             cout << "Avg. Cyclic Shift Time\t"
@@ -390,9 +441,9 @@ int main(int argc, char** argv) {
 
     StandardKernel local_ops;
     Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    //d_ops->setVerbose(true);
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld());
-
-    x->run_cg(5);
+    x->run_cg(1);
 
     // Arguments:
     // 1. Log of side length of sparse matrix

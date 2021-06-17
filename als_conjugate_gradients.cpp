@@ -96,8 +96,8 @@ void ALS_CG::run_cg(int n_alternating_steps) {
     }
 
     for(int i = 0; i < n_alternating_steps; i++) {
-        cg_optimizer(Amat, 40);
-        cg_optimizer(Bmat, 40);
+        cg_optimizer(Amat, 30);
+        cg_optimizer(Bmat, 30);
 
         residual = computeResidual();
         if(proc_rank == 0) {

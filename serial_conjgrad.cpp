@@ -61,12 +61,6 @@ public:
                     ground_truth,
                     0, 
                     S.local_nnz);
-
-        // TODO: Maybe I should corrupt the entries with some random noise?
-
-        A_R_split_world = MPI_COMM_WORLD;
-        B_R_split_world = MPI_COMM_WORLD;
-        residual_reduction_world = MPI_COMM_WORLD;
     }
   
     void computeRHS(MatMode matrix_to_optimize,
