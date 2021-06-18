@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
     Sparse25D* d_ops25D = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
     d_ops25D->reset_performance_timers();
-    Distributed_ALS* x = new Distributed_ALS(d_ops25D, d_ops25D->grid->GetLayerWorld(), false); 
+    Distributed_ALS* x = new Distributed_ALS(d_ops25D, d_ops25D->grid->GetLayerWorld(), true); 
     //d_ops->setVerbose(true);
     x->run_cg(5);
 

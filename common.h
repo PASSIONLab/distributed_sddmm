@@ -32,9 +32,21 @@ typedef struct {
 
     int distrows;
     int distcols;
-
-
 } spmat_local_t;
+
+class DistributedDenseMatrix {
+public:
+    MPI_Comm row_world; // Same block row
+    MPI_Comm col_world; // Same block column
+    MPI_Comm replication_world; 
+    DenseMatrix localMatrix;
+};
+
+class DistributedVector {
+    MPI_Comm dist_world;
+    MPI_Comm replication_world;
+    VectorXd localVector;
+};
 
 typedef enum {Amat, Bmat} MatMode;
 
