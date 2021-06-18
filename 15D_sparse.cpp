@@ -59,6 +59,9 @@ public:
 
     int rankInFiber, rankInLayer, shift;
 
+    int n_dense_reductions;
+    int n_sparse_reductions;
+
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, KernelImplementation* k) {
         this->kernel = k;
@@ -179,6 +182,9 @@ public:
         computation_time  = 0;
         dense_reduction_time = 0;
         sparse_reduction_time = 0;
+
+        n_dense_reductions = 0;
+        n_sparse_reductions = 0;
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
@@ -207,6 +213,7 @@ public:
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        n_dense_reductions++;
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
@@ -214,6 +221,7 @@ public:
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        n_dense_reductions++;
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
@@ -221,6 +229,7 @@ public:
     }
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        n_sparse_reductions++;
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
@@ -361,7 +370,7 @@ public:
         MPI_Allreduce(&dense_reduction_time, &sum_dense_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Allreduce(&sparse_reduction_time, &sum_dense_reduction_time, 1,
+        MPI_Allreduce(&sparse_reduction_time, &sum_sparse_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
@@ -374,8 +383,8 @@ public:
                  << "Avg. Computation Time" << endl;
                 
             sum_shift_time                 /= p * nruns;
-            sum_dense_reduction_time       /= p * nruns;
-            sum_sparse_reduction_time      /= p * nruns;
+            sum_dense_reduction_time       /= p * n_dense_reductions;
+            sum_sparse_reduction_time      /= p * n_sparse_reductions;
             sum_comp_time                  /= p * nruns;
 
             cout 
@@ -399,13 +408,16 @@ int main(int argc, char** argv) {
     string fname(argv[1]);
 
     StandardKernel local_ops;
-    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
-    Sparse15D* d_ops = new Sparse15D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
+    Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    d_ops->reset_performance_timers();
+    //Sparse15D* d_ops = new Sparse15D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
 
     //d_ops->setVerbose(true);
 
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), false);
     x->run_cg(5);
+
+    d_ops->print_statistics();
 
     // Arguments:
     // 1. Log of side length of sparse matrix

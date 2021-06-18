@@ -29,6 +29,7 @@ public:
 
     MPI_Comm residual_reduction_world;
 
+
     int proc_rank;
 
     virtual void computeRHS(MatMode matrix_to_optimize,

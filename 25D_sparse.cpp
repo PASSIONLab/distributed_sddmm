@@ -52,6 +52,7 @@ public:
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel; 
 
+    int n_dense_reductions, n_sparse_reductions;
 
     // Performance timers 
     int nruns;
@@ -79,11 +80,12 @@ public:
 
         // STEP 1: Make sure the replication factor is valid for the number
         // of processes running
-        sqrtpc = (int) sqrt(p / c);
+        sqrtpc = (int) round(sqrt(p / c));
 
         if(proc_rank == 0) {
             if(sqrtpc * sqrtpc * c != p) {
                 cout << "Error, for 2.5D algorithm, p / c must be a perfect square!" << endl;
+                cout << p << " " << c << endl;
                 exit(1);
             }
             if(R / c * c != R) {
@@ -124,7 +126,10 @@ public:
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate the SpMat arrays 
+        MPI_Bcast(&(this->M), 1, MPI_INT, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(this->N), 1, MPI_INT, 0, grid->GetFiberWorld());
         MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
+
 
         // Step 5: These two steps weren't here earlier... why?
         S.rCoords.resize(S.local_nnz);
@@ -171,6 +176,10 @@ public:
         computation_time = 0;
         dense_reduction_time = 0;
         sparse_reduction_time = 0;
+
+        n_dense_reductions = 0;
+        n_sparse_reductions = 0;
+
         if(proc_rank == 0) {
             cout << "Performance timers reset..." << endl;
         }
@@ -200,6 +209,7 @@ public:
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        n_dense_reductions++;
         shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
         auto t = start_clock();
@@ -208,6 +218,7 @@ public:
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        n_dense_reductions++;
         shared_ptr<CommGrid> commGridLayer = grid->GetCommGridLayer();
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
         auto t = start_clock();
@@ -216,6 +227,7 @@ public:
     }
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        n_sparse_reductions++;
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
@@ -290,7 +302,7 @@ public:
         MPI_Allreduce(&dense_reduction_time, &sum_dense_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        MPI_Allreduce(&sparse_reduction_time, &sum_dense_reduction_time, 1,
+        MPI_Allreduce(&sparse_reduction_time, &sum_sparse_reduction_time, 1,
                     MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         MPI_Allreduce(&computation_time, &sum_comp_time, 1,
@@ -302,8 +314,8 @@ public:
                  << "Avg. Sparse Allreduction Time\t" 
                  << "Avg. Computation Time" << endl;
                 
-            sum_dense_reduction_time       /= p * nruns;
-            sum_sparse_reduction_time      /= p * nruns;
+            sum_dense_reduction_time       /= p * n_dense_reductions;
+            sum_sparse_reduction_time      /= p * n_sparse_reductions;
             sum_comp_time                  /= p * nruns;
 
             cout 
@@ -315,7 +327,6 @@ public:
         }
     }
 
-
     ~Sparse25D() {
         // Destructor 
     }
@@ -324,15 +335,19 @@ public:
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     string fname(argv[1]);
+    int R = atoi(argv[2]);
+    int c = atoi(argv[3]);
 
     StandardKernel local_ops;
-    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
-    Sparse25D* d_ops = new Sparse25D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
+    //Sparse25D* d_ops25D = new Sparse25D(fname, R, c, &local_ops);
+    Sparse25D* d_ops25D = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
+    d_ops25D->reset_performance_timers();
+    Distributed_ALS* x = new Distributed_ALS(d_ops25D, d_ops25D->grid->GetLayerWorld(), false); 
     //d_ops->setVerbose(true);
-
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), false);
     x->run_cg(5);
+
+    d_ops25D->print_statistics();
 
     MPI_Finalize();
 }

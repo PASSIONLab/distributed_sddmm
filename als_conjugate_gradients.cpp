@@ -51,7 +51,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r);
-    allreduceVector(rsold, reduction_world);
+    //allreduceVector(rsold, reduction_world);
 
     // TODO: restabilize the residual to avoid numerical error
     // after a certain number of iterations
@@ -66,7 +66,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
             computeQueries(A, p, Bmat, Mp);
         }
         VectorXd bdot = batch_dot_product(p, Mp);
-        allreduceVector(bdot, reduction_world);
+        //allreduceVector(bdot, reduction_world);
 
         bdot.array() += nan_avoidance_constant; 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
@@ -80,7 +80,7 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         r -= scale_matrix_rows(alpha, Mp);
 
         VectorXd rsnew = batch_dot_product(r, r); 
-        allreduceVector(rsnew, reduction_world);
+        //allreduceVector(rsnew, reduction_world);
 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
 
