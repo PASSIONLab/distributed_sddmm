@@ -84,9 +84,6 @@ public:
         assert(M != -1 && N != -1 && R != -1);
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
-
-        // TODO: Remove this statement
-        cout << "Algorith initialized successfully!" << endl;
     }
 
     void print_algorithm_info() { 
