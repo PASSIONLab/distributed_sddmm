@@ -149,7 +149,7 @@ public:
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, commGridLayer->GetRowWorld());
-        stop_clock_and_add(t, "Dense Reduction Time");
+        stop_clock_and_add(t, "Dense Allreduction Time");
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
@@ -157,14 +157,14 @@ public:
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, commGridLayer->GetColWorld());
-        stop_clock_and_add(t, "Dense Reduction Time");
+        stop_clock_and_add(t, "Dense Allreduction Time");
     }
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
-        stop_clock_and_add(t, "Sparse Reduction Time");
+        stop_clock_and_add(t, "Sparse Allreduction Time");
     }
 
     void algorithm( DenseMatrix &localA, 

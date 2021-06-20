@@ -182,8 +182,8 @@ void Distributed_ALS::initializeEmbeddings() {
     A = d_ops->like_A_matrix(0.0);
     B = d_ops->like_B_matrix(0.0);
 
-    initialize_dense_matrix(A);
-    initialize_dense_matrix(B);
+    initialize_dense_matrix(A, d_ops->R);
+    initialize_dense_matrix(B, d_ops->R);
     d_ops->initial_synchronize(&A, &B, nullptr);
 }
 
