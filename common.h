@@ -12,9 +12,10 @@ using namespace Eigen;
 typedef Matrix<double, Dynamic, Dynamic, RowMajor> DenseMatrix;
 typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
 
-chrono::time_point<std::chrono::steady_clock> start_clock();
-void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, double* timer);
+typedef chrono::time_point<std::chrono::steady_clock> timer_t; 
 
+timer_t start_clock();
+double stop_clock_get_elapsed(timer_t &start);
 
 /*
  * I am aware that CombBLAS defines its own type for this, so I think this
@@ -33,20 +34,6 @@ typedef struct {
     int distrows;
     int distcols;
 } spmat_local_t;
-
-class DistributedDenseMatrix {
-public:
-    MPI_Comm row_world; // Same block row
-    MPI_Comm col_world; // Same block column
-    MPI_Comm replication_world; 
-    DenseMatrix localMatrix;
-};
-
-class DistributedVector {
-    MPI_Comm dist_world;
-    MPI_Comm replication_world;
-    VectorXd localVector;
-};
 
 typedef enum {Amat, Bmat} MatMode;
 

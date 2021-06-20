@@ -16,14 +16,6 @@
 #include "als_conjugate_gradients.h"
 #include "distributed_sparse.h"
 
-// This code implements a 1.5D Sparse Matrix Multiplication Algorithm
-
-/*
- * Clients are responsible for allreducing their results and keeping
- * matrices in sync. Data fields are exposed public to permit this. 
- */
-
-// CombBLAS includes 
 #include <memory>
 #include "CombBLAS/CombBLAS.h"
 
@@ -33,49 +25,20 @@ using namespace Eigen;
 
 class Sparse15D : public Distributed_Sparse {
 public:
-    // Matrix Dimensions, R is the short inner dimension
-    int64_t M, N, R;
-    int nnz_per_row;
+    int c; // # of layers 
 
-    int p, c; // Total number of processes, number of layers
-
-    int proc_rank;     // Global process rank
-
-    // Communicators and grids
     unique_ptr<CommGrid3D> grid;
-
     vector<int64_t> blockStarts;
- 
-    // Local dimensions
-    int64_t localSrows;
-    int64_t localBrows;
-
-    // Performance timers 
-    int nruns;
-    double  cyclic_shift_time,
-            computation_time,
-            dense_reduction_time,
-            sparse_reduction_time;
 
     int rankInFiber, rankInLayer, shift;
 
-    int n_dense_reductions;
-    int n_sparse_reductions;
-
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, KernelImplementation* k) {
-        this->kernel = k;
-        this->R = R;
-        this->c = c;
-        this->nnz_per_row = nnz_per_row; 
-        
-        verbose = false;
-
+        // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &p);
+        verbose = false;
 
-        // STEP 1: Make sure the replication factor is valid for the number
-        // of processes running
         if(p % (c * c) != 0) {
             if(proc_rank == 0) {
                 cout << "Error, for 1.5D algorithm, must have c^2 divide num_procs!" << endl;
@@ -83,12 +46,26 @@ public:
             }
         }
 
-        // Step 2: Create a communication grid
+        algorithm_name = "1.5D Block Row Replicated ABC Cyclic Shift with Allreduce";
+        proc_grid_names = {"# Block Rows per Layer", "Layers"};
+        proc_grid_dimensions = {p/c, c};
+
+        perf_counter_keys = 
+                {"Dense Allreduction Time", 
+                "Sparse Allreduction Time", 
+                "Cyclic Shift Time",
+                "Computation Time" 
+                };
+
         grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, p / c, 1));
 
-        // Step 3: Use the R-Mat generator to create a distributed
-        // edge list. Only the bottom-most layer needs to do the
-        // generation, we can broadcast it to everybody else
+        this->kernel = k;
+        this->R = R;
+        this->c = c;
+        this->nnz_per_row = nnz_per_row;
+
+        localAcols = R;
+        localBcols = R; 
 
         if(grid->GetRankInFiber() == 0) {
             if(! readFromFile) {
@@ -110,27 +87,26 @@ public:
             }
             this->M = S.distrows;
             this->N = S.distcols;
-            localSrows = S.nrows;
+            localArows = S.nrows;
         }
 
-        // Step 4: broadcast nonzero counts across fibers, allocate SpMat arrays 
         MPI_Bcast(&(this->M), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
         MPI_Bcast(&(this->N), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
-        MPI_Bcast(&localSrows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(&localArows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
-        localBrows = (int) ceil((float) N  * c / p);
+        localBrows = (int) ceil((float) this->N  * c / p);
 
         S.rCoords.resize(S.local_nnz);
         S.cCoords.resize(S.local_nnz);
         input_Svalues.resize(S.local_nnz);
 
-        // Step 5: broadcast the sparse matrices (the coordinates, not the values)
+        // Broadcast the sparse matrices (the coordinates, not the values)
         MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
         MPI_Bcast(S.cCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
-        // Step 6: Locate block starts within the local sparse matrix (i.e. divide a long
+        // Locate block starts within the local sparse matrix (i.e. divide a long
         // block row into subtiles) 
         int currentStart = 0;
         for(int i = 0; i < S.local_nnz; i++) {
@@ -161,42 +137,7 @@ public:
 
     // Reads the underlying sparse matrix from a file
     Sparse15D(string &filename, int R, int c, KernelImplementation* k) {
-        constructor_helper(true, 0, 0, filename, R, c, k);
-    }
-
-    VectorXd like_S_values(double value) {
-        return VectorXd::Constant(S.local_nnz, value); 
-    }
-
-    DenseMatrix like_A_matrix(double value) {
-        return DenseMatrix::Constant(localSrows, R, value);  
-    }
-
-    DenseMatrix like_B_matrix(double value) {
-        return DenseMatrix::Constant(localBrows, R, value);  
-    }
-
-    void reset_performance_timers() {
-        nruns = 0;
-        cyclic_shift_time = 0;
-        computation_time  = 0;
-        dense_reduction_time = 0;
-        sparse_reduction_time = 0;
-
-        n_dense_reductions = 0;
-        n_sparse_reductions = 0;
-        if(proc_rank == 0) {
-            cout << "Performance timers reset..." << endl;
-        }
-    }
-
-    void print_algorithm_info() {
-        cout << "1.5D Replicating ABC Algorithm..." << endl;
-        cout << "Matrix Dimensions: " 
-        << this->M << " x " << this->N << endl;
-        cout << "Nonzeros Per row: " << nnz_per_row << endl;
-        cout << "R-Value: " << this->R << endl;
-        cout << "Grid Dimensions: " << p / c << " x " << c << endl;
+        constructor_helper(true, 0, -1, filename, R, c, k);
     }
 
     // Synchronizes data across three levels of the processor grid
@@ -359,46 +300,6 @@ public:
         if(proc_rank == 0 && verbose) {
             cout << "Total Nonzeros Processed: " << total_processed << endl;
         }
-    }
-
-    void print_statistics() {
-        double sum_comp_time, sum_dense_reduction_time, sum_sparse_reduction_time, sum_shift_time; 
-
-        MPI_Allreduce(&cyclic_shift_time, &sum_shift_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        MPI_Allreduce(&dense_reduction_time, &sum_dense_reduction_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        MPI_Allreduce(&sparse_reduction_time, &sum_sparse_reduction_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        MPI_Allreduce(&computation_time, &sum_comp_time, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        if(proc_rank == 0) {
-            cout << "Avg. Cyclic Shift Time\t"
-                 << "Avg. Dense Allreduction Time\t" 
-                 << "Avg. Sparse Allreduction Time\t" 
-                 << "Avg. Computation Time" << endl;
-                
-            sum_shift_time                 /= p * nruns;
-            sum_dense_reduction_time       /= p * n_dense_reductions;
-            sum_sparse_reduction_time      /= p * n_sparse_reductions;
-            sum_comp_time                  /= p * nruns;
-
-            cout 
-            << sum_shift_time << "\t"
-            << sum_dense_reduction_time << "\t"
-            << sum_sparse_reduction_time << "\t" 
-            << sum_comp_time << endl;
-
-            cout << "=================================" << endl;
-        }
-    }
-
-    ~Sparse15D() {
-        // Destructor
     }
 };
 

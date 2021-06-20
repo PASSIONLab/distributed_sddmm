@@ -2,17 +2,17 @@
 
 using namespace std;
 
-chrono::time_point<std::chrono::steady_clock> start_clock() {
+timer_t tart_clock() {
     return std::chrono::steady_clock::now();
 }
 
-void stop_clock_and_add(chrono::time_point<std::chrono::steady_clock> &start, double* timer) {
+double stop_clock_and_add(timer_t &start) {
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff = end - start;
-    *timer += diff.count();
+    return diff.count();
 }
-
 
 int pMod(int num, int denom) {
     return ((num % denom) + denom) % denom;
 }
+    
