@@ -33,11 +33,8 @@ public:
     int rankInFiber, rankInLayer, shift;
 
     // We can either read from a file or use the R-mat generator for testing purposes
-    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, KernelImplementation* k) {
+    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
-        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &p);
-        verbose = false;
 
         if(p % (c * c) != 0) {
             if(proc_rank == 0) {
@@ -59,7 +56,6 @@ public:
 
         grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, p / c, 1));
 
-        this->kernel = k;
         this->R = R;
         this->c = c;
         this->nnz_per_row = nnz_per_row;
@@ -128,16 +124,20 @@ public:
 
         A_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
         B_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
+
+        check_initialized();
     }
 
     // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k) {
-        constructor_helper(false, logM, nnz_per_row, "", R, c, k);
+    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k)
+        : Distributed_Sparse(k) {
+        constructor_helper(false, logM, nnz_per_row, "", R, c);
     }
 
     // Reads the underlying sparse matrix from a file
-    Sparse15D(string &filename, int R, int c, KernelImplementation* k) {
-        constructor_helper(true, 0, -1, filename, R, c, k);
+    Sparse15D(string &filename, int R, int c, KernelImplementation* k) 
+        : Distributed_Sparse(k) {
+        constructor_helper(true, 0, -1, filename, R, c);
     }
 
     // Synchronizes data across three levels of the processor grid

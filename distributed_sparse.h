@@ -4,13 +4,14 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <map>
+#include <cassert>
 
 #include "sparse_kernels.h"
 #include "common.h"
+#include <mpi.h>
 
 using namespace std;
 using namespace Eigen;
-
 
 class Distributed_Sparse {
 public:
@@ -49,6 +50,44 @@ public:
     MPI_Comm A_R_split_world, B_R_split_world;
 
     bool verbose;
+
+    /*
+     * Some boilerplate, but also forces subclasses to initialize what they need to 
+     */
+    Distributed_Sparse(KernelImplementation* k) {
+        MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &p);
+        verbose = false;
+
+        kernel = k;
+
+        // Dummy initializations
+        algorithm_name = "";
+        M = -1;
+        N = -1;
+        R = -1;
+        localArows = -1;
+        localAcols = -1;
+        localBrows = -1;
+        localBcols = -1;
+
+        // TODO: Need to dummy-initialize the MPI constructors. 
+    }
+
+    void check_initialized() {
+        assert(algorithm_name != "");
+
+        assert(proc_grid_names.size() > 0);
+        assert(proc_grid_dimensions.size() > 0);
+        assert(perf_counter_keys.size() > 0);
+
+        assert(M != -1 && N != -1 && R != -1);
+        assert(localAcols != -1 && localBcols != -1);
+        assert(localArows != -1 && localBrows != -1);
+
+        // TODO: Remove this statement
+        cout << "Algorith initialized successfully!" << endl;
+    }
 
     void print_algorithm_info() { 
         cout << algorithm_name << endl;
@@ -120,7 +159,6 @@ public:
         }
         if(proc_rank == 0) {
             cout << "=================================" << endl;
-
         } 
     }
 
