@@ -1,3 +1,5 @@
+#pragma once
+
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -25,6 +27,13 @@ using namespace Eigen;
 
 class Sparse15D : public Distributed_Sparse {
 public:
+    int c; // # of layers 
+
+    unique_ptr<CommGrid3D> grid;
+    vector<int64_t> blockStarts;
+
+    int rankInFiber, rankInLayer, shift; 
+
 
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c) {
@@ -148,27 +157,24 @@ public:
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        n_dense_reductions++;
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localA.data(), localA.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
-        stop_clock_and_add(t, &dense_reduction_time);
+        stop_clock_and_add(t, "Dense Allreduction Time");
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        n_dense_reductions++;
         algorithm(localA, localB, SValues, nullptr, k_spmmB);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
-        stop_clock_and_add(t, &dense_reduction_time);
+        stop_clock_and_add(t, "Dense Allreduction Time");
     }
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
-        n_sparse_reductions++;
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
-        stop_clock_and_add(t, &sparse_reduction_time);
+        stop_clock_and_add(t, "Sparse Allreduction Time");
     }
 
     /*
@@ -181,13 +187,6 @@ public:
                             VectorXd *sddmm_result_ptr, 
                             KernelMode mode
                             ) {
-  
-        nruns++;
-
-        if(proc_rank == 0 && verbose) {
-            print_algorithm_info();
-        }
-
         MPI_Status stat;
         MPI_Request send_request;
         MPI_Request recv_request;
@@ -208,7 +207,7 @@ public:
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-        stop_clock_and_add(t, &cyclic_shift_time);
+        stop_clock_and_add(t, "Cyclic Shift Time");
 
         localB = recvRowSlice;
         
@@ -253,7 +252,7 @@ public:
                     blockStarts[block_id + 1]);
             }
 
-            stop_clock_and_add(t, &computation_time);
+            stop_clock_and_add(t, "Computation Time");
 
             if(i < p / (c * c) - 1) {
                 t = start_clock();
@@ -265,7 +264,7 @@ public:
 
                 MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
                 MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-                stop_clock_and_add(t, &cyclic_shift_time);
+                stop_clock_and_add(t, "Cyclic Shift Time");
 
                 localB = recvRowSlice;
 
@@ -283,7 +282,7 @@ public:
 
         MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
         MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-        stop_clock_and_add(t, &cyclic_shift_time);
+        stop_clock_and_add(t, "Cyclic Shift Time");
 
         localB = recvRowSlice;
 

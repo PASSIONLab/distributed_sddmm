@@ -136,9 +136,17 @@ public:
         }
     }
 
-    void stop_clock_and_add(string counter_name, timer_t &start) {
-        call_count[counter_name]++;
-        total_time[counter_name] += stop_clock_get_elapsed(start); 
+    void stop_clock_and_add(my_timer_t &start, string counter_name) {
+        if(find(perf_counter_keys.begin(), perf_counter_keys.end(), counter_name) 
+            != perf_counter_keys.end()) {
+            call_count[counter_name]++;
+            total_time[counter_name] += stop_clock_get_elapsed(start); 
+        }
+        else {
+            cout    << "Error, performance counter " 
+                    << counter_name << " not registered." << endl;
+            exit(1);
+        }
     } 
 
     void print_performance_statistics() {
@@ -146,15 +154,22 @@ public:
         // all processors enter and leave the call at the same time. Also, I'm taking an
         // average over several calls by all processors; might want to compute the
         // variance as well. 
+        if(proc_rank == 0) {
+            cout << endl;
+            cout << "================================" << endl;
+            cout << "==== Performance Statistics ====" << endl;
+            cout << "================================" << endl;
+        } 
+
         for(auto it = perf_counter_keys.begin(); it != perf_counter_keys.end(); it++) {
             double avg_time = total_time[*it]; 
 
-            MPI_Allreduce(MPI_IN_PLACE, &time, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &avg_time, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
             avg_time /= call_count[*it] * p;
 
             if(proc_rank == 0) {
-                cout << "Avg. " << *it << ":\t" << avg_time << "s" endl;
+                cout << "Avg. " << *it << ":\t" << avg_time << "s" << endl;
             }
         }
         if(proc_rank == 0) {

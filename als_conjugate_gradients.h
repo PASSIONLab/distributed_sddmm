@@ -1,3 +1,5 @@
+#pragma once
+
 #include "common.h"
 #include "mpi.h"
 #include "distributed_sparse.h"

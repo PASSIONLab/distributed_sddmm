@@ -12,10 +12,10 @@ using namespace Eigen;
 typedef Matrix<double, Dynamic, Dynamic, RowMajor> DenseMatrix;
 typedef SpParMat < int64_t, int, SpDCCols<int32_t,int> > PSpMat_s32p64_Int;
 
-typedef chrono::time_point<std::chrono::steady_clock> timer_t; 
+typedef chrono::time_point<std::chrono::steady_clock> my_timer_t; 
 
-timer_t start_clock();
-double stop_clock_get_elapsed(timer_t &start);
+my_timer_t start_clock();
+double stop_clock_get_elapsed(my_timer_t &start);
 
 /*
  * I am aware that CombBLAS defines its own type for this, so I think this
