@@ -123,9 +123,9 @@ void ALS_CG::run_cg(int n_alternating_steps) {
 }
 
 
-void initialize_dense_matrix(DenseMatrix &X) {
+void initialize_dense_matrix(DenseMatrix &X, int R) {
     X.setRandom();
-    X /= X.cols();
+    X /= R;
 }
 
 Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artificial_groundtruth) {
@@ -141,8 +141,8 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         DenseMatrix Agt = d_ops->like_A_matrix(0.0);
         DenseMatrix Bgt = d_ops->like_B_matrix(0.0);
 
-        initialize_dense_matrix(Agt);
-        initialize_dense_matrix(Bgt);
+        initialize_dense_matrix(Agt, d_ops->R);
+        initialize_dense_matrix(Bgt, d_ops->R);
 
         // Compute a ground truth using an SDDMM, setting all sparse values to 1 
         VectorXd ones = d_ops->like_S_values(1.0);
@@ -188,10 +188,10 @@ void Distributed_ALS::initializeEmbeddings() {
 }
 
 void Distributed_ALS::computeQueries(
-                    DenseMatrix &A,
-                    DenseMatrix &B,
-                    MatMode matrix_to_optimize,
-                    DenseMatrix &result) {
+        DenseMatrix &A,
+        DenseMatrix &B,
+        MatMode matrix_to_optimize,
+        DenseMatrix &result) {
 
     double lambda = 1e-3;
 

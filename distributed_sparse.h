@@ -40,6 +40,8 @@ public:
                             // when reading a file, this value is filled.
     int nnz_per_row;
 
+    int superclass_constructor_sentinel;
+
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel;
  
@@ -71,6 +73,7 @@ public:
         localBrows = -1;
         localBcols = -1;
 
+        superclass_constructor_sentinel = 3;
         // TODO: Need to dummy-initialize the MPI constructors. 
     }
 
@@ -84,6 +87,7 @@ public:
         assert(M != -1 && N != -1 && R != -1);
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
+        assert(superclass_constructor_sentinel == 3);
     }
 
     void print_algorithm_info() { 

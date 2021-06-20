@@ -1,4 +1,5 @@
 #include "15D_sparse.hpp"
+#include "25D_sparse.hpp"
 #include "sparse_kernels.h"
 #include "common.h"
 #include "als_conjugate_gradients.h"

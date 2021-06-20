@@ -1,25 +1,20 @@
 #pragma once
 
-#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <utility>
 #include <vector>
-#include <string.h>
-#include <vector>
-#include <utility>
-#include <cassert>
-#include <mpi.h>
+#include <memory>
 #include <Eigen/Dense>
+#include <string.h>
+#include <mpi.h>
 
+#include "CombBLAS/CombBLAS.h"
 #include "sparse_kernels.h"
 #include "common.h"
 #include "io_utils.h"
 #include "als_conjugate_gradients.h"
 #include "distributed_sparse.h"
-
-#include <memory>
-#include "CombBLAS/CombBLAS.h"
 
 using namespace std;
 using namespace combblas;
@@ -34,7 +29,6 @@ public:
 
     int rankInFiber, rankInLayer, shift; 
 
-
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
@@ -46,7 +40,7 @@ public:
             }
         }
 
-        algorithm_name = "1.5D Block Row Replicated ABC Cyclic Shift with Allreduce";
+        algorithm_name = "1.5D Block Row Replicated ABS Cyclic Shift with Allreduce";
         proc_grid_names = {"# Block Rows per Layer", "Layers"};
         proc_grid_dimensions = {p/c, c};
 
