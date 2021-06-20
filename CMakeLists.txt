@@ -21,11 +21,9 @@ include_directories(
 link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib)
 
-add_executable(15D_sparse 15D_sparse.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
-add_executable(25D_sparse 25D_sparse.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
-add_executable(serial_conjgrad serial_conjgrad.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
+add_executable(test_harness test_harness.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
 
-foreach(TARGET 15D_sparse 25D_sparse serial_conjgrad)
+foreach(TARGET test_harness)
     target_compile_options(${TARGET} PRIVATE -O3 -march=knl -O3) 
     target_link_libraries(${TARGET} PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib)
 endforeach()

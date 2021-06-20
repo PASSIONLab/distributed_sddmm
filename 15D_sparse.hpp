@@ -25,12 +25,6 @@ using namespace Eigen;
 
 class Sparse15D : public Distributed_Sparse {
 public:
-    int c; // # of layers 
-
-    unique_ptr<CommGrid3D> grid;
-    vector<int64_t> blockStarts;
-
-    int rankInFiber, rankInLayer, shift;
 
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c) {
@@ -303,36 +297,3 @@ public:
     }
 };
 
-
-int main(int argc, char** argv) {
-    MPI_Init(&argc, &argv);
-    string fname(argv[1]);
-
-    StandardKernel local_ops;
-    Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
-    d_ops->reset_performance_timers();
-    //Sparse15D* d_ops = new Sparse15D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
-
-    //d_ops->setVerbose(true);
-
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
-    x->run_cg(5);
-
-    d_ops->print_statistics();
-
-    // Arguments:
-    // 1. Log of side length of sparse matrix
-    // 2. NNZ per row
-    // 3. R-Dimension Length
-    // 4. Replication factor
-
-    //StandardKernel kernel;
-/*    ALS15D* x = new ALS15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
-    x->run_cg(20);
-    delete x;*/
-
-    //delete x;
-    //delete d_ops;
-
-    MPI_Finalize();
-}
