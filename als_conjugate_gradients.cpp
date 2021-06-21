@@ -83,7 +83,6 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         allreduceVector(rsnew, reduction_world);
 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
-
         MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
 
         rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);

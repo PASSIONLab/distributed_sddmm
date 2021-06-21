@@ -11,16 +11,15 @@ int main(int argc, char** argv) {
     string fname(argv[1]);
 
     StandardKernel local_ops;
-    Sparse25D* d_ops = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
-    d_ops->reset_performance_timers();
-    //Sparse15D* d_ops = new Sparse15D(fname, atoi(argv[2]), atoi(argv[3]), &local_ops);
+    Sparse25D* d_ops = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
+    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
 
     //d_ops->setVerbose(true);
 
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
+    d_ops->reset_performance_timers();
     x->run_cg(5);
     d_ops->print_performance_statistics();
-
 
     MPI_Finalize();
 }

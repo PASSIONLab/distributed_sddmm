@@ -22,6 +22,19 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         return (_mm512_reduce_add_pd(lane1));
 }
 
+
+// Parameters: output row, input row, coefficient
+inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
+    for(int j = 0; j < r; j+=8) {
+        __m512d Avec1 = _mm512_loadu_pd(A + j);
+        __m512d Bvec1 = _mm512_loadu_pd(B + j);
+
+        Avec1 = _mm512_fmadd_pd(_mm512_set1_pd(coeff), Bvec1, Avec1);
+
+        _mm512_storeu_pd(A + j, Avec1);
+    }
+}
+
 // TODO: Add assertions making sure all of the sizes match 
 size_t StandardKernel::sddmm_local(
     spmat_local_t &S, 
@@ -48,19 +61,6 @@ size_t StandardKernel::sddmm_local(
     }
     return processed;
 }
-
-// Parameters: output row, input row, coefficient
-inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
-    for(int j = 0; j < r; j+=8) {
-        __m512d Avec1 = _mm512_loadu_pd(A + j);
-        __m512d Bvec1 = _mm512_loadu_pd(B + j);
-
-        Avec1 = _mm512_fmadd_pd(_mm512_set1_pd(coeff), Bvec1, Avec1);
-
-        _mm512_storeu_pd(A + j, Avec1);
-    }
-}
-
 
 size_t StandardKernel::spmm_local(
     spmat_local_t &S,
@@ -98,3 +98,60 @@ size_t StandardKernel::spmm_local(
     }
     return processed;
 }
+
+size_t FusedStandardKernel::sddmm_local(
+    spmat_local_t &S, 
+    VectorXd &SValues,
+    DenseMatrix &A,
+    DenseMatrix &B,
+    VectorXd& result,
+    int start,
+    int end) {
+
+    cout << "Fused Kernel does not support direct SDDMM calls!" << endl;
+    exit(1);
+
+    return -1;
+}
+
+size_t FusedStandardKernel::spmm_local(
+    spmat_local_t &S,
+    VectorXd &SValues,
+    DenseMatrix &A,
+    DenseMatrix &B,
+    int mode,
+    int start,
+    int end) {
+
+    size_t processed = 0;
+
+    double* Aptr = A.data();
+    double* Bptr = B.data();
+    double* Sptr = SValues.data();
+    int r = A.cols();
+
+    // #pragma omp parallel for
+    for(int i = start; i < end; i++) {
+        processed++;
+
+        if(mode == 0) {
+            double* Arow = Aptr + r * S.rCoords[i];
+            double* Brow = Bptr + r * S.cCoords[i];
+            
+            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
+            row_fmadd(Arow, Brow, coeff, r); 
+        }
+        else if(mode == 1) {
+            double* Arow = Aptr + r * S.rCoords[i];
+            double* Brow = Bptr + r * S.cCoords[i]; 
+     
+            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
+            row_fmadd(Brow, Arow, coeff, r); 
+        }
+        else {
+            assert(false);
+        }
+    }
+    return processed;
+}
+

@@ -93,11 +93,10 @@ public:
         }
 
         // Step 4: broadcast nonzero counts across fibers, allocate the SpMat arrays 
-        MPI_Bcast(&(this->M), 1, MPI_INT, 0, grid->GetFiberWorld());
-        MPI_Bcast(&(this->N), 1, MPI_INT, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(this->M), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
+        MPI_Bcast(&(this->N), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
         MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
 
-        // Step 5: These two steps weren't here earlier... why?
         S.rCoords.resize(S.local_nnz);
         S.cCoords.resize(S.local_nnz);
         input_Svalues.resize(S.local_nnz);

@@ -64,7 +64,31 @@ public:
         int end);
 };
 
-typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
+/*
+ * Allows a single SpMM operation to do both an SpMM and an SDDMM
+ * in one shot. 
+ */
+class FusedStandardKernel : public KernelImplementation {
+public:
+    size_t sddmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues, 
+        DenseMatrix &A,
+        DenseMatrix &B,
+        VectorXd &result,
+        int start,
+        int end);
 
+    size_t spmm_local(
+        spmat_local_t &S,
+        VectorXd &SValues,
+        DenseMatrix &A,
+        DenseMatrix &B,
+        int mode,
+        int start,
+        int end);
+};
+
+typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
 
 #endif
