@@ -19,8 +19,8 @@ void allreduceVector(VectorXd &vec, MPI_Comm comm) {
 }
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
-    double cg_residual_tol = 1e-3;
-    double nan_avoidance_constant = 1e-2;
+    double cg_residual_tol = 1e-8;
+    double nan_avoidance_constant = 1e-16;
 
     MPI_Comm reduction_world;
     if(matrix_to_optimize == Amat) {
@@ -170,6 +170,10 @@ double Distributed_ALS::computeResidual() {
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 
     d_ops->sddmm(A, B, ones, sddmm_result);
 
+    double val = sddmm_result.squaredNorm();
+    MPI_Allreduce(MPI_IN_PLACE, &val, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+    cout << "Fingerprint: " << val << endl;
+
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
 
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
@@ -183,6 +187,7 @@ void Distributed_ALS::initializeEmbeddings() {
 
     initialize_dense_matrix(A, d_ops->R);
     initialize_dense_matrix(B, d_ops->R);
+
     d_ops->initial_synchronize(&A, &B, nullptr);
 }
 
@@ -192,7 +197,7 @@ void Distributed_ALS::computeQueries(
         MatMode matrix_to_optimize,
         DenseMatrix &result) {
 
-    double lambda = 1e-3;
+    double lambda = 1e-8;
 
     result.setZero();
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 

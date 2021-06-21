@@ -162,7 +162,7 @@ public:
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
-        MPI_Allreduce(MPI_IN_PLACE, SValues.data(), SValues.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
+        MPI_Allreduce(MPI_IN_PLACE, sddmm_result.data(), sddmm_result.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
         stop_clock_and_add(t, "Sparse Allreduction Time");
     }
 
