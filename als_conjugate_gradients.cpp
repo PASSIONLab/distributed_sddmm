@@ -150,13 +150,7 @@ double Distributed_ALS::computeResidual() {
 
     d_ops->sddmm(A, B, ones, sddmm_result);
 
-    double val = sddmm_result.squaredNorm();
-    MPI_Allreduce(MPI_IN_PLACE, &val, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
-
-    //cout << "Fingerprint: " << val << endl;
-
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
-
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
     
     return sqrt(sqnorm);

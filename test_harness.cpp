@@ -23,21 +23,11 @@ int main(int argc, char** argv) {
 
     d_ops->sddmm(A, B, ones, sddmm_result);
 
-    double value = sddmm_result.squaredNorm();
-    MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, d_ops->grid->GetLayerWorld()); 
-
-    //cout << "Value: " << value << endl;
-
-    // Just check the fingerprint of the 2.5D SDDMM operation 
-
-    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
-
-    //d_ops->setVerbose(true);
 
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
-    //d_ops->reset_performance_timers();
+    d_ops->reset_performance_timers();
     x->run_cg(5);
-    //d_ops->print_performance_statistics();
+    d_ops->print_performance_statistics();
 
     MPI_Finalize();
 }

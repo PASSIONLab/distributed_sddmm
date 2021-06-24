@@ -141,11 +141,6 @@ public:
         if(SValues != nullptr) {
             MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         }
-
-        //cout << "Rank " << 
-        //grid->GetRankInFiber() << " " << 
-        //commGridLayer->GetRankInProcCol() << " " << commGridLayer->GetRankInProcRow() 
-        //    << " " << (*localA)(0, 0) << endl;
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
