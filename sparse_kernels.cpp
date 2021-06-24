@@ -151,6 +151,8 @@ size_t FusedStandardKernel::spmm_local(
             double* Brow = Bptr + r * S.cCoords[i];
             
             double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
+            //double coeff = Sptr[i];
+
             row_fmadd(Arow, Brow, coeff, r); 
         }
         else if(mode == 1) {
@@ -158,6 +160,8 @@ size_t FusedStandardKernel::spmm_local(
             double* Brow = Bptr + r * S.cCoords[i]; 
      
             double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
+            //double coeff = Sptr[i];
+
             row_fmadd(Brow, Arow, coeff, r); 
         }
         else {

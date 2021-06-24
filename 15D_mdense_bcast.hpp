@@ -199,14 +199,11 @@ public:
 
             recvRowSlice.setZero();
             if(mode == k_sddmm || mode == k_spmmA) {
-
                 auto t = start_clock();
                 if(grid->rankInLayer == block_id) {
-                    MPI_Bcast(localB.data(), localB.size(), MPI_DOUBLE, block_id, grid->GetLayerWorld());
-                }
-                else {
-                    MPI_Bcast(recvRowSlice.data(), recvRowSlice.size(), MPI_DOUBLE, block_id, grid->GetLayerWorld());
-                }
+                    recvRowSlice = localB;
+                } 
+                MPI_Bcast(recvRowSlice.data(), recvRowSlice.size(), MPI_DOUBLE, block_id, grid->GetLayerWorld()); 
                 stop_clock_and_add(t, "Multiplication Broadcast Time");
             }
 

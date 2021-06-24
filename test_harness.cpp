@@ -13,14 +13,19 @@ int main(int argc, char** argv) {
     string fname(argv[1]);
 
     StandardKernel local_ops;
-    Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+    FusedStandardKernel fused_local_ops;
+
+    Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &fused_local_ops);
     //Sparse15D_MDense_Shift* d_ops = new Sparse15D_MDense_Shift(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
     //Sparse25D* d_ops = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank);
 
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true, false);
+    //Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true, false);
+
+    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true, true);
+
     d_ops->reset_performance_timers();
     x->run_cg(5);
     d_ops->print_performance_statistics();
