@@ -7,20 +7,37 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-    srand((unsigned int) time(0));
     MPI_Init(&argc, &argv);
     string fname(argv[1]);
 
     StandardKernel local_ops;
-    //Sparse25D* d_ops = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
-    Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
+    Sparse25D* d_ops = new Sparse25D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+
+    srand((unsigned int) time(0) + d_ops->proc_rank);
+
+    DenseMatrix A = d_ops->like_A_matrix(1.0);
+    DenseMatrix B = d_ops->like_B_matrix(1.0);
+
+    VectorXd ones = d_ops->like_S_values(1.0);
+    VectorXd sddmm_result = d_ops->like_S_values(0.0);
+
+    d_ops->sddmm(A, B, ones, sddmm_result);
+
+    double value = sddmm_result.squaredNorm();
+    MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, d_ops->grid->GetLayerWorld()); 
+
+    //cout << "Value: " << value << endl;
+
+    // Just check the fingerprint of the 2.5D SDDMM operation 
+
+    //Sparse15D* d_ops = new Sparse15D(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops); 
 
     //d_ops->setVerbose(true);
 
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
-    d_ops->reset_performance_timers();
-    x->run_cg(1);
-    d_ops->print_performance_statistics();
+    //d_ops->reset_performance_timers();
+    x->run_cg(5);
+    //d_ops->print_performance_statistics();
 
     MPI_Finalize();
 }

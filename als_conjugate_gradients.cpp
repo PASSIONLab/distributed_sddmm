@@ -101,27 +101,6 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     //}
 }
 
-void ALS_CG::run_cg(int n_alternating_steps) {
-    initializeEmbeddings();
-
-    double residual = computeResidual();
-    if(proc_rank == 0) {
-        cout << "Embeddings initialized" << endl;
-        cout << "Initial Residual: " << residual << endl;
-    }
-
-    for(int i = 0; i < n_alternating_steps; i++) {
-        cg_optimizer(Amat, 30);
-        cg_optimizer(Bmat, 30);
-
-        residual = computeResidual();
-        if(proc_rank == 0) {
-            cout << "Residual after step " << i << " : " << residual << endl;
-        }
-    }
-}
-
-
 void initialize_dense_matrix(DenseMatrix &X, int R) {
     X.setRandom();
     X /= R;
@@ -168,11 +147,13 @@ void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
 double Distributed_ALS::computeResidual() {
     VectorXd ones = d_ops->like_S_values(1.0);
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 
+
     d_ops->sddmm(A, B, ones, sddmm_result);
 
     double val = sddmm_result.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &val, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
-    cout << "Fingerprint: " << val << endl;
+
+    //cout << "Fingerprint: " << val << endl;
 
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
 
@@ -182,13 +163,34 @@ double Distributed_ALS::computeResidual() {
 }
 
 void Distributed_ALS::initializeEmbeddings() {
-    A = d_ops->like_A_matrix(0.0);
-    B = d_ops->like_B_matrix(0.0);
+    A = d_ops->like_A_matrix(1.0);
+    B = d_ops->like_B_matrix(1.0);
 
     initialize_dense_matrix(A, d_ops->R);
     initialize_dense_matrix(B, d_ops->R);
 
     d_ops->initial_synchronize(&A, &B, nullptr);
+}
+
+
+void ALS_CG::run_cg(int n_alternating_steps) {
+    initializeEmbeddings();
+
+    double residual = computeResidual();
+    if(proc_rank == 0) {
+        cout << "Embeddings initialized" << endl;
+        cout << "Initial Residual: " << residual << endl;
+    }
+
+    for(int i = 0; i < n_alternating_steps; i++) {
+        cg_optimizer(Amat, 30);
+        cg_optimizer(Bmat, 30);
+
+        residual = computeResidual();
+        if(proc_rank == 0) {
+            cout << "Residual after step " << i << " : " << residual << endl;
+        }
+    }
 }
 
 void Distributed_ALS::computeQueries(

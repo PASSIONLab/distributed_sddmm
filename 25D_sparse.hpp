@@ -141,6 +141,11 @@ public:
         if(SValues != nullptr) {
             MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
         }
+
+        //cout << "Rank " << 
+        //grid->GetRankInFiber() << " " << 
+        //commGridLayer->GetRankInProcCol() << " " << commGridLayer->GetRankInProcRow() 
+        //    << " " << (*localA)(0, 0) << endl;
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
@@ -159,7 +164,7 @@ public:
         stop_clock_and_add(t, "Dense Allreduction Time");
     }
 
-    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) {
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
         auto t = start_clock();
         MPI_Allreduce(MPI_IN_PLACE, sddmm_result.data(), sddmm_result.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
