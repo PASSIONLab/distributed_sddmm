@@ -178,8 +178,7 @@ public:
     void algorithm(         DenseMatrix &localA, 
                             DenseMatrix &localB, 
                             VectorXd &SValues, 
-                            VectorXd *sddmm_result_ptr,
-                            DenseMatrix* aux_messages, 
+                            VectorXd *sddmm_result_ptr, 
                             KernelMode mode
                             ) {
         MPI_Status stat;
@@ -189,8 +188,6 @@ public:
         int nnz_processed = 0;
 
         // Temporary buffer to hold the received portion of matrix B.
-
-        DenseMatrix recvColSlice(localA.rows(), localA.cols());
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
 
         for(int i = 0; i < p / (c * c); i++) {
@@ -227,7 +224,6 @@ public:
                     SValues,
                     localA,
                     recvRowSlice,
-                    nullptr,
                     Amat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -238,7 +234,6 @@ public:
                     SValues,
                     localA,
                     recvRowSlice,
-                    nullptr,
                     Bmat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
