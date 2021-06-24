@@ -35,6 +35,7 @@ public:
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
+        DenseMatrix *aux_messages,
         int mode,
         int start,
         int end) = 0;
@@ -59,6 +60,7 @@ public:
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
+        DenseMatrix *aux_messages,
         int mode,
         int start,
         int end);
@@ -84,6 +86,7 @@ public:
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
+        DenseMatrix *aux_messages,
         int mode,
         int start,
         int end);
