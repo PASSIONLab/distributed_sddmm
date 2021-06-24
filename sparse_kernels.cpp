@@ -108,10 +108,22 @@ size_t FusedStandardKernel::sddmm_local(
     int start,
     int end) {
 
-    cout << "Fused Kernel does not support direct SDDMM calls!" << endl;
-    exit(1);
+    // Does the same operation as the standard kernel
+    size_t processed = 0;
 
-    return -1;
+    double* Aptr = A.data();
+    double* Bptr = B.data();
+    double* Sptr = SValues.data();
+    double* res = result.data();
+    int r = A.cols();
+
+    for(int i = start; i < end; i++) {
+        processed++;
+        double* Arow = Aptr + r * S.rCoords[i];
+        double* Brow = Bptr + r * S.cCoords[i]; 
+        res[i] += Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
+    }
+    return processed;
 }
 
 size_t FusedStandardKernel::spmm_local(

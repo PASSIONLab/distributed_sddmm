@@ -19,7 +19,7 @@
 using namespace std;
 using namespace combblas;
 
-class Sparse25D : public Distributed_Sparse {
+class Sparse25D_MDense_Nostage : public Distributed_Sparse {
 public:
     int sqrtpc; // Square grid size on each layer
     int c;      // Number of Layers
@@ -119,12 +119,12 @@ public:
         check_initialized();
     }
 
-    Sparse25D(int logM, int nnz_per_row, int R, int c, KernelImplementation *k) : 
+    Sparse25D_MDense_Nostage(int logM, int nnz_per_row, int R, int c, KernelImplementation *k) : 
         Distributed_Sparse(k) { 
         constructor_helper(false, logM, nnz_per_row, "", R, c);
     }
 
-    Sparse25D(string filename, int R, int c, KernelImplementation *k) :
+    Sparse25D_MDense_Nostage(string filename, int R, int c, KernelImplementation *k) :
         Distributed_Sparse(k) {
         constructor_helper(true, 0, -1, filename, R, c);
     }

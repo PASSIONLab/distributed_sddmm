@@ -20,7 +20,7 @@ using namespace std;
 using namespace combblas;
 using namespace Eigen;
 
-class Sparse15D : public Distributed_Sparse {
+class Sparse15D_MDense_Bcast : public Distributed_Sparse {
 public:
     int c; // # of layers 
 
@@ -40,14 +40,14 @@ public:
             }
         }
 
-        algorithm_name = "1.5D Block Row Replicated ABS Cyclic Shift with Allreduce";
+        algorithm_name = "1.5D Block Row Replicated ABS Broadcast with Allreduce";
         proc_grid_names = {"# Block Rows per Layer", "Layers"};
         proc_grid_dimensions = {p/c, c};
 
         perf_counter_keys = 
                 {"Dense Allreduction Time", 
                 "Sparse Allreduction Time", 
-                "Cyclic Shift Time",
+                "Multiplication Broadcast Time",
                 "Computation Time" 
                 };
 
@@ -126,13 +126,13 @@ public:
     }
 
     // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D(int logM, int nnz_per_row, int R, int c, KernelImplementation* k)
+    Sparse15D_MDense_Bcast(int logM, int nnz_per_row, int R, int c, KernelImplementation* k)
         : Distributed_Sparse(k) {
         constructor_helper(false, logM, nnz_per_row, "", R, c);
     }
 
     // Reads the underlying sparse matrix from a file
-    Sparse15D(string &filename, int R, int c, KernelImplementation* k) 
+    Sparse15D_MDense_Bcast(string &filename, int R, int c, KernelImplementation* k) 
         : Distributed_Sparse(k) {
         constructor_helper(true, 0, -1, filename, R, c);
     }
@@ -140,10 +140,10 @@ public:
     // Synchronizes data across three levels of the processor grid
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
         if(localA != nullptr) {
-            MPI_Bcast((void*) localA->data(), localA->rows() * localA->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+            MPI_Bcast((void*) localA->data(), localA->size(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         }
         if(localB != nullptr) {
-            MPI_Bcast((void*) localB->data(), localB->rows() * localB->cols(), MPI_DOUBLE, 0, grid->GetFiberWorld());
+            MPI_Bcast((void*) localB->data(), localB->size(), MPI_DOUBLE, 0, grid->GetFiberWorld());
         }
         if(SValues != nullptr) {
             MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
@@ -190,37 +190,33 @@ public:
         // Temporary buffer to hold the received portion of matrix B.
         DenseMatrix recvRowSlice(localB.rows(), localB.cols());
 
-        auto t = start_clock();
-
-        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                    pMod(rankInLayer + shift, p / c), 0,
-                    grid->GetLayerWorld(), &send_request);
-
-        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
-                0, grid->GetLayerWorld(), &recv_request);
-
-        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-        stop_clock_and_add(t, "Cyclic Shift Time");
-
-        localB = recvRowSlice;
-        
-        MPI_Barrier(MPI_COMM_WORLD);
-
         for(int i = 0; i < p / (c * c); i++) {
 
-            int block_id = pMod(rankInLayer - shift - i, p / c);
+            int block_id = p / (c * c) * rankInFiber + i;
 
             assert(blockStarts[block_id] < S.local_nnz);
             assert(blockStarts[block_id + 1] <= S.local_nnz);
 
-            t = start_clock();
+            recvRowSlice.setZero();
+            if(mode == k_sddmm || mode == k_spmmA) {
+
+                auto t = start_clock();
+                if(grid->rankInLayer == block_id) {
+                    MPI_Bcast(localB.data(), localB.size(), MPI_DOUBLE, block_id, grid->GetLayerWorld());
+                }
+                else {
+                    MPI_Bcast(recvRowSlice.data(), recvRowSlice.size(), MPI_DOUBLE, block_id, grid->GetLayerWorld());
+                }
+                stop_clock_and_add(t, "Multiplication Broadcast Time");
+            }
+
+            auto t = start_clock();
             if(mode == k_sddmm) {
                 nnz_processed += kernel->sddmm_local(
                     S,
                     SValues,
                     localA,
-                    localB,
+                    recvRowSlice,
                     *sddmm_result_ptr,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -230,7 +226,7 @@ public:
                     S,
                     SValues,
                     localA,
-                    localB,
+                    recvRowSlice,
                     Amat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -240,7 +236,7 @@ public:
                     S,
                     SValues,
                     localA,
-                    localB,
+                    recvRowSlice,
                     Bmat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -248,37 +244,13 @@ public:
 
             stop_clock_and_add(t, "Computation Time");
 
-            if(i < p / (c * c) - 1) {
+            if(mode == k_spmmB) {
                 t = start_clock();
-                MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                            pMod(rankInLayer + 1, p / c), 0,
-                            grid->GetLayerWorld(), &send_request);
-                MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
-                        0, grid->GetLayerWorld(), &recv_request);
+                MPI_Reduce(recvRowSlice.data(), localB.data(), localB.size(), MPI_DOUBLE, MPI_SUM, block_id, grid->GetLayerWorld()); 
+                stop_clock_and_add(t, "Multiplication Broadcast Time");
+            }
 
-                MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-                MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-                stop_clock_and_add(t, "Cyclic Shift Time");
-
-                localB = recvRowSlice;
-
-                MPI_Barrier(MPI_COMM_WORLD); 
-            } 
         }
-
-        // Send the B matrix back to its original position
-        t = start_clock();
-        MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                    pMod(rankInLayer - p / (c * c) - shift + 1, p / c), 0,
-                    grid->GetLayerWorld(), &send_request);
-        MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
-                0, grid->GetLayerWorld(), &recv_request);
-
-        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-        stop_clock_and_add(t, "Cyclic Shift Time");
-
-        localB = recvRowSlice;
 
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
