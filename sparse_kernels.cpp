@@ -67,7 +67,6 @@ size_t StandardKernel::spmm_local(
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
-    DenseMatrix* aux_messages,
     int mode,
     int start,
     int end) {
@@ -132,7 +131,6 @@ size_t FusedStandardKernel::spmm_local(
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
-    DenseMatrix *aux_messages,
     int mode,
     int start,
     int end) {
@@ -142,7 +140,6 @@ size_t FusedStandardKernel::spmm_local(
     double* Aptr = A.data();
     double* Bptr = B.data();
     double* Sptr = SValues.data();
-    double* aux_ptr = aux_messages->data();
     int r = A.cols();
 
     // #pragma omp parallel for
@@ -151,20 +148,18 @@ size_t FusedStandardKernel::spmm_local(
 
         if(mode == 0) {
             double* Arow = Aptr + r * S.rCoords[i];
-            double* auxrow = aux_ptr + r * S.rCoords[i];
             double* Brow = Bptr + r * S.cCoords[i];
             
-            double coeff = Sptr[i] * vectorized_dot_product(auxrow, Brow, r);
+            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
             //double coeff = Sptr[i];
 
             row_fmadd(Arow, Brow, coeff, r); 
         }
         else if(mode == 1) {
             double* Arow = Aptr + r * S.rCoords[i];
-            double* Brow = Bptr + r * S.cCoords[i];
-            double* auxrow = aux_ptr + r * S.cCoords[i];
+            double* Brow = Bptr + r * S.cCoords[i]; 
      
-            double coeff = Sptr[i] * vectorized_dot_product(Arow, auxrow, r);
+            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
             //double coeff = Sptr[i];
 
             row_fmadd(Brow, Arow, coeff, r); 
