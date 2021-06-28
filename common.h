@@ -39,4 +39,6 @@ typedef enum {Amat, Bmat} MatMode;
 
 int pMod(int num, int denom);
 
+int divideAndRoundUp(int num, int denom);
+
 #endif
