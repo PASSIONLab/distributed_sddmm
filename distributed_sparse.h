@@ -90,28 +90,31 @@ public:
         assert(superclass_constructor_sentinel == 3);
     }
 
-    void print_algorithm_info() { 
+    void print_algorithm_info() {
         cout << algorithm_name << endl;
         cout << "Matrix Dimensions: " 
         << this->M << " x " << this->N << endl;
         cout << "R-Value: " << this->R << endl;
-        cout << "Grid Dimensions : ";
-        for(int i = 0; i < proc_grid_dimensions.size(); i++) {
-            cout << proc_grid_dimensions[i];
-            if (i != proc_grid_dimensions.size()) {
-                cout << " x ";
-            }
-        }
-        cout << endl;
 
         cout << "Grid Dimension Interpretations: ";        
         for(int i = 0; i < proc_grid_names.size(); i++) {
             cout << proc_grid_names[i];
-            if (i != proc_grid_names.size()) {
+            if (i != proc_grid_names.size() - 1) {
+                cout << " x ";
+            }
+        } 
+        cout << endl;
+
+
+        cout << "Grid Dimensions : ";
+        for(int i = 0; i < proc_grid_dimensions.size(); i++) {
+            cout << proc_grid_dimensions[i];
+            if (i != proc_grid_dimensions.size() - 1) {
                 cout << " x ";
             }
         }
         cout << endl;
+        cout << "================================" << endl;
     }
 
     void setVerbose(bool value) {
@@ -160,17 +163,19 @@ public:
             cout << "================================" << endl;
             cout << "==== Performance Statistics ====" << endl;
             cout << "================================" << endl;
-        } 
+            print_algorithm_info();
+        }
 
         for(auto it = perf_counter_keys.begin(); it != perf_counter_keys.end(); it++) {
-            double avg_time = total_time[*it]; 
+            double val = total_time[*it]; 
 
-            MPI_Allreduce(MPI_IN_PLACE, &avg_time, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &val, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-            avg_time /= call_count[*it] * p;
+            // We also have the call count for each statistic timed
+            val /= p;
 
             if(proc_rank == 0) {
-                cout << "Avg. " << *it << ":\t" << avg_time << "s" << endl;
+                cout << "Total " << *it << ":\t" << val << "s" << endl;
             }
         }
         if(proc_rank == 0) {
