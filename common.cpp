@@ -17,7 +17,6 @@ int pMod(int num, int denom) {
     return ((num % denom) + denom) % denom;
 }
 
-
 int divideAndRoundUp(int num, int denom) {
     return (int) ceil((float) num / denom);
 }

@@ -68,7 +68,8 @@ public:
 					nnz_per_row, 
 					filename, 
 					S, 
-					input_Svalues);
+					input_Svalues,
+                    true);
 
             this->M = S.distrows;
             this->N = S.distcols;

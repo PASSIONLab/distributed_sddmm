@@ -68,7 +68,8 @@ public:
 					nnz_per_row, 
 					filename, 
 					S, 
-					input_Svalues);
+					input_Svalues,
+                    true);
 
             this->M = S.distrows;
             this->N = S.distcols;
@@ -187,7 +188,6 @@ public:
         MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
                     pMod(rankInLayer + shift, p / c), 0,
                     grid->GetLayerWorld(), &send_request);
-
         MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE,
                 0, grid->GetLayerWorld(), &recv_request);
 

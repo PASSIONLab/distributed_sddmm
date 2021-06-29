@@ -14,7 +14,7 @@ using namespace std;
 // The random matrix is Erdos-Renyi with the specified number of nonzeros
 // per row. All parameters except the first two are output parameters
 
-void spmat_to_coord_arrays(PSpMat_s32p64_Int *G, spmat_local_t &output, VectorXd &Svalues) {
+void spmat_to_coord_arrays(PSpMat_s32p64_Int *G, spmat_local_t &output, VectorXd &Svalues, bool sortRowBased) {
     // Everything after this point is just unpacking into a convenient format;
     // Also: should look into using the RowSplit(), colSplit() functions... 
     output.dist_nnz = G->getnnz();
@@ -33,7 +33,13 @@ void spmat_to_coord_arrays(PSpMat_s32p64_Int *G, spmat_local_t &output, VectorXd
     output.cCoords.resize(output.local_nnz);
 
     SpTuples<int64_t,int> tups(G->seq()); 
-    tups.SortColBased();
+
+    if(sortRowBased) {
+        tups.SortRowBased();
+    }
+    else {
+        tups.SortColBased();
+    }
 
     tuple<int64_t, int64_t, int>* values = tups.tuples;
     
@@ -50,7 +56,8 @@ void generateRandomMatrix(int logM,
     int nnz_per_row,
     shared_ptr<CommGrid> layerGrid,
     spmat_local_t &output,
-    VectorXd &Svalues
+    VectorXd &Svalues,
+    bool sortRowBased
 ) {
 
     PSpMat_s32p64_Int * G; 
@@ -64,7 +71,7 @@ void generateRandomMatrix(int logM,
     RenameVertices(*DEL);	
     G = new PSpMat_s32p64_Int(*DEL, false);
 
-    spmat_to_coord_arrays(G, output, Svalues);
+    spmat_to_coord_arrays(G, output, Svalues, sortRowBased);
 
     delete DEL;
     delete G;
@@ -77,11 +84,13 @@ void loadMatrixFromFile(
     string &filename,
     shared_ptr<CommGrid> layerGrid,
     spmat_local_t &output,
-    VectorXd &Svalues) {
+    VectorXd &Svalues,
+    bool sortRowBased 
+    ) {
     
     PSpMat_s32p64_Int *G = new PSpMat_s32p64_Int(layerGrid);
     G->ParallelReadMM(filename, true, maximum<double>());
-    spmat_to_coord_arrays(G, output, Svalues);
+    spmat_to_coord_arrays(G, output, Svalues, sortRowBased);
 
     delete G;
 }
@@ -94,13 +103,16 @@ void fillSparseMatrix(
         int nnz_per_row,
         string &filename,
         spmat_local_t &S,
-        VectorXd &input_Svalues) {
+        VectorXd &input_Svalues,
+        bool sortRowBased 
+        ) {
 
     if(! readFromFile) {
         generateRandomMatrix(logM, nnz_per_row,
             layerGrid, 
             S,
-            input_Svalues 
+            input_Svalues,
+            sortRowBased 
         );
 
         if(proc_rank == 0) {
@@ -108,7 +120,7 @@ void fillSparseMatrix(
         }
     }
     else {
-        loadMatrixFromFile(filename, layerGrid, S, input_Svalues);
+        loadMatrixFromFile(filename, layerGrid, S, input_Svalues, sortRowBased);
         if(proc_rank == 0) {
             cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
         }
