@@ -181,16 +181,17 @@ public:
 
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localA.rows() * c, R, 0.0); 
+		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localB.rows() * c, R, 0.0); 
 
         if(mode == k_spmmB || mode == k_sddmm) {
             for(int i = 0; i < c; i++) {
-                auto t = start_clock();
-                double* dst = accumulation_buffer.data() + localA.size() * i;
+                auto t = start_clock();  
                 if(i == rankInFiber) {
-                    memcpy(dst, localA.data(), localA.size() * sizeof(double));
+                    MPI_Bcast((void*) localB.data(), localB.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
                 }
-                MPI_Bcast((void*) dst, localA.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
+                else {
+                    MPI_Bcast((void*) (accumulation_buffer.data() + localB.size() * i), localB.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
+                }
                 stop_clock_and_add(t, "Dense Broadcast Time");
             }
         }
@@ -206,18 +207,18 @@ public:
                 nnz_processed += kernel->sddmm_local(
                     S,
                     SValues,
+                    localA,
                     accumulation_buffer,
-                    localB,
                     *sddmm_result_ptr,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
             }
-            else if(mode == k_spmmA) { 
+            else if(mode == k_spmmA) {
                 nnz_processed += kernel->spmm_local(
                     S,
                     SValues,
+                    localA,
                     accumulation_buffer,
-                    localB,
                     Amat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -226,8 +227,8 @@ public:
                 nnz_processed += kernel->spmm_local(
                     S,
                     SValues,
+                    localA,
                     accumulation_buffer,
-                    localB,
                     Bmat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -250,10 +251,10 @@ public:
         if(mode == k_spmmA) {
             for(int i = 0; i < c; i++) {
                 auto t = start_clock();  
-                MPI_Reduce((void*) (accumulation_buffer.data() + localA.size() * i), 
-                        (void*) localA.data(), 
-                        localA.size(), MPI_DOUBLE, 
-                        MPI_SUM, i, grid->GetFiberWorld());
+                MPI_Reduce((void*) (accumulation_buffer.data() + localB.size() * i), 
+                        (void*) localB.data(), localB.size(), 
+                        MPI_DOUBLE, 
+                        MPI_SUM, i, grid->GetFiberWorld()); 
                 stop_clock_and_add(t, "Dense Reduction Time");
             }
         }
