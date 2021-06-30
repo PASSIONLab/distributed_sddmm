@@ -71,15 +71,23 @@ public:
         // Step 3: Use either the R-mat generator or a file reader to get a sparse matrix. 
 
         if(grid->GetRankInFiber() == 0) {
-			fillSparseMatrix(proc_rank,
-					readFromFile, 
-					grid->GetCommGridLayer(), 
-					logM, 
-					nnz_per_row, 
-					filename, 
-					S, 
-					input_Svalues);
+            if(! readFromFile) {
+                generateRandomMatrix(logM, nnz_per_row,
+                    grid->GetCommGridLayer(),
+                    S,
+                    input_Svalues 
+                );
 
+                if(proc_rank == 0) {
+                    cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
+                }
+            }
+            else {
+                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, input_Svalues);
+                if(proc_rank == 0) {
+                    cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
+                }
+            }
             this->M = S.distrows;
             this->N = S.distcols;
         }

@@ -20,11 +20,7 @@ using namespace std;
 using namespace combblas;
 using namespace Eigen;
 
-/*
- * Unlike its non-striped counterpart, this algorithm  
- */
-
-class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
+class Sparse15D_MDense_Shift : public Distributed_Sparse {
 public:
     int c; // # of layers 
 
@@ -44,12 +40,12 @@ public:
             }
         }
 
-        algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift with Reduce";
+        algorithm_name = "1.5D Block Row Replicated ABS Cyclic Shift with Allreduce";
         proc_grid_names = {"# Block Rows per Layer", "Layers"};
         proc_grid_dimensions = {p/c, c};
 
         perf_counter_keys = 
-                {"Dense Reduction Time", 
+                {"Dense Allreduction Time", 
                 "Sparse Allreduction Time", 
                 "Cyclic Shift Time",
                 "Computation Time" 
@@ -65,14 +61,23 @@ public:
         localBcols = R; 
 
         if(grid->GetRankInFiber() == 0) {
-			fillSparseMatrix(proc_rank,
-					readFromFile, 
-					grid->GetCommGridLayer(), 
-					logM, 
-					nnz_per_row, 
-					filename, 
-					S, 
-					input_Svalues);
+            if(! readFromFile) {
+                generateRandomMatrix(logM, nnz_per_row,
+                    grid->GetCommGridLayer(),
+                    S,
+                    input_Svalues 
+                );
+
+                if(proc_rank == 0) {
+                    cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
+                }
+            }
+            else {
+                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, input_Svalues);
+                if(proc_rank == 0) {
+                    cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
+                }
+            }
             this->M = S.distrows;
             this->N = S.distcols;
             localArows = S.nrows;

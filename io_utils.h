@@ -86,33 +86,5 @@ void loadMatrixFromFile(
     delete G;
 }
 
-void fillSparseMatrix(
-        int proc_rank,
-        bool readFromFile,
-        shared_ptr<CommGrid> layerGrid,
-        int logM,
-        int nnz_per_row,
-        string &filename,
-        spmat_local_t &S,
-        VectorXd &input_Svalues) {
-
-    if(! readFromFile) {
-        generateRandomMatrix(logM, nnz_per_row,
-            layerGrid, 
-            S,
-            input_Svalues 
-        );
-
-        if(proc_rank == 0) {
-            cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
-        }
-    }
-    else {
-        loadMatrixFromFile(filename, layerGrid, S, input_Svalues);
-        if(proc_rank == 0) {
-            cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
-        }
-    }
-}
 
 #endif
