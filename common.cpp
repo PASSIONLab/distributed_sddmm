@@ -16,4 +16,12 @@ double stop_clock_get_elapsed(my_timer_t &start) {
 int pMod(int num, int denom) {
     return ((num % denom) + denom) % denom;
 }
-    
+
+int divideAndRoundUp(int num, int denom) {
+    if (num % denom > 0) {
+        return num / denom + 1;
+    }
+    else {
+        return num / denom;
+    }
+} 
