@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "common.h"
+#include "SpmatLocal.hpp"
 #include <Eigen/Dense>
 
 using namespace std;
@@ -14,7 +15,7 @@ public:
     // Performs an operation that looks like a local SDDMM
     // and returns the number of nonzeros processed 
     virtual size_t sddmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues, 
         DenseMatrix &A,
         DenseMatrix &B,
@@ -31,7 +32,7 @@ public:
     *
     */
     virtual size_t spmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
@@ -46,7 +47,7 @@ public:
 class StandardKernel : public KernelImplementation {
 public:
     size_t sddmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues, 
         DenseMatrix &A,
         DenseMatrix &B,
@@ -55,7 +56,7 @@ public:
         int end);
 
     size_t spmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
@@ -71,7 +72,7 @@ public:
 class FusedStandardKernel : public KernelImplementation {
 public:
     size_t sddmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues, 
         DenseMatrix &A,
         DenseMatrix &B,
@@ -80,7 +81,7 @@ public:
         int end);
 
     size_t spmm_local(
-        spmat_local_t &S,
+        SpmatLocal &S,
         VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,

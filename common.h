@@ -19,21 +19,8 @@ double stop_clock_get_elapsed(my_timer_t &start);
 
 /*
  * I am aware that CombBLAS defines its own type for this, so I think this
- * is redundant. Might redefine / eliminate this type later...
+ * is redundant. Might redefine / eliminate this type later... 
  */ 
-typedef struct {
-    vector<int64_t> rCoords;
-    vector<int64_t> cCoords;
-
-    int local_nnz;
-    int dist_nnz;
-
-    int nrows;
-    int ncols;
-
-    int distrows;
-    int distcols;
-} spmat_local_t;
 
 typedef enum {Amat, Bmat} MatMode;
 

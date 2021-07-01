@@ -61,43 +61,21 @@ public:
         localBcols = R; 
 
         if(grid->GetRankInFiber() == 0) {
-            if(! readFromFile) {
-                generateRandomMatrix(logM, nnz_per_row,
-                    grid->GetCommGridLayer(),
-                    S,
-                    input_Svalues 
-                );
-
-                if(proc_rank == 0) {
-                    cout << "R-mat generator created " << S.dist_nnz << " nonzeros." << endl;
-                }
-            }
-            else {
-                loadMatrixFromFile(filename, grid->GetCommGridLayer(), S, input_Svalues);
-                if(proc_rank == 0) {
-                    cout << "File reader read " << S.dist_nnz << " nonzeros." << endl;
-                }
-            }
-            this->M = S.distrows;
-            this->N = S.distcols;
-            localArows = S.nrows;
+            SpmatLocal::loadMatrix(readFromFile,
+               logM,
+               nnz_per_row,
+               filename,
+               grid->GetCommGridLayer(),
+               &S,
+               nullptr 
+            );
         }
+        S.broadcast_synchronize(grid->GetRankInFiber(), 0, grid->GetFiberWorld());
 
-        MPI_Bcast(&(this->M), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        MPI_Bcast(&(this->N), 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
-
-        MPI_Bcast(&(S.local_nnz), 1, MPI_INT, 0, grid->GetFiberWorld());
-        MPI_Bcast(&localArows, 1, MPI_UINT64_T, 0, grid->GetFiberWorld());
-
+        this->M = S.M;
+        this->N = S.N;
+        localArows = S.nrows_local; 
         localBrows = (int) ceil((float) this->N  * c / p);
-
-        S.rCoords.resize(S.local_nnz);
-        S.cCoords.resize(S.local_nnz);
-        input_Svalues.resize(S.local_nnz);
-
-        // Broadcast the sparse matrices (the coordinates, not the values)
-        MPI_Bcast(S.rCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
-        MPI_Bcast(S.cCoords.data(), S.local_nnz, MPI_UINT64_T, 0, grid->GetFiberWorld());
 
         // Locate block starts within the local sparse matrix (i.e. divide a long
         // block row into subtiles) 

@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "sparse_kernels.h"
+#include "SpmatLocal.hpp"
 #include "common.h"
 
 using namespace std;
@@ -37,7 +38,7 @@ inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
 
 // TODO: Add assertions making sure all of the sizes match 
 size_t StandardKernel::sddmm_local(
-    spmat_local_t &S, 
+    SpmatLocal &S, 
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
@@ -63,7 +64,7 @@ size_t StandardKernel::sddmm_local(
 }
 
 size_t StandardKernel::spmm_local(
-    spmat_local_t &S,
+    SpmatLocal &S,
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
@@ -100,7 +101,7 @@ size_t StandardKernel::spmm_local(
 }
 
 size_t FusedStandardKernel::sddmm_local(
-    spmat_local_t &S, 
+    SpmatLocal &S, 
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
@@ -127,7 +128,7 @@ size_t FusedStandardKernel::sddmm_local(
 }
 
 size_t FusedStandardKernel::spmm_local(
-    spmat_local_t &S,
+    SpmatLocal &S,
     VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,

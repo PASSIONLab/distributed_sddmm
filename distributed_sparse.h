@@ -6,9 +6,11 @@
 #include <map>
 #include <cassert>
 
+#include <mpi.h>
 #include "sparse_kernels.h"
 #include "common.h"
-#include <mpi.h>
+#include "SpmatLocal.hpp"
+
 
 using namespace std;
 using namespace Eigen;
@@ -35,7 +37,7 @@ public:
     int localArows, localAcols, localBrows, localBcols;
 
     // Related to the sparse matrix
-    spmat_local_t S;
+    SpmatLocal S;
     VectorXd input_Svalues; // The values that sparse matrix S came with;
                             // when reading a file, this value is filled.
     int nnz_per_row;

@@ -14,6 +14,7 @@ using namespace std;
 // The random matrix is Erdos-Renyi with the specified number of nonzeros
 // per row. All parameters except the first two are output parameters
 
+/*
 void spmat_to_coord_arrays(PSpMat_s32p64_Int *G, spmat_local_t &output, VectorXd &Svalues) {
     // Everything after this point is just unpacking into a convenient format;
     // Also: should look into using the RowSplit(), colSplit() functions... 
@@ -43,9 +44,10 @@ void spmat_to_coord_arrays(PSpMat_s32p64_Int *G, spmat_local_t &output, VectorXd
         Svalues(i) = get<2>(values[i]); 
     }
 }
-
+*/
 
 // TODO: Add a parameter that can sort the nonzeros  
+/*
 void generateRandomMatrix(int logM, 
     int nnz_per_row,
     shared_ptr<CommGrid> layerGrid,
@@ -69,10 +71,13 @@ void generateRandomMatrix(int logM,
     delete DEL;
     delete G;
 }
+*/
 
 /*
  * Currently, this assumes one-based indexing. 
  */
+
+/*
 void loadMatrixFromFile(
     string &filename,
     shared_ptr<CommGrid> layerGrid,
@@ -85,6 +90,6 @@ void loadMatrixFromFile(
 
     delete G;
 }
-
+*/
 
 #endif
