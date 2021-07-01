@@ -30,13 +30,21 @@ public:
     int c; // # of layers 
 
     unique_ptr<CommGrid3D> grid;
-    vector<int64_t> blockStarts;
+    vector<uint64_t> blockStarts;
 
-    int rankInFiber, rankInLayer, shift; 
+    int rankInFiber, rankInLayer;
+
+    bool fused;
+
+    // This is only used for the fused algorithm
+    SpmatLocal ST;
+    vector<uint64_t> transposedBlockStarts; 
 
     // We can either read from a file or use the R-mat generator for testing purposes
-    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c) {
+    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
+
+        this->fused = fused;
 
         if(p % (c * c) != 0) {
             if(proc_rank == 0) {
@@ -66,6 +74,14 @@ public:
         localAcols = R;
         localBcols = R; 
 
+        SpmatLocal * tptr;
+        if(fused) {
+            tptr = &ST;
+        }
+        else {
+            tptr = nullptr;
+        }
+
         if(grid->GetRankInFiber() == 0) {
             SpmatLocal::loadMatrix(readFromFile,
                logM,
@@ -73,36 +89,31 @@ public:
                filename,
                grid->GetCommGridLayer(),
                &S,
-               nullptr 
+               tptr 
             );
         }
 
         S.broadcast_synchronize(grid->GetRankInFiber(), 0, grid->GetFiberWorld());
+
+        if(fused) {
+            ST.broadcast_synchronize(grid->GetRankInFiber(), 0, grid->GetFiberWorld());
+        }
+
         this->M = S.M;
         this->N = S.N;
 
-        localArows = divideAndRoundUp(S.nrows_local, c);
+        // TODO: Check the calculation of localArows! 
+        localArows = divideAndRoundUp(this->M, p);
         localBrows = divideAndRoundUp(this->N, p);
 
-        // Locate block starts within the local sparse matrix (i.e. divide a long
-        // block row into subtiles) 
-        int currentStart = 0;
-        for(int i = 0; i < S.local_nnz; i++) {
-            while(S.cCoords[i] >= currentStart) {
-                blockStarts.push_back(i);
-                currentStart += localBrows;
-            }
+	    S.divideIntoBlockCols(blockStarts, localBrows, p); 
 
-            // This modding step helps indexing. 
-            S.cCoords[i] %= localBrows;
-        }
-        while(blockStarts.size() < p + 1) {
-            blockStarts.push_back(S.local_nnz);
+        if(fused) {
+            ST.divideIntoBlockCols(transposedBlockStarts, localArows, p); 
         }
 
         rankInFiber = grid->GetRankInFiber();
         rankInLayer = grid->GetRankInLayer();
-        shift = rankInFiber * p / (c * c);
 
         A_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
         B_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
@@ -111,15 +122,15 @@ public:
     }
 
     // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D_MDense_Shift_Striped (int logM, int nnz_per_row, int R, int c, KernelImplementation* k)
+    Sparse15D_MDense_Shift_Striped (int logM, int nnz_per_row, int R, int c, KernelImplementation* k, bool fused)
         : Distributed_Sparse(k) {
-        constructor_helper(false, logM, nnz_per_row, "", R, c);
+        constructor_helper(false, logM, nnz_per_row, "", R, c, fused);
     }
 
     // Reads the underlying sparse matrix from a file
-    Sparse15D_MDense_Shift_Striped (string &filename, int R, int c, KernelImplementation* k) 
+    Sparse15D_MDense_Shift_Striped (string &filename, int R, int c, KernelImplementation* k, bool fused) 
         : Distributed_Sparse(k) {
-        constructor_helper(true, 0, -1, filename, R, c);
+        constructor_helper(true, 0, -1, filename, R, c, fused);
     }
 
     // Synchronizes data across three levels of the processor grid

@@ -93,7 +93,8 @@ public:
 			SpmatLocal* ST
 			) {
 		int proc_rank;
-		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);	
+		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+
 		PSpMat_s32p64_Int * G; 
 
 		if(! readFromFile) {
@@ -106,22 +107,63 @@ public:
 			PermEdges(*DEL);
 			RenameVertices(*DEL);	
 			G = new PSpMat_s32p64_Int(*DEL, false);
+
 			delete DEL;
+			int nnz = G->getnnz();
 
 			if(proc_rank == 0) {
-				cout << "R-mat generator created " << S->dist_nnz << " nonzeros." << endl;
+				cout << "R-mat generator created " << nnz << " nonzeros." << endl;
 			}
+
 		}
 		else {
 			PSpMat_s32p64_Int *G = new PSpMat_s32p64_Int(layerGrid);
 			G->ParallelReadMM(filename, true, maximum<double>());	
+
+			int nnz = G->getnnz();
+
 			if(proc_rank == 0) {
-				cout << "File reader read " << S->dist_nnz << " nonzeros." << endl;
+				cout << "File reader read " << nnz << " nonzeros." << endl;
 			}
 		}
 
 		S->initialize(G);
 
+		if(ST != nullptr) {
+			G->Transpose();
+			ST->initialize(G);
+		}
+
 		delete G;
 	}
+
+	/*
+	 * This method assumes the tuples are sorted in a column major order,
+	 * and it also changes the column coordinates 
+	 */
+	void divideIntoBlockCols(vector<uint64_t> &blockStarts,
+			int blockWidth, int targetDivisions) {
+
+        // Locate block starts within the local sparse matrix (i.e. divide a long
+        // block row into subtiles) 
+        int currentStart = 0;
+        for(uint64_t i = 0; i < local_nnz; i++) {
+            while(cCoords[i] >= currentStart) {
+                blockStarts.push_back(i);
+                currentStart += blockWidth;
+            }
+
+            // This modding step helps indexing. 
+            cCoords[i] %= blockWidth;
+        }
+
+		assert(blockStarts.size() <= targetDivisions + 1);
+
+        while(blockStarts.size() < targetDivisions + 1) {
+            blockStarts.push_back(local_nnz);
+        }
+
+	}
 };
+
+
