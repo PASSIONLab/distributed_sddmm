@@ -40,9 +40,6 @@ public:
     SpmatLocal ST;
     vector<uint64_t> transposedBlockStarts; 
 
-    // For the reduce-scatter operation
-    vector<int> recvCounts;
-
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
@@ -121,10 +118,6 @@ public:
         A_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
         B_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
 
-        for(int i = 0; i < c; i++) {
-            recvCounts.push_back(localArows * R);
-        }
-
         check_initialized();
     }
 
@@ -180,54 +173,41 @@ public:
     /*
      * This function does an auto-fusion of the SDDMM / SpMM kernels using
      * a temporary buffer. 
+     *
+     * One matrix plays the role of the ``A matrix", which is broadcast to
+     * the accumulation buffer,
+     * and the other plays the role of the B matrix, which is cyclic shifted. 
+     * The result is reduce-scattered in the same data distribution as
+     * the A-matrix role. 
      */
-    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, DenseMatrix &result, KernelMode mode) {
-        int recvRowSliceRows, recvRowSliceCols, accumBufferRows, accumBufferCols;
+    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, KernelMode mode) {
+        DenseMatrix *Arole, DenseMatrix *Brole;
 
         if(mode == k_spmmA) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
-            recvRowSliceRows = localB.rows();
-            recvRowSliceCols = localB.cols();
-            accumBufferRows = localA.rows() * c;
-            accumBufferCols = R;
+            Arole = &localA;
+            Brole = &localB;
         } 
         else {
             assert(localB.rows() == result.rows() && localB.cols() == result.cols());
-            recvRowSliceRows = localA.rows();
-            recvRowSliceCols = localA.cols();
-            accumBufferRows = localB.rows() * c;
-            accumBufferCols = R;
+            Arole = &localB;
+            Brole = &localA;
         }
 
         int nnz_processed = 0;
 
-        // Temporary buffer to hold the received portion of matrix B.
-        DenseMatrix recvRowSlice(recvRowSliceRows, recvRowSliceCols);
+        // Temporary buffer to hold the received portion of B-role matrix. 
+        DenseMatrix recvRowSlice(Brole->rows(), Brole->cols());
 
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
-		DenseMatrix broadcast_buffer = DenseMatrix::Constant(accumBufferRows, accumBufferCols, 0.0); 
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(accumBufferRows, accumBufferCols, 0.0); 
+		DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
 
-        for(int i = 0; i < c; i++) {
-            auto t = start_clock();
-            double* dst = accumulation_buffer.data() + accumBufferRows / c * i;
-
-            // TODO: There is definitely a cleaner way to write this
-            if(mode == k_spmmA) {
-                if(i == rankInFiber) {
-                    memcpy(dst, localA.data(), localA.size() * sizeof(double));
-                }
-                MPI_Bcast((void*) dst, localA.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
-            }
-            else {
-                if(i == rankInFiber) {
-                    memcpy(dst, localB.data(), localB.size() * sizeof(double));
-                }
-                MPI_Bcast((void*) dst, localB.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
-            }
-            stop_clock_and_add(t, "Dense Broadcast Time");
-        }
+        auto t = start_clock();
+        MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetFiberWorld());
+        stop_clock_and_add(t, "Dense Broadcast Time");
 
         // Temporary SDDMM buffer
         VectorXd sddmm_buffer = like_S_values(0.0);
@@ -236,29 +216,63 @@ public:
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
             auto t = start_clock();
+
             if(mode == k_spmmA) { 
+                kernel->sddmm_local(
+                    S,
+                    SValues,
+                    broadcast_buffer,
+                    localB,
+                    &sddmm_buffer,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+
                 nnz_processed += kernel->spmm_local(
                     S,
-                    S.Svalues,
+                    sddmm_buffer,
                     accumulation_buffer,
                     localB,
                     Amat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
+
             }
             else if(mode == k_spmmB) {
+                kernel->sddmm_local(
+                    S,
+                    SValues,
+                    localA,
+                    broadcast_buffer,
+                    &sddmm_buffer,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+
                 nnz_processed += kernel->spmm_local(
                     S,
-                    S.Svalues,
+                    sddmm_buffer,
+                    localA,
                     accumulation_buffer,
-                    localB,
                     Bmat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
+
             }
-            shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
+
+            shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));
             MPI_Barrier(MPI_COMM_WORLD);
         }
+
+        vector<int> recvCounts;
+        for(int i = 0; i < c; i++) {
+            recvCounts.push_back(Arole->rows() * R);
+        }
+
+        auto t = start_clock();
+        MPI_Reduce_scatter(accumulation_buffer.data(), 
+                Arole->data(), recvCounts.data(),
+                    MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+        stop_clock_and_add(t, "Dense Reduction Time");
+
     }
 
     /*
@@ -270,11 +284,7 @@ public:
                             VectorXd &SValues, 
                             VectorXd *sddmm_result_ptr, 
                             KernelMode mode
-                            ) {
-        MPI_Status stat;
-        MPI_Request send_request;
-        MPI_Request recv_request;
-    
+                            ) { 
         int nnz_processed = 0;
 
         // Temporary buffer to hold the received portion of matrix B.
@@ -335,6 +345,12 @@ public:
 
         if(mode == k_spmmA) {
             auto t = start_clock(); 
+
+            vector<int> recvCounts;
+            for(int i = 0; i < c; i++) {
+                recvCounts.push_back(localArows * R);
+            }
+
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
                        MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
