@@ -40,6 +40,9 @@ public:
     SpmatLocal ST;
     vector<uint64_t> transposedBlockStarts; 
 
+    // For the reduce-scatter operation
+    vector<int> recvCounts;
+
     // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
@@ -117,6 +120,10 @@ public:
 
         A_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
         B_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
+
+        for(int i = 0; i < c; i++) {
+            recvCounts.push_back(localArows * R);
+        }
 
         check_initialized();
     }
@@ -254,7 +261,6 @@ public:
             shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
             MPI_Barrier(MPI_COMM_WORLD);
         }
-
     }
 
     /*
@@ -325,21 +331,16 @@ public:
                     blockStarts[block_id + 1]);
             }
             stop_clock_and_add(t, "Computation Time"); 
-
             shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
-
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
         if(mode == k_spmmA) {
-            for(int i = 0; i < c; i++) {
-                auto t = start_clock();  
-                MPI_Reduce((void*) (accumulation_buffer.data() + localA.size() * i), 
-                        (void*) localA.data(), 
-                        localA.size(), MPI_DOUBLE, 
-                        MPI_SUM, i, grid->GetFiberWorld());
-                stop_clock_and_add(t, "Dense Reduction Time");
-            }
+            auto t = start_clock(); 
+            MPI_Reduce_scatter(accumulation_buffer.data(), 
+                    localA.data(), recvCounts.data(),
+                       MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+            stop_clock_and_add(t, "Dense Reduction Time");
         }
 
         int total_processed;
