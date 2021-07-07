@@ -281,15 +281,10 @@ public:
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localA.rows() * c, R, 0.0); 
 
         if(mode == k_spmmB || mode == k_sddmm) {
-            for(int i = 0; i < c; i++) {
-                auto t = start_clock();
-                double* dst = accumulation_buffer.data() + localA.size() * i;
-                if(i == rankInFiber) {
-                    memcpy(dst, localA.data(), localA.size() * sizeof(double));
-                }
-                MPI_Bcast((void*) dst, localA.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
-                stop_clock_and_add(t, "Dense Broadcast Time");
-            }
+            auto t = start_clock();
+            MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
+                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->GetFiberWorld());
+            stop_clock_and_add(t, "Dense Broadcast Time");
         }
 
         for(int i = 0; i < p / c; i++) {
