@@ -165,15 +165,13 @@ public:
 
     void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer, int dst) {
         MPI_Status stat;
-        MPI_Request send_request;
-        MPI_Request recv_request;
-
         auto t = start_clock();
-        MPI_Isend(mat.data(), mat.size(), MPI_DOUBLE, 
-                    pMod(rankInLayer + 1, p / c), 0, grid->GetLayerWorld(), &send_request);
-        MPI_Irecv(recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE, MPI_ANY_SOURCE, 0, grid->GetLayerWorld(), &recv_request);
-        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+
+        MPI_Sendrecv(mat.data(), mat.size(), MPI_DOUBLE,
+                pMod(rankInLayer + 1, p / c), 0,
+                recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
+                MPI_ANY_SOURCE, 0,
+                grid->GetLayerWorld(), &stat);
         stop_clock_and_add(t, "Cyclic Shift Time");
 
         mat = recvBuffer;
