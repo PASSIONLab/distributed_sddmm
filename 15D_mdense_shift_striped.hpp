@@ -156,6 +156,107 @@ public:
         stop_clock_and_add(t, "Sparse Allreduction Time");
     }
 
+    void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer, int dst) {
+        MPI_Status stat;
+        MPI_Request send_request;
+        MPI_Request recv_request;
+
+        auto t = start_clock();
+        MPI_Isend(mat.data(), mat.size(), MPI_DOUBLE, 
+                    pMod(rankInLayer + 1, p / c), 0, grid->GetLayerWorld(), &send_request);
+        MPI_Irecv(recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE, MPI_ANY_SOURCE, 0, grid->GetLayerWorld(), &recv_request);
+        MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
+        MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
+        stop_clock_and_add(t, "Cyclic Shift Time");
+
+        mat = recvBuffer;
+    }
+
+    /*
+     * This function does an auto-fusion of the SDDMM / SpMM kernels using
+     * a temporary buffer. 
+     */
+    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, DenseMatrix &result, KernelMode mode) {
+        int recvRowSliceRows, recvRowSliceCols, accumBufferRows, accumBufferCols;
+
+        if(mode == k_spmmA) {
+            assert(localA.rows() == result.rows() && localA.cols() == result.cols());
+            recvRowSliceRows = localB.rows();
+            recvRowSliceCols = localB.cols();
+            accumBufferRows = localA.rows() * c;
+            accumBufferCols = R;
+        } 
+        else {
+            assert(localB.rows() == result.rows() && localB.cols() == result.cols());
+            recvRowSliceRows = localA.rows();
+            recvRowSliceCols = localA.cols();
+            accumBufferRows = localB.rows() * c;
+            accumBufferCols = R;
+        }
+
+        int nnz_processed = 0;
+
+        // Temporary buffer to hold the received portion of matrix B.
+        DenseMatrix recvRowSlice(recvRowSliceRows, recvRowSliceCols);
+
+		// Temporary buffer that holds the results of the local ops; this buffer
+		// is sharded and then reduced to local portions of the
+		DenseMatrix broadcast_buffer = DenseMatrix::Constant(accumBufferRows, accumBufferCols, 0.0); 
+		DenseMatrix accumulation_buffer = DenseMatrix::Constant(accumBufferRows, accumBufferCols, 0.0); 
+
+        for(int i = 0; i < c; i++) {
+            auto t = start_clock();
+            double* dst = accumulation_buffer.data() + accumBufferRows / c * i;
+
+            // TODO: There is definitely a cleaner way to write this
+            if(mode == k_spmmA) {
+                if(i == rankInFiber) {
+                    memcpy(dst, localA.data(), localA.size() * sizeof(double));
+                }
+                MPI_Bcast((void*) dst, localA.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
+            }
+            else {
+                if(i == rankInFiber) {
+                    memcpy(dst, localB.data(), localB.size() * sizeof(double));
+                }
+                MPI_Bcast((void*) dst, localB.size(), MPI_DOUBLE, i, grid->GetFiberWorld()); 
+            }
+            stop_clock_and_add(t, "Dense Broadcast Time");
+        }
+
+        // Temporary SDDMM buffer
+        VectorXd sddmm_buffer = like_S_values(0.0);
+
+        for(int i = 0; i < p / c; i++) {
+            int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
+
+            auto t = start_clock();
+            if(mode == k_spmmA) { 
+                nnz_processed += kernel->spmm_local(
+                    S,
+                    S.Svalues,
+                    accumulation_buffer,
+                    localB,
+                    Amat,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+            }
+            else if(mode == k_spmmB) {
+                nnz_processed += kernel->spmm_local(
+                    S,
+                    S.Svalues,
+                    accumulation_buffer,
+                    localB,
+                    Bmat,
+                    blockStarts[block_id],
+                    blockStarts[block_id + 1]);
+            }
+            shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
+            MPI_Barrier(MPI_COMM_WORLD);
+        }
+
+    }
+
     /*
      * Set the mode to take an SDDMM, SpMM with A as the output matrix, or 
      * SpMM with B as the output matrix. 
@@ -190,8 +291,6 @@ public:
                 stop_clock_and_add(t, "Dense Broadcast Time");
             }
         }
-
-        DenseMatrix test = localB;
 
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
@@ -230,18 +329,10 @@ public:
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
             }
+            stop_clock_and_add(t, "Computation Time"); 
 
-            stop_clock_and_add(t, "Computation Time");
+            shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
 
-            t = start_clock();
-            MPI_Isend(localB.data(), localB.rows() * localB.cols(), MPI_DOUBLE, 
-                        pMod(rankInLayer + 1, p / c), 0, grid->GetLayerWorld(), &send_request);
-            MPI_Irecv(recvRowSlice.data(), recvRowSlice.rows() * recvRowSlice.cols(), MPI_DOUBLE, MPI_ANY_SOURCE, 0, grid->GetLayerWorld(), &recv_request);
-            MPI_Wait(&send_request, MPI_STATUS_IGNORE); 
-            MPI_Wait(&recv_request, MPI_STATUS_IGNORE);
-            stop_clock_and_add(t, "Cyclic Shift Time");
-
-            localB = recvRowSlice;
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
