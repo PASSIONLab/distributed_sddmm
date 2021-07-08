@@ -26,13 +26,15 @@ int main(int argc, char** argv) {
                 atoi(argv[3]), 
                 atoi(argv[4]), 
                 &local_ops, 
-                true);
+                true,
+                true 
+                );
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true, false);
+    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
 
     //Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true, false);
 

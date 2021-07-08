@@ -106,7 +106,7 @@ void initialize_dense_matrix(DenseMatrix &X, int R) {
     X /= R;
 }
 
-Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artificial_groundtruth, bool fused_kernel) {
+Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artificial_groundtruth) {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
     this->residual_reduction_world = residual_reduction_world;
@@ -114,8 +114,6 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
     this->B_R_split_world = d_ops->B_R_split_world;
 
     this->d_ops = d_ops;
-    this->fused_kernel = fused_kernel;
-
 
     if(artificial_groundtruth) {
         DenseMatrix Agt = d_ops->like_A_matrix(0.0);
@@ -132,7 +130,7 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         d_ops->sddmm(Agt, Bgt, ones, ground_truth);
     }
     else {
-        ground_truth = d_ops->input_Svalues;
+        ground_truth = d_ops->input_Svalues; // TODO: Fix this! 
         d_ops->initial_synchronize(nullptr, nullptr, &ground_truth);
     }
 }
@@ -200,25 +198,31 @@ void Distributed_ALS::computeQueries(
     result.setZero();
 
     VectorXd sddmm_result;
+    VectorXd ones = d_ops->like_S_values(1.0);
 
-    if(! fused_kernel) {
+    if(! d_ops->fused) {
         sddmm_result = d_ops->like_S_values(0.0);
-        VectorXd ones = d_ops->like_S_values(1.0);
         d_ops->sddmm(A, B, ones, sddmm_result);
+
+        if(matrix_to_optimize == Amat) {
+            d_ops->spmmA(result, B, sddmm_result);
+            result += lambda * A;
+        }
+        else if(matrix_to_optimize == Bmat) {
+            d_ops->spmmB(A, result, sddmm_result);
+            result += lambda * B;
+        }
     }
     else {
         // If the local operation implements a fused kernel,
         // there is no need to do an SDDMM first 
-        sddmm_result = d_ops->like_S_values(1.0); 
-    }
-
-    if(matrix_to_optimize == Amat) {
-        d_ops->spmmA(result, B, sddmm_result);
-        result += lambda * A;
-    }
-    else if(matrix_to_optimize == Bmat) {
-        d_ops->spmmB(A, result, sddmm_result);
-        result += lambda * B;
+        d_ops->fusedSpMM(A, B, ones, result, matrix_to_optimize);
+        if(matrix_to_optimize == Amat) {
+            result += lambda * A;
+        }
+        else if(matrix_to_optimize == Bmat) { 
+            result += lambda * B;
+        }
     }
 }
 

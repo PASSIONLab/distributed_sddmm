@@ -54,6 +54,7 @@ public:
     MPI_Comm A_R_split_world, B_R_split_world;
 
     bool verbose;
+    bool fused;
 
     /*
      * Some boilerplate, but also forces subclasses to initialize what they need to 
@@ -62,6 +63,7 @@ public:
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &p);
         verbose = false;
+        fused = false;
 
         kernel = k;
 
@@ -184,6 +186,11 @@ public:
         if(proc_rank == 0) {
             cout << "=================================" << endl;
         } 
+    }
+
+    virtual void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, MatMode mode) {
+        cout << "Error, only 1.5D algorithms that shift dense matrices support fused SDDMM / SpMM!" << endl; 
+        exit(1); 
     }
 
     virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;

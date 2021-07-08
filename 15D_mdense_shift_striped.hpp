@@ -34,17 +34,18 @@ public:
 
     int rankInFiber, rankInLayer;
 
-    bool fused;
+    bool auto_fusion;
 
     // This is only used for the fused algorithm
     SpmatLocal ST;
     vector<uint64_t> transposedBlockStarts; 
 
     // We can either read from a file or use the R-mat generator for testing purposes
-    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused) {
+    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused, bool auto_fusion) {
         // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
 
         this->fused = fused;
+        this->auto_fusion = auto_fusion;
 
         if(p % (c * c) != 0) {
             if(proc_rank == 0) {
@@ -122,15 +123,15 @@ public:
     }
 
     // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D_MDense_Shift_Striped (int logM, int nnz_per_row, int R, int c, KernelImplementation* k, bool fused)
+    Sparse15D_MDense_Shift_Striped (int logM, int nnz_per_row, int R, int c, KernelImplementation* k, bool fused, bool auto_fusion)
         : Distributed_Sparse(k) {
-        constructor_helper(false, logM, nnz_per_row, "", R, c, fused);
+        constructor_helper(false, logM, nnz_per_row, "", R, c, fused, auto_fusion);
     }
 
     // Reads the underlying sparse matrix from a file
-    Sparse15D_MDense_Shift_Striped (string &filename, int R, int c, KernelImplementation* k, bool fused) 
+    Sparse15D_MDense_Shift_Striped (string &filename, int R, int c, KernelImplementation* k, bool fused, bool auto_fusion) 
         : Distributed_Sparse(k) {
-        constructor_helper(true, 0, -1, filename, R, c, fused);
+        constructor_helper(true, 0, -1, filename, R, c, fused, auto_fusion);
     }
 
     // Synchronizes data across three levels of the processor grid
@@ -180,18 +181,21 @@ public:
      * The result is reduce-scattered in the same data distribution as
      * the A-matrix role. 
      */
-    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, KernelMode mode) {
-        DenseMatrix *Arole, DenseMatrix *Brole;
+    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, MatMode mode) {
+        DenseMatrix *Arole, *Brole;
 
-        if(mode == k_spmmA) {
+        if(mode == Amat) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
             Arole = &localA;
             Brole = &localB;
         } 
-        else {
+        else if(mode == Bmat) {
             assert(localB.rows() == result.rows() && localB.cols() == result.cols());
             Arole = &localB;
             Brole = &localA;
+        }
+        else {
+            assert(false);
         }
 
         int nnz_processed = 0;
@@ -209,7 +213,7 @@ public:
                         broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetFiberWorld());
         stop_clock_and_add(t, "Dense Broadcast Time");
 
-        // Temporary SDDMM buffer
+        // Temporary SDDMM buffer, since we're doing auto-fusion
         VectorXd sddmm_buffer = like_S_values(0.0);
 
         for(int i = 0; i < p / c; i++) {
@@ -217,13 +221,13 @@ public:
 
             auto t = start_clock();
 
-            if(mode == k_spmmA) { 
+            if(mode == Amat) { 
                 kernel->sddmm_local(
                     S,
-                    SValues,
+                    Svalues,
                     broadcast_buffer,
                     localB,
-                    &sddmm_buffer,
+                    sddmm_buffer,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
 
@@ -237,25 +241,24 @@ public:
                     blockStarts[block_id + 1]);
 
             }
-            else if(mode == k_spmmB) {
+            else if(mode == Bmat) {
                 kernel->sddmm_local(
-                    S,
-                    SValues,
+                    ST,
+                    Svalues,
                     localA,
                     broadcast_buffer,
-                    &sddmm_buffer,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    sddmm_buffer,
+                    transposedBlockStarts[block_id],
+                    transposedBlockStarts[block_id + 1]);
 
                 nnz_processed += kernel->spmm_local(
-                    S,
+                    ST,
                     sddmm_buffer,
                     localA,
                     accumulation_buffer,
                     Bmat,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
-
+                    transposedBlockStarts[block_id],
+                    transposedBlockStarts[block_id + 1]);
             }
 
             shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));
@@ -267,12 +270,11 @@ public:
             recvCounts.push_back(Arole->rows() * R);
         }
 
-        auto t = start_clock();
+        t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 Arole->data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
         stop_clock_and_add(t, "Dense Reduction Time");
-
     }
 
     /*

@@ -31,7 +31,6 @@ public:
 
     MPI_Comm residual_reduction_world;
 
-
     int proc_rank;
 
     virtual void computeRHS(MatMode matrix_to_optimize,
@@ -61,9 +60,8 @@ class Distributed_ALS : public ALS_CG {
 public:
     Distributed_Sparse* d_ops;
     VectorXd ground_truth;
-    bool fused_kernel;
 
-    Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artifical_groundtruth, bool fused_kernel);
+    Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artifical_groundtruth);
 
     void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs);
