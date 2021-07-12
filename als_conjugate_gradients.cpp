@@ -200,7 +200,8 @@ void Distributed_ALS::computeQueries(
     VectorXd sddmm_result;
     VectorXd ones = d_ops->like_S_values(1.0);
 
-    if(! d_ops->fused) {
+    //if(! d_ops->fused) {
+    if(true) {
         sddmm_result = d_ops->like_S_values(0.0);
         d_ops->sddmm(A, B, ones, sddmm_result);
 

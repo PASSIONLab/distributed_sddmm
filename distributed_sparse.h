@@ -110,7 +110,6 @@ public:
         } 
         cout << endl;
 
-
         cout << "Grid Dimensions : ";
         for(int i = 0; i < proc_grid_dimensions.size(); i++) {
             cout << proc_grid_dimensions[i];
