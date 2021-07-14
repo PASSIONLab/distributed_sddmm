@@ -43,7 +43,6 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
 
     d_ops->fusedSpMM(A, B, Svalues, Sbuffer, dummy_resultA, Amat);
     d_ops->fusedSpMM(A, B, STvalues, STbuffer, dummy_resultB, Bmat);
-    d_ops->fusedSpMM(A, B, STvalues, STbuffer, dummy_resultB, Bmat);
     d_ops->sddmm(A, B, Svalues, standard_result); 
 
     double sqnorm; 
