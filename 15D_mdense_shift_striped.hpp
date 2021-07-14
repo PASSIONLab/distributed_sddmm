@@ -276,7 +276,7 @@ public:
 
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
-                Arole->data(), recvCounts.data(),
+                result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
         stop_clock_and_add(t, "Dense Reduction Time");
     }
