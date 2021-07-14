@@ -187,6 +187,7 @@ public:
      * the A-matrix role. 
      */
     void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
+        assert(this->fused); 
         DenseMatrix *Arole, *Brole;
 
         if(mode == Amat) {
@@ -227,8 +228,8 @@ public:
                 kernel->sddmm_local(
                     S,
                     Svalues,
-                    localB,
                     broadcast_buffer,
+                    *Brole,
                     sddmm_buffer,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -236,31 +237,32 @@ public:
                 nnz_processed += kernel->spmm_local(
                     S,
                     sddmm_buffer,
-                    localB,
                     accumulation_buffer,
-                    Amat,
+                    *Brole,
+                    mode,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
-
             }
+
             else if(mode == Bmat) {
                 kernel->sddmm_local(
                     ST,
                     Svalues,
-                    localA,
                     broadcast_buffer,
+                    *Brole,
                     sddmm_buffer,
                     transposedBlockStarts[block_id],
                     transposedBlockStarts[block_id + 1]);
 
+                /*
                 nnz_processed += kernel->spmm_local(
                     ST,
                     sddmm_buffer,
-                    localA,
                     accumulation_buffer,
+                    *Brole,
                     Bmat,
                     transposedBlockStarts[block_id],
-                    transposedBlockStarts[block_id + 1]);
+                    transposedBlockStarts[block_id + 1]);*/
             }
 
             shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));

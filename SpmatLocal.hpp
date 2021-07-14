@@ -143,13 +143,12 @@ public:
 		}
 	}
 
-	VectorXd sparseTranspose(VectorXd &Svalues) {
-		//G->Transpose();
+	/*VectorXd sparseTranspose(VectorXd &Svalues) {
+		TODO: Need to implement this!!!
+		G->Transpose();
 
-		// TODO: Need to implement this!!!
-
 		//G->Transpose();
-	}
+	}*/
 
 	/*
 	 * This method assumes the tuples are sorted in a column major order,

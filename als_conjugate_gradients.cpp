@@ -166,7 +166,6 @@ void Distributed_ALS::initializeEmbeddings() {
     d_ops->initial_synchronize(&A, &B, nullptr);
 }
 
-
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
 
