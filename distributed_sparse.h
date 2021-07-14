@@ -192,6 +192,11 @@ public:
         exit(1); 
     }
 
+    virtual VectorXd like_ST_values(double value) {
+        cout << "Error, only 1.5D algorithms that shift dense matrices support this method!" << endl; 
+        exit(1); 
+    }
+
     virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;
     virtual void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
     virtual void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;

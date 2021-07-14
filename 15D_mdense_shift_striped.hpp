@@ -171,9 +171,14 @@ public:
         mat = recvBuffer;
     }
 
+    VectorXd like_ST_values(double value) {
+        return VectorXd::Constant(ST.local_nnz, value); 
+    }
+
     /*
      * This function does an auto-fusion of the SDDMM / SpMM kernels using
-     * a temporary buffer. 
+     * a temporary buffer (needs to be supplied, since this function does)
+     * auto-fusion.
      *
      * One matrix plays the role of the ``A matrix", which is broadcast to
      * the accumulation buffer,
@@ -181,7 +186,7 @@ public:
      * The result is reduce-scattered in the same data distribution as
      * the A-matrix role. 
      */
-    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, MatMode mode) {
+    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
         DenseMatrix *Arole, *Brole;
 
         if(mode == Amat) {
@@ -213,9 +218,6 @@ public:
                         broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetFiberWorld());
         stop_clock_and_add(t, "Dense Broadcast Time");
 
-        // Temporary SDDMM buffer, since we're doing auto-fusion
-        VectorXd sddmm_buffer = like_S_values(0.0);
-
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
@@ -225,8 +227,8 @@ public:
                 kernel->sddmm_local(
                     S,
                     Svalues,
-                    broadcast_buffer,
                     localB,
+                    broadcast_buffer,
                     sddmm_buffer,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
@@ -234,8 +236,8 @@ public:
                 nnz_processed += kernel->spmm_local(
                     S,
                     sddmm_buffer,
-                    accumulation_buffer,
                     localB,
+                    accumulation_buffer,
                     Amat,
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);

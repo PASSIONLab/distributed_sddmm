@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include "common.h"
 #include "CombBLAS/CombBLAS.h"
 
@@ -15,6 +16,8 @@ public:
     vector<uint64_t> rCoords;
     vector<uint64_t> cCoords;
 	VectorXd Svalues;
+
+	shared_ptr<PSpMat_s32p64_Int> G;
 
     uint64_t local_nnz;
     uint64_t dist_nnz;
@@ -32,6 +35,8 @@ public:
 	}
 
 	void initialize(PSpMat_s32p64_Int *G) {	
+		(this->G).reset(G);
+
 		dist_nnz = G->getnnz();
 		local_nnz = G->seq().getnnz();
 		nrows_local = G->seq().getnrow();
@@ -132,9 +137,18 @@ public:
 		if(ST != nullptr) {
 			G->Transpose();
 			ST->initialize(G);
-		}
 
-		delete G;
+			// These multiple sparse transposes are inefficient, I should fix that... 
+			G->Transpose();
+		}
+	}
+
+	VectorXd sparseTranspose(VectorXd &Svalues) {
+		//G->Transpose();
+
+		// TODO: Need to implement this!!!
+
+		//G->Transpose();
 	}
 
 	/*
@@ -162,8 +176,12 @@ public:
         while(blockStarts.size() < targetDivisions + 1) {
             blockStarts.push_back(local_nnz);
         }
-
 	}
+
+	/*
+	 * This is a really junk method written just for convenience - it transposes
+	 * the values of the sparse matrix handed to it.
+	 */
 };
 
 
