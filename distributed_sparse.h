@@ -187,7 +187,7 @@ public:
         } 
     }
 
-    virtual void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, DenseMatrix &result, MatMode mode) {
+    virtual void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) { 
         cout << "Error, only 1.5D algorithms that shift dense matrices support fused SDDMM / SpMM!" << endl; 
         exit(1); 
     }

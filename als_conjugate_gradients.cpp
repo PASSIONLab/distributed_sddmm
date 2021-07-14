@@ -217,7 +217,7 @@ void Distributed_ALS::computeQueries(
     else {
         // If the local operation implements a fused kernel,
         // there is no need to do an SDDMM first 
-        d_ops->fusedSpMM(A, B, ones, result, matrix_to_optimize);
+        d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
         if(matrix_to_optimize == Amat) {
             result += lambda * A;
         }

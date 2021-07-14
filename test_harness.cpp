@@ -9,6 +9,10 @@
 
 using namespace std;
 
+void testFusion() {
+    cout << "Testing fused SDDMM / SpMM Correctness" << endl;
+}
+
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     string fname(argv[1]);
@@ -26,9 +30,9 @@ int main(int argc, char** argv) {
                 atoi(argv[3]), 
                 atoi(argv[4]), 
                 &local_ops, 
-                true,
-                true 
-                );
+                false, // Whether we should support fusing SDDMM / SpMM
+                false  // Whether we should auto-fuse the provided operation, or rely on
+                );     // the backend local operation to do it for us
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
