@@ -12,7 +12,6 @@
 #include "CombBLAS/CombBLAS.h"
 #include "sparse_kernels.h"
 #include "common.h"
-#include "io_utils.h"
 #include "als_conjugate_gradients.h"
 #include "distributed_sparse.h"
 
@@ -245,7 +244,7 @@ public:
             }
 
             else if(mode == Bmat) {
-                kernel->sddmm_local(
+                nnz_processed += kernel->sddmm_local(
                     ST,
                     Svalues,
                     broadcast_buffer,
@@ -253,7 +252,6 @@ public:
                     sddmm_buffer,
                     transposedBlockStarts[block_id],
                     transposedBlockStarts[block_id + 1]);
-
                 /*
                 nnz_processed += kernel->spmm_local(
                     ST,
@@ -279,6 +277,14 @@ public:
                 result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
         stop_clock_and_add(t, "Dense Reduction Time");
+
+        int total_processed;
+        MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
+                MPI_SUM, 0, MPI_COMM_WORLD);
+
+        if(proc_rank == 0) {
+            cout << "Total processed: " << total_processed << endl;
+        }
     }
 
     /*
