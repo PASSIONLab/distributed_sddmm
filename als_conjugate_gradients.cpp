@@ -202,7 +202,9 @@ void Distributed_ALS::computeQueries(
     //if(! d_ops->fused) {
     if(true) {
         sddmm_result = d_ops->like_S_values(0.0);
+
         d_ops->sddmm(A, B, ones, sddmm_result);
+
 
         if(matrix_to_optimize == Amat) {
             d_ops->spmmA(result, B, sddmm_result);

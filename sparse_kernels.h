@@ -20,8 +20,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         VectorXd &result,
-        int start,
-        int end) = 0;
+        uint64_t start,
+        uint64_t end) = 0;
 
     /*
     * S is m x n
@@ -37,8 +37,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
-        int start,
-        int end) = 0;
+        uint64_t start,
+        uint64_t end) = 0;
 };
 
 /*
@@ -52,8 +52,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         VectorXd &result,
-        int start,
-        int end);
+        uint64_t start,
+        uint64_t end);
 
     size_t spmm_local(
         SpmatLocal &S,
@@ -61,8 +61,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
-        int start,
-        int end);
+        uint64_t start,
+        uint64_t end);
 };
 
 /*
@@ -77,8 +77,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         VectorXd &result,
-        int start,
-        int end);
+        uint64_t start,
+        uint64_t end);
 
     size_t spmm_local(
         SpmatLocal &S,
@@ -86,8 +86,8 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
-        int start,
-        int end);
+        uint64_t start,
+        uint64_t end);
 };
 
 typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;

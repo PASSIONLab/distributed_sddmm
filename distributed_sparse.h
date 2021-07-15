@@ -56,6 +56,8 @@ public:
     bool verbose;
     bool fused;
 
+    string debug_msg;
+
     /*
      * Some boilerplate, but also forces subclasses to initialize what they need to 
      */

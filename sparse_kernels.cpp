@@ -43,8 +43,8 @@ size_t StandardKernel::sddmm_local(
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd& result,
-    int start,
-    int end) {
+    uint64_t start,
+    uint64_t end) {
 
     size_t processed = 0;
 
@@ -69,8 +69,8 @@ size_t StandardKernel::spmm_local(
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,
-    int start,
-    int end) {
+    uint64_t start,
+    uint64_t end) {
 
     size_t processed = 0;
 
@@ -106,8 +106,8 @@ size_t FusedStandardKernel::sddmm_local(
     DenseMatrix &A,
     DenseMatrix &B,
     VectorXd& result,
-    int start,
-    int end) {
+    uint64_t start,
+    uint64_t end) {
 
     // Does the same operation as the standard kernel
     size_t processed = 0;
@@ -133,8 +133,8 @@ size_t FusedStandardKernel::spmm_local(
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,
-    int start,
-    int end) {
+    uint64_t start,
+    uint64_t end) {
 
     size_t processed = 0;
 

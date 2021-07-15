@@ -103,8 +103,8 @@ public:
         this->N = S.N;
 
         // TODO: Check the calculation of localArows! 
-        localArows = divideAndRoundUp(this->M, p);
-        localBrows = divideAndRoundUp(this->N, p);
+        localArows = divideAndRoundUp(this->M, p) + p;
+        localBrows = divideAndRoundUp(this->N, p) + p;
 
 	    S.divideIntoBlockCols(blockStarts, localBrows, p); 
 
@@ -316,10 +316,11 @@ public:
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
-            assert(blockStarts[block_id] < S.local_nnz);
+            assert(blockStarts[block_id] <= S.local_nnz);
             assert(blockStarts[block_id + 1] <= S.local_nnz);
 
             auto t = start_clock();
+
             if(mode == k_sddmm) {
                 nnz_processed += kernel->sddmm_local(
                     S,
@@ -350,6 +351,7 @@ public:
                     blockStarts[block_id],
                     blockStarts[block_id + 1]);
             }
+
             stop_clock_and_add(t, "Computation Time"); 
             shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
             MPI_Barrier(MPI_COMM_WORLD);

@@ -122,7 +122,7 @@ public:
 
 		}
 		else {
-			PSpMat_s32p64_Int *G = new PSpMat_s32p64_Int(layerGrid);
+			G = new PSpMat_s32p64_Int(layerGrid);
 			G->ParallelReadMM(filename, true, maximum<double>());	
 
 			int nnz = G->getnnz();
@@ -132,15 +132,7 @@ public:
 			}
 		}
 
-		S->initialize(G);
-
-		if(ST != nullptr) {
-			G->Transpose();
-			ST->initialize(G);
-
-			// These multiple sparse transposes are inefficient, I should fix that... 
-			G->Transpose();
-		}
+		S->initialize(G);	
 	}
 
 	/*VectorXd sparseTranspose(VectorXd &Svalues) {
