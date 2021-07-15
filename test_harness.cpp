@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
     Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
 
     d_ops->reset_performance_timers();
-    x->run_cg(1);
+    x->run_cg(5);
     d_ops->print_performance_statistics();
 
     MPI_Finalize();
