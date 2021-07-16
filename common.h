@@ -17,15 +17,20 @@ typedef chrono::time_point<std::chrono::steady_clock> my_timer_t;
 my_timer_t start_clock();
 double stop_clock_get_elapsed(my_timer_t &start);
 
-/*
- * I am aware that CombBLAS defines its own type for this, so I think this
- * is redundant. Might redefine / eliminate this type later... 
- */ 
-
 typedef enum {Amat, Bmat} MatMode;
 
 int pMod(int num, int denom);
 
 int divideAndRoundUp(int num, int denom);
+
+struct spcoord_t {
+	uint64_t r;
+	uint64_t c;
+	double val;
+};
+
+extern MPI_Datatype SPCOORD;
+
+void initialize_mpi_datatypes();
 
 #endif

@@ -1,6 +1,7 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
 #include "15D_mdense_shift_striped.hpp"
+#include "SpmatLocal.hpp"
 //#include "25D_mdense_nostage.hpp"
 
 #include "sparse_kernels.h"
@@ -115,6 +116,8 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
+    initialize_mpi_datatypes();
+
     string fname(argv[1]);
 
     StandardKernel local_ops;

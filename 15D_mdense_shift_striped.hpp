@@ -29,7 +29,6 @@ public:
     int c; // # of layers 
 
     unique_ptr<CommGrid3D> grid;
-    vector<uint64_t> blockStarts;
 
     int rankInFiber, rankInLayer;
 
@@ -88,8 +87,7 @@ public:
                nnz_per_row,
                filename,
                grid->GetCommGridLayer(),
-               &S,
-               tptr 
+               &S
             );
         }
 
@@ -106,10 +104,10 @@ public:
         localArows = divideAndRoundUp(this->M, p) + p;
         localBrows = divideAndRoundUp(this->N, p) + p;
 
-	    S.divideIntoBlockCols(blockStarts, localBrows, p); 
+	    S.divideIntoBlockCols(localBrows, p); 
 
         if(fused) {
-            ST.divideIntoBlockCols(transposedBlockStarts, localArows, p); 
+            ST.divideIntoBlockCols(localArows, p); 
         }
 
         rankInFiber = grid->GetRankInFiber();
@@ -230,8 +228,8 @@ public:
                     broadcast_buffer,
                     *Brole,
                     sddmm_buffer,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
 
                 nnz_processed += kernel->spmm_local(
                     S,
@@ -239,8 +237,8 @@ public:
                     accumulation_buffer,
                     *Brole,
                     mode,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
             }
 
             else if(mode == Bmat) {
@@ -316,8 +314,8 @@ public:
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
-            assert(blockStarts[block_id] <= S.local_nnz);
-            assert(blockStarts[block_id + 1] <= S.local_nnz);
+            assert(S.blockStarts[block_id] <= S.local_nnz);
+            assert(S.blockStarts[block_id + 1] <= S.local_nnz);
 
             auto t = start_clock();
 
@@ -328,8 +326,8 @@ public:
                     accumulation_buffer,
                     localB,
                     *sddmm_result_ptr,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
             }
             else if(mode == k_spmmA) { 
                 nnz_processed += kernel->spmm_local(
@@ -338,8 +336,8 @@ public:
                     accumulation_buffer,
                     localB,
                     Amat,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
             }
             else if(mode == k_spmmB) {
                 nnz_processed += kernel->spmm_local(
@@ -348,8 +346,8 @@ public:
                     accumulation_buffer,
                     localB,
                     Bmat,
-                    blockStarts[block_id],
-                    blockStarts[block_id + 1]);
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
             }
 
             stop_clock_and_add(t, "Computation Time"); 

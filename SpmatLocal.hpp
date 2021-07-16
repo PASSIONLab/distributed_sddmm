@@ -12,10 +12,12 @@ using namespace std;
 class SpmatLocal {
 public:
 	// This is redundant, but it makes coding more convenient.
-	// These are unzipped versions 
+	// These are unzipped versions of the sparse matrix G. 
     vector<uint64_t> rCoords;
     vector<uint64_t> cCoords;
 	VectorXd Svalues;
+
+    vector<uint64_t> blockStarts;
 
 	shared_ptr<PSpMat_s32p64_Int> G;
 
@@ -28,7 +30,7 @@ public:
     uint64_t M;
     uint64_t N;
 
-	bool initialized;	
+	bool initialized;
 
 	SpmatLocal() {
 		initialized = false;
@@ -94,8 +96,7 @@ public:
 			int nnz_per_row,
 			string filename,
 			shared_ptr<CommGrid> layerGrid,
-			SpmatLocal* S,
-			SpmatLocal* ST
+			SpmatLocal* S
 			) {
 		int proc_rank;
 		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
@@ -135,20 +136,11 @@ public:
 		S->initialize(G);	
 	}
 
-	/*VectorXd sparseTranspose(VectorXd &Svalues) {
-		TODO: Need to implement this!!!
-		G->Transpose();
-
-		//G->Transpose();
-	}*/
-
 	/*
 	 * This method assumes the tuples are sorted in a column major order,
 	 * and it also changes the column coordinates 
 	 */
-	void divideIntoBlockCols(vector<uint64_t> &blockStarts,
-			int blockWidth, int targetDivisions) {
-
+	void divideIntoBlockCols(int blockWidth, int targetDivisions) {
         // Locate block starts within the local sparse matrix (i.e. divide a long
         // block row into subtiles) 
         int currentStart = 0;
@@ -170,9 +162,13 @@ public:
 	}
 
 	/*
-	 * This is a really junk method written just for convenience - it transposes
-	 * the values of the sparse matrix handed to it.
+	 * Sets up the coordinates and the permutation for a sparse transpose
 	 */
+	SpmatLocal* transpose() {
+		// TODO: Fill this in!
+		return nullptr;	
+	}
+
 };
 
 
