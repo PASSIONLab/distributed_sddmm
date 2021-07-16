@@ -12,9 +12,8 @@ using namespace std;
 class SpmatLocal {
 public:
 	// This is redundant, but it makes coding more convenient.
-	// These are unzipped versions of the sparse matrix G. 
-    vector<uint64_t> rCoords;
-    vector<uint64_t> cCoords;
+	// These are unzipped versions of the sparse matrix G.
+	vector<spcoord_t> coords;	
 	VectorXd Svalues;
 
     vector<uint64_t> blockStarts;
@@ -47,12 +46,10 @@ public:
 		M = G->getnrow();
 		N = G->getncol();
 
-		new (&rCoords) vector<int64_t>; 
-		new (&cCoords) vector<int64_t>; 
+		new (&coords) vector<spcoord_t>; 
 		new (&Svalues) VectorXd(local_nnz);
 
-		rCoords.resize(local_nnz);
-		cCoords.resize(local_nnz);
+		coords.resize(local_nnz);
 
 		SpTuples<int64_t,int> tups(G->seq()); 
 		tups.SortColBased();
@@ -60,15 +57,16 @@ public:
 		tuple<int64_t, int64_t, int>* values = tups.tuples;
 		
 		for(int i = 0; i < tups.getnnz(); i++) {
-			rCoords[i] = get<0>(values[i]);
-			cCoords[i] = get<1>(values[i]); 
+			coords[i].r = get<0>(values[i]);
+			coords[i].c = get<1>(values[i]); 
 			Svalues(i) = get<2>(values[i]); 
 		}
 		initialized=true;
 	}
 
 	/*
-	 * Replicates sparse matrix values and indices across layers
+	 * Replicates sparse matrix values and indices across layers. TODO: Should
+	 * change this to shard the matrix across layers instead!
 	 */
 	void broadcast_synchronize(int rankInWorld, int rootInWorld, MPI_Comm world) {	
         MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
@@ -80,13 +78,11 @@ public:
         MPI_Bcast(&N, 1, MPI_UINT64_T, 0, world);
 
 		if(rankInWorld != rootInWorld) {
-			rCoords.resize(local_nnz);
-			cCoords.resize(local_nnz);
+			coords.resize(local_nnz);
 			Svalues.resize(local_nnz);
 		}
  
-        MPI_Bcast(rCoords.data(), local_nnz, MPI_UINT64_T, 0, world);
-        MPI_Bcast(cCoords.data(), local_nnz, MPI_UINT64_T, 0, world);
+        MPI_Bcast(coords.data(), local_nnz, SPCOORD, 0, world);
         MPI_Bcast(Svalues.data(), local_nnz, MPI_UINT64_T, 0, world);
 		initialized=true;
 	}
@@ -145,13 +141,13 @@ public:
         // block row into subtiles) 
         int currentStart = 0;
         for(uint64_t i = 0; i < local_nnz; i++) {
-            while(cCoords[i] >= currentStart) {
+            while(coords[i].c >= currentStart) {
                 blockStarts.push_back(i);
                 currentStart += blockWidth;
             }
 
             // This modding step helps indexing. 
-            cCoords[i] %= blockWidth;
+            coords[i].c %= blockWidth;
         }
 
 		assert(blockStarts.size() <= targetDivisions + 1);
@@ -168,7 +164,6 @@ public:
 		// TODO: Fill this in!
 		return nullptr;	
 	}
-
 };
 
 

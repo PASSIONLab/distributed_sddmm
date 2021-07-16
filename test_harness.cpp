@@ -46,47 +46,6 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     d_ops->fusedSpMM(A, B, STvalues, STbuffer, dummy_resultB, Bmat);
     d_ops->sddmm(A, B, Svalues, standard_result); 
 
-    if(proc_rank == 0) {
-        for(int i = 0; i < (d_ops->S).local_nnz; i++) {
-            cout << (d_ops->ST).rCoords[i] << " " 
-                << (d_ops->ST).cCoords[i] << endl;
-        }
-        cout << "===================" << endl;
-        for(int i = 0; i < (d_ops->S).local_nnz; i++) {
-            cout << (d_ops->S).rCoords[i] << " " 
-                << (d_ops->S).cCoords[i] << endl;
-        }
-        cout << "===================" << endl;
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    if(proc_rank == 1) {
-        for(int i = 0; i < (d_ops->S).local_nnz; i++) {
-            cout << (d_ops->ST).rCoords[i] << " "
-                << (d_ops->ST).cCoords[i] << endl;
-        }
-        cout << "===================" << endl;
-        for(int i = 0; i < (d_ops->S).local_nnz; i++) {
-            cout << (d_ops->S).rCoords[i] << " " 
-                << (d_ops->S).cCoords[i] << endl;
-        }
-        cout << "===================" << endl;
-    }
- 
-    MPI_Barrier(MPI_COMM_WORLD);
-    /*
-    cout << "==========================" << endl;
-
-    cout << Sbuffer << endl;
-
-    cout << "==========================" << endl;
-
-    cout << STbuffer << endl;
-
-    cout << "==========================" << endl;
-    */
-
     double sqnorm; 
     sqnorm = Sbuffer.norm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
