@@ -2,6 +2,9 @@
 
 #include <iostream>
 #include <memory>
+#include <numeric>
+#include <iterator>
+#include <algorithm>
 #include "common.h"
 #include "CombBLAS/CombBLAS.h"
 
@@ -17,8 +20,6 @@ public:
 	VectorXd Svalues;
 
     vector<uint64_t> blockStarts;
-
-	shared_ptr<PSpMat_s32p64_Int> G;
 
     uint64_t local_nnz;
     uint64_t dist_nnz;
@@ -36,8 +37,6 @@ public:
 	}
 
 	void initialize(PSpMat_s32p64_Int *G) {	
-		(this->G).reset(G);
-
 		dist_nnz = G->getnnz();
 		local_nnz = G->seq().getnnz();
 		nrows_local = G->seq().getnrow();
@@ -65,25 +64,99 @@ public:
 	}
 
 	/*
-	 * Replicates sparse matrix values and indices across layers. TODO: Should
-	 * change this to shard the matrix across layers instead!
+	 * This is just a replacement for a missing prefix sum function 
 	 */
-	void broadcast_synchronize(int rankInWorld, int rootInWorld, MPI_Comm world) {	
-        MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
-        MPI_Bcast(&local_nnz, 1, MPI_UINT64_T, 0, world);
-        MPI_Bcast(&nrows_local, 1, MPI_UINT64_T, 0, world);
-        MPI_Bcast(&ncols_local, 1, MPI_UINT64_T, 0, world);
+	void prefix_sum(vector<int> &values, vector<int> &psums) {
+		int sum = 0;
+		for(int i = 0; i < values.size(); i++) {
+			psums.push_back(sum);
+			sum += values[i];
+		}
+	}
 
+	/*
+	 * Shards the sparse matrix across the processor grid; meant specifically for
+	 * the 1.5D algorithm (and maybe the 2.5D algorithm, we'll see...)
+	 */
+	void block_cyclic_shard(int rankInFiber, int rootInFiber, MPI_Comm world, int p, int c) {	
         MPI_Bcast(&M, 1, MPI_UINT64_T, 0, world);
         MPI_Bcast(&N, 1, MPI_UINT64_T, 0, world);
 
-		if(rankInWorld != rootInWorld) {
-			coords.resize(local_nnz);
-			Svalues.resize(local_nnz);
+		// TODO: Need to re-enable these broadcasts carefully... 
+        // MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
+        // MPI_Bcast(&nrows_local, 1, MPI_UINT64_T, 0, world);
+        // MPI_Bcast(&ncols_local, 1, MPI_UINT64_T, 0, world);
+
+		int local_space_needed;
+
+		vector<spcoord_t> coords_to_send;
+		vector<double> values_to_send;
+		vector<int> space_needed(c, 0);
+		vector<int> offsets(c, 0);
+
+		if(rankInFiber == rootInFiber) {
+			divideIntoBlockCols(divideAndRoundUp(N, p), p, false);
+			// First, estimate the space that each processor will need
+			for(int i = 0; i < blockStarts.size() - 1; i++) {
+				space_needed[i % c] += blockStarts[i + 1] - blockStarts[i];
+			}
+			
+			//std::inclusive_scan(space_needed.begin(), space_needed.end(), offsets.begin());
+			prefix_sum(space_needed, offsets);
+
+			// Now pack the coordinates and values into the send buffers
+			for(int i = 0; i < blockStarts.size(); i++) {
+				for(int j = blockStarts[i]; j < blockStarts[i+1]; j++) {
+					coords_to_send[offsets[i % c] + j - blockStarts[i]] =
+						coords[j];
+					values_to_send[offsets[i % c] + j - blockStarts[i]] =
+						Svalues[j];
+				}
+			}
 		}
- 
-        MPI_Bcast(coords.data(), local_nnz, SPCOORD, 0, world);
-        MPI_Bcast(Svalues.data(), local_nnz, MPI_UINT64_T, 0, world);
+
+		// Broadcast space needed on each processor
+		MPI_Scatter(space_needed.data(), 
+				1, 
+				MPI_INT, 
+				&local_space_needed,
+				1, MPI_INT,
+				rootInFiber, world	
+				);
+		
+		vector<spcoord_t> recvCoords;
+		VectorXd recvValues;
+
+		recvCoords.resize(local_space_needed);
+		recvValues.resize(local_space_needed);
+
+		MPI_Scatterv(
+				coords_to_send.data(), 
+				space_needed.data(),
+				offsets.data(),
+				SPCOORD,
+				recvCoords.data(),
+				local_space_needed,
+				SPCOORD,
+				rootInFiber,
+				world);
+
+		MPI_Scatterv(
+				values_to_send.data(), 
+				space_needed.data(),
+				offsets.data(),
+				SPCOORD,
+				recvValues.data(),
+				local_space_needed,
+				SPCOORD,
+				rootInFiber,
+				world);
+
+		coords = recvCoords;
+		Svalues = recvValues;
+
+		divideIntoBlockCols(divideAndRoundUp(N, p), p, true);
+
 		initialized=true;
 	}
 
@@ -136,7 +209,8 @@ public:
 	 * This method assumes the tuples are sorted in a column major order,
 	 * and it also changes the column coordinates 
 	 */
-	void divideIntoBlockCols(int blockWidth, int targetDivisions) {
+	void divideIntoBlockCols(int blockWidth, int targetDivisions, bool modIndex) {
+		blockStarts.clear();
         // Locate block starts within the local sparse matrix (i.e. divide a long
         // block row into subtiles) 
         int currentStart = 0;
@@ -147,7 +221,10 @@ public:
             }
 
             // This modding step helps indexing. 
-            coords[i].c %= blockWidth;
+
+			if(modIndex) {
+				coords[i].c %= blockWidth;
+			}
         }
 
 		assert(blockStarts.size() <= targetDivisions + 1);

@@ -91,11 +91,7 @@ public:
             );
         }
 
-        S.broadcast_synchronize(grid->GetRankInFiber(), 0, grid->GetFiberWorld());
-
-        if(fused) {
-            ST.broadcast_synchronize(grid->GetRankInFiber(), 0, grid->GetFiberWorld());
-        }
+        S.block_cyclic_shard(grid->GetRankInFiber(), 0, grid->GetFiberWorld(), p, c);
 
         this->M = S.M;
         this->N = S.N;
@@ -103,12 +99,6 @@ public:
         // TODO: Check the calculation of localArows! 
         localArows = divideAndRoundUp(this->M, p) + p;
         localBrows = divideAndRoundUp(this->N, p) + p;
-
-	    S.divideIntoBlockCols(localBrows, p); 
-
-        if(fused) {
-            ST.divideIntoBlockCols(localArows, p); 
-        }
 
         rankInFiber = grid->GetRankInFiber();
         rankInLayer = grid->GetRankInLayer();
