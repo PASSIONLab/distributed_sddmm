@@ -83,8 +83,8 @@ public:
         MPI_Bcast(&N, 1, MPI_UINT64_T, 0, world);
 
 		// TODO: Need to re-enable these broadcasts carefully... 
-        // MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
-        // MPI_Bcast(&nrows_local, 1, MPI_UINT64_T, 0, world);
+        MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
+        MPI_Bcast(&nrows_local, 1, MPI_UINT64_T, 0, world);
         // MPI_Bcast(&ncols_local, 1, MPI_UINT64_T, 0, world);
 
 		int local_space_needed;
