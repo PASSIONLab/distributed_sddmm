@@ -29,12 +29,13 @@ int divideAndRoundUp(int num, int denom) {
 MPI_Datatype SPCOORD;
 
 void initialize_mpi_datatypes() {
-    const int nitems = 2;
-    int blocklengths[2] = {1, 1};
-    MPI_Datatype types[2] = {MPI_UINT64_T, MPI_UINT64_T}; 
-    MPI_Aint offsets[2];
+    const int nitems = 3;
+    int blocklengths[3] = {1, 1, 1};
+    MPI_Datatype types[3] = {MPI_UINT64_T, MPI_UINT64_T, MPI_DOUBLE}; 
+    MPI_Aint offsets[3];
     offsets[0] = offsetof(spcoord_t, r);
     offsets[1] = offsetof(spcoord_t, c);
+    offsets[2] = offsetof(spcoord_t, value);
     MPI_Type_create_struct(nitems, blocklengths, offsets, types, &SPCOORD);
     MPI_Type_commit(&SPCOORD);
 }	

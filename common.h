@@ -26,6 +26,7 @@ int divideAndRoundUp(int num, int denom);
 struct spcoord_t {
 	uint64_t r;
 	uint64_t c;
+	double value;
 };
 
 extern MPI_Datatype SPCOORD;

@@ -73,6 +73,10 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
+void test_sparse_transpose() {
+
+}
+
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     initialize_mpi_datatypes();

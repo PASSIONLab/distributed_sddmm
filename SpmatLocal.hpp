@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <numeric>
+#include <algorithm>
 #include <iterator>
 #include <algorithm>
 #include "common.h"
@@ -11,6 +12,24 @@
 using namespace Eigen;
 using namespace combblas;
 using namespace std;
+
+bool sortbycolumns(spcoord_t &a, spcoord_t &b) {
+    if(a.c == b.c) {
+        return a.r < b.r;
+    }
+    else {
+        return a.c < b.c;
+    }
+}
+
+class NonzeroDistribution {
+	int M, N;
+
+	/*
+	 * Returns the processor that is supposed to own a particular nonzero. 
+	 */
+	virtual void getOwner(int r, int c, int transpose) = 0;
+}
 
 class SpmatLocal {
 public:
@@ -64,101 +83,73 @@ public:
 	}
 
 	/*
-	 * This is just a replacement for a missing prefix sum function 
+	 * This is a bad prefix sum function.
 	 */
-	void prefix_sum(vector<int> &values, vector<int> &psums) {
+	void prefix_sum(vector<int> &values, vector<int> &offsets) {
 		int sum = 0;
 		for(int i = 0; i < values.size(); i++) {
-			psums.push_back(sum);
+			offsets.push_back(sum);
 			sum += values[i];
 		}
 	}
 
 	/*
-	 * Shards the sparse matrix across the processor grid; meant specifically for
-	 * the 1.5D algorithm (and maybe the 2.5D algorithm, we'll see...)
+	 * Redistributes nonzeros according to the provided distribution, optionally transposing the matrix
+	 * in the process. Returns a new sparse matrix with the redistributed nonzeros. 
 	 */
-	void block_cyclic_shard(int rankInFiber, int rootInFiber, MPI_Comm world, int p, int c) {	
-        MPI_Bcast(&M, 1, MPI_UINT64_T, 0, world);
-        MPI_Bcast(&N, 1, MPI_UINT64_T, 0, world);
+	SpmatLocal* redistribute_nonzeros(NonzeroDistribution* dist, bool transpose) {
+		int num_procs;
+		MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
-		// TODO: Need to re-enable these broadcasts carefully... 
-        MPI_Bcast(&dist_nnz, 1, MPI_UINT64_T, 0, world);
-        MPI_Bcast(&nrows_local, 1, MPI_UINT64_T, 0, world);
-        // MPI_Bcast(&ncols_local, 1, MPI_UINT64_T, 0, world);
+		vector<int> sendcounts(num_procs, 0);
+		vector<int> recvcounts(num_procs, 0);
 
-		int local_space_needed;
+		vector<int> offsets, bufindices;
 
-		vector<spcoord_t> coords_to_send;
-		vector<double> values_to_send;
-		vector<int> space_needed(c, 0);
-		vector<int> offsets(c, 0);
+		spcoord_t* sendbuf = new spcoord_t[coords.size()];
 
-		if(rankInFiber == rootInFiber) {
-			divideIntoBlockCols(divideAndRoundUp(N, p), p, false);
-			// First, estimate the space that each processor will need
-			for(int i = 0; i < blockStarts.size() - 1; i++) {
-				space_needed[i % c] += blockStarts[i + 1] - blockStarts[i];
+		for(int i = 0; i < coords.size(); i++) {
+			sendcounts[dist->getOwner(coords[i].r, coords[i].c, transpose)]++;
+		}
+		prefix_sum(sendcounts, offsets);
+		bufindices = offsets;
+
+		for(int i = 0; i < coords.size(); i++) {
+			int owner = dist->getOwner(coords[i].r, coords[i].c, transpose);
+			sendbuf[bufindices[owner]] = coords[i];
+
+			if(transpose) {
+				sendbuf[bufindices[owner]]	
 			}
-			
-			//std::inclusive_scan(space_needed.begin(), space_needed.end(), offsets.begin());
-			prefix_sum(space_needed, offsets);
 
-			// Now pack the coordinates and values into the send buffers
-			for(int i = 0; i < blockStarts.size(); i++) {
-				for(int j = blockStarts[i]; j < blockStarts[i+1]; j++) {
-					coords_to_send[offsets[i % c] + j - blockStarts[i]] =
-						coords[j];
-					values_to_send[offsets[i % c] + j - blockStarts[i]] =
-						Svalues[j];
-				}
-			}
+			bufindices[owner]++;
 		}
 
-		// Broadcast space needed on each processor
-		MPI_Scatter(space_needed.data(), 
-				1, 
-				MPI_INT, 
-				&local_space_needed,
-				1, MPI_INT,
-				rootInFiber, world	
+		// Broadcast the number of nonzeros that each processor is going to receive
+		MPI_Alltoall(sendcounts.data(), 1, MPI_INT, recvcounts.data(), 1, 
+				MPI_INT, MPI_COMM_WORLD);
+
+		vector<int> recvoffsets;
+		prefix_sum(recvcounts, recvoffsets);
+
+		// Use the sizing information to execute an AlltoAll 
+		int total_received_coords = 
+				std::accumulate(recvcounts.begin(), recvcounts.end(), 0);
+
+		SpmatLocal* result = new SpmatLocal();
+		result.coords.resize(total_received_coords);
+
+		MPI_Alltoallv(sendbuf, sendcounts.data(), offsets.data(), 
+				SPCOORD, result->coords.data(), recvcounts.data(), recvoffsets.data(), 
+				MPI_INT, MPI_COMM_WORLD
 				);
-		
-		vector<spcoord_t> recvCoords;
-		VectorXd recvValues;
 
-		recvCoords.resize(local_space_needed);
-		recvValues.resize(local_space_needed);
+		std::sort(result->coords.begin(), result->coords.end(), sortbycolumns);		
+		result->initialized = true;
 
-		MPI_Scatterv(
-				coords_to_send.data(), 
-				space_needed.data(),
-				offsets.data(),
-				SPCOORD,
-				recvCoords.data(),
-				local_space_needed,
-				SPCOORD,
-				rootInFiber,
-				world);
-
-		MPI_Scatterv(
-				values_to_send.data(), 
-				space_needed.data(),
-				offsets.data(),
-				SPCOORD,
-				recvValues.data(),
-				local_space_needed,
-				SPCOORD,
-				rootInFiber,
-				world);
-
-		coords = recvCoords;
-		Svalues = recvValues;
-
-		divideIntoBlockCols(divideAndRoundUp(N, p), p, true);
-
-		initialized=true;
+		return result;
 	}
+
 
 	static void loadMatrix(bool readFromFile, 
 			int logM, 
@@ -189,7 +180,6 @@ public:
 			if(proc_rank == 0) {
 				cout << "R-mat generator created " << nnz << " nonzeros." << endl;
 			}
-
 		}
 		else {
 			G = new PSpMat_s32p64_Int(layerGrid);
@@ -234,13 +224,6 @@ public:
         }
 	}
 
-	/*
-	 * Sets up the coordinates and the permutation for a sparse transpose
-	 */
-	SpmatLocal* transpose() {
-		// TODO: Fill this in!
-		return nullptr;	
-	}
 };
 
 
