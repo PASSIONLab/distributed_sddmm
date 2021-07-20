@@ -29,6 +29,8 @@ struct spcoord_t {
 	double value;
 };
 
+bool sortbycolumns(spcoord_t &a, spcoord_t &b);
+
 extern MPI_Datatype SPCOORD;
 
 void initialize_mpi_datatypes();

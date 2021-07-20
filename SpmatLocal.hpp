@@ -13,23 +13,15 @@ using namespace Eigen;
 using namespace combblas;
 using namespace std;
 
-bool sortbycolumns(spcoord_t &a, spcoord_t &b) {
-    if(a.c == b.c) {
-        return a.r < b.r;
-    }
-    else {
-        return a.c < b.c;
-    }
-}
-
 class NonzeroDistribution {
+public:
 	int M, N;
 
 	/*
 	 * Returns the processor that is supposed to own a particular nonzero. 
 	 */
-	virtual void getOwner(int r, int c, int transpose) = 0;
-}
+	virtual int getOwner(int r, int c, int transpose) = 0;
+};
 
 class SpmatLocal {
 public:
@@ -119,7 +111,9 @@ public:
 			sendbuf[bufindices[owner]] = coords[i];
 
 			if(transpose) {
-				sendbuf[bufindices[owner]]	
+				// TODO: Need to handle this case... 
+				assert(false);
+				//sendbuf[bufindices[owner]].r 	
 			}
 
 			bufindices[owner]++;
@@ -137,7 +131,7 @@ public:
 				std::accumulate(recvcounts.begin(), recvcounts.end(), 0);
 
 		SpmatLocal* result = new SpmatLocal();
-		result.coords.resize(total_received_coords);
+		result->coords.resize(total_received_coords);
 
 		MPI_Alltoallv(sendbuf, sendcounts.data(), offsets.data(), 
 				SPCOORD, result->coords.data(), recvcounts.data(), recvoffsets.data(), 
@@ -150,8 +144,7 @@ public:
 		return result;
 	}
 
-
-	static void loadMatrix(bool readFromFile, 
+	static void loadMatrixIntoLayer(bool readFromFile, 
 			int logM, 
 			int nnz_per_row,
 			string filename,
@@ -193,6 +186,47 @@ public:
 		}
 
 		S->initialize(G);	
+	}
+
+	void loadMatrixAndRedistribute(string filename) {
+		MPI_Comm WORLD;
+		MPI_Comm_dup(MPI_COMM_WORLD, &WORLD);
+
+		int proc_rank, num_procs;
+		MPI_Comm_rank(WORLD, &proc_rank);
+		MPI_Comm_size(WORLD, &num_procs);
+
+		shared_ptr<CommGrid> simpleGrid;
+		simpleGrid.reset(new CommGrid(WORLD, num_procs, 1));
+
+		PSpMat_s32p64_Int * G; 
+
+		G = new PSpMat_s32p64_Int(simpleGrid);
+		G->ParallelReadMM(filename, true, maximum<double>());	
+
+		int nnz = G->getnnz();
+
+		SpTuples<int64_t,int> tups(G->seq()); 
+		tups.SortColBased();
+
+		tuple<int64_t, int64_t, int>* values = tups.tuples;
+
+		if(proc_rank == 0) {
+			cout << "File reader read " << nnz << " nonzeros." << endl;
+		}
+
+		for(int i = 0; i < num_procs; i++) {
+			if(proc_rank == i) {
+				cout << "Tuples for Process " << i << ": " << endl;
+				cout << "======================" << endl;
+				for(int j = 0; j < tups.getnnz(); j++) {
+					cout << get<0>(values[j]) << " " << get<1>(values[j]) << endl;
+				}
+				cout << "======================" << endl;
+			}
+			MPI_Barrier(WORLD);
+		}
+		delete G;
 	}
 
 	/*

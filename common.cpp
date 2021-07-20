@@ -40,3 +40,12 @@ void initialize_mpi_datatypes() {
     MPI_Type_commit(&SPCOORD);
 }	
 
+bool sortbycolumns(spcoord_t &a, spcoord_t &b) {
+    if(a.c == b.c) {
+        return a.r < b.r;
+    }
+    else {
+        return a.c < b.c;
+    }
+}
+

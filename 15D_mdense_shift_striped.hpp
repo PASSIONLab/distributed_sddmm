@@ -82,7 +82,7 @@ public:
         }
 
         if(grid->GetRankInFiber() == 0) {
-            SpmatLocal::loadMatrix(readFromFile,
+            SpmatLocal::loadMatrixIntoLayer(readFromFile,
                logM,
                nnz_per_row,
                filename,
@@ -91,7 +91,8 @@ public:
             );
         }
 
-        S.block_cyclic_shard(grid->GetRankInFiber(), 0, grid->GetFiberWorld(), p, c);
+        // TODO: NEED TO RE-ENABLE THIS!
+        //S.block_cyclic_shard(grid->GetRankInFiber(), 0, grid->GetFiberWorld(), p, c);
 
         this->M = S.M;
         this->N = S.N;

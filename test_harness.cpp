@@ -74,7 +74,10 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
 }
 
 void test_sparse_transpose() {
+    SpmatLocal x;
+	x.loadMatrixAndRedistribute("../data/testmat.mtx");
 
+    cout << "Test complete!" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -83,7 +86,9 @@ int main(int argc, char** argv) {
 
     string fname(argv[1]);
 
-    StandardKernel local_ops;
+    test_sparse_transpose();
+
+    //StandardKernel local_ops;
     //FusedStandardKernel fused_local_ops;
 
     //Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
@@ -101,6 +106,7 @@ int main(int argc, char** argv) {
                 );     // the backend local operation to do it for us
     */
 
+    /*
     Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 fname, 
@@ -111,16 +117,18 @@ int main(int argc, char** argv) {
                 false  // Whether we should auto-fuse the provided operation, or rely on
                 );     // the backend local operation to do it for us 
 
+    */
+
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
-    srand((unsigned int) time(0) + d_ops->proc_rank + 2);
+    //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
-    Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
+    //Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
 
-    d_ops->reset_performance_timers();
-    x->run_cg(5);
-    d_ops->print_performance_statistics();
+    //d_ops->reset_performance_timers();
+    //x->run_cg(5);
+    //d_ops->print_performance_statistics();
 
     MPI_Finalize();
 }
