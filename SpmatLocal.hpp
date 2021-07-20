@@ -218,9 +218,12 @@ public:
 		for(int i = 0; i < num_procs; i++) {
 			if(proc_rank == i) {
 				cout << "Tuples for Process " << i << ": " << endl;
+				cout << "# Rows: " << G->seq().getnrow() << ", # Cols: "
+					<< G->seq().getncol() << endl;
 				cout << "======================" << endl;
 				for(int j = 0; j < tups.getnnz(); j++) {
-					cout << get<0>(values[j]) << " " << get<1>(values[j]) << endl;
+					cout << get<0>(values[j]) << " " << get<1>(values[j]) 
+					<< " " << get<2>(values[j]) << endl;
 				}
 				cout << "======================" << endl;
 			}

@@ -84,9 +84,9 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     initialize_mpi_datatypes();
 
-    string fname(argv[1]);
-
     test_sparse_transpose();
+
+    //string fname(argv[1]);
 
     //StandardKernel local_ops;
     //FusedStandardKernel fused_local_ops;
