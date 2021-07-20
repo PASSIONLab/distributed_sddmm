@@ -75,9 +75,7 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
 
 void test_sparse_transpose() {
     SpmatLocal x;
-	x.loadMatrixAndRedistribute("../data/testmat.mtx");
-
-    cout << "Test complete!" << endl;
+	x.loadMatrixAndRedistribute("../data/testmat.mtx", nullptr);
 }
 
 int main(int argc, char** argv) {

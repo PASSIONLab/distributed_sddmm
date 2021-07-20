@@ -13,6 +13,13 @@ using namespace Eigen;
 using namespace combblas;
 using namespace std;
 
+/**
+ * Some notes about ParallelReadMM given a 2D grid:
+ * - It re-indexes the local sparse matrices 
+ * - The trailing processor along each dimension is slightly larger than
+ *   the other processors. 
+ */
+
 class NonzeroDistribution {
 public:
 	int M, N;
@@ -26,11 +33,10 @@ public:
 class SpmatLocal {
 public:
 	// This is redundant, but it makes coding more convenient.
-	// These are unzipped versions of the sparse matrix G.
+	// These are unzipped versions of the sparse matrix G. 
 	vector<spcoord_t> coords;	
-	VectorXd Svalues;
-
     vector<uint64_t> blockStarts;
+	VectorXd Svalues;
 
     uint64_t local_nnz;
     uint64_t dist_nnz;
@@ -47,6 +53,20 @@ public:
 		initialized = false;
 	}
 
+	void unpack_tuples( SpTuples<int64_t,int> &tups, 
+			vector<spcoord_t> &unpacked) {
+		tuple<int64_t, int64_t, int>* values = tups.tuples;
+
+		new (&unpacked) vector<spcoord_t>; 
+		unpacked.resize(tups.getnnz());
+
+		for(int i = 0; i < tups.getnnz(); i++) {
+			unpacked[i].r = get<0>(values[i]);
+			unpacked[i].c = get<1>(values[i]); 
+			unpacked[i].value = get<2>(values[i]); 
+		}
+	}	
+
 	void initialize(PSpMat_s32p64_Int *G) {	
 		dist_nnz = G->getnnz();
 		local_nnz = G->seq().getnnz();
@@ -56,21 +76,11 @@ public:
 		M = G->getnrow();
 		N = G->getncol();
 
-		new (&coords) vector<spcoord_t>; 
-		new (&Svalues) VectorXd(local_nnz);
-
-		coords.resize(local_nnz);
-
 		SpTuples<int64_t,int> tups(G->seq()); 
 		tups.SortColBased();
 
-		tuple<int64_t, int64_t, int>* values = tups.tuples;
+		unpack_tuples(tups, coords);	
 		
-		for(int i = 0; i < tups.getnnz(); i++) {
-			coords[i].r = get<0>(values[i]);
-			coords[i].c = get<1>(values[i]); 
-			Svalues(i) = get<2>(values[i]); 
-		}
 		initialized=true;
 	}
 
@@ -87,9 +97,9 @@ public:
 
 	/*
 	 * Redistributes nonzeros according to the provided distribution, optionally transposing the matrix
-	 * in the process. Returns a new sparse matrix with the redistributed nonzeros. 
+	 * in the process. Works either in-place, or returns an entirely new sparse matrix. 
 	 */
-	SpmatLocal* redistribute_nonzeros(NonzeroDistribution* dist, bool transpose) {
+	SpmatLocal* redistribute_nonzeros(NonzeroDistribution* dist, bool transpose, bool in_place) {
 		int num_procs;
 		MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
@@ -188,7 +198,7 @@ public:
 		S->initialize(G);	
 	}
 
-	void loadMatrixAndRedistribute(string filename) {
+	void loadMatrixAndRedistribute(string filename, NonzeroDistribution* dist) {
 		MPI_Comm WORLD;
 		MPI_Comm_dup(MPI_COMM_WORLD, &WORLD);
 
@@ -202,18 +212,20 @@ public:
 		PSpMat_s32p64_Int * G; 
 
 		G = new PSpMat_s32p64_Int(simpleGrid);
-		G->ParallelReadMM(filename, true, maximum<double>());	
 
+		// This has a load-balancing problem...	
+		G->ParallelReadMM(filename, true, maximum<double>());	
 		int nnz = G->getnnz();
 
 		SpTuples<int64_t,int> tups(G->seq()); 
 		tups.SortColBased();
-
-		tuple<int64_t, int64_t, int>* values = tups.tuples;
-
+		unpack_tuples(tups, coords);
+	
 		if(proc_rank == 0) {
 			cout << "File reader read " << nnz << " nonzeros." << endl;
 		}
+
+		int rowIncrement = G->getnrow() / num_procs;
 
 		for(int i = 0; i < num_procs; i++) {
 			if(proc_rank == i) {
@@ -222,13 +234,15 @@ public:
 					<< G->seq().getncol() << endl;
 				cout << "======================" << endl;
 				for(int j = 0; j < tups.getnnz(); j++) {
-					cout << get<0>(values[j]) << " " << get<1>(values[j]) 
-					<< " " << get<2>(values[j]) << endl;
+					cout << (rowIncrement * i + coords[j].r) 
+					<< " " << coords[j].c 
+					<< " " << coords[j].value << endl;
 				}
 				cout << "======================" << endl;
 			}
 			MPI_Barrier(WORLD);
 		}
+
 		delete G;
 	}
 
