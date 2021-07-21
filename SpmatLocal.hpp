@@ -38,11 +38,7 @@ public:
     vector<uint64_t> blockStarts;
 	VectorXd Svalues;
 
-    uint64_t local_nnz;
     uint64_t dist_nnz;
-
-    uint64_t nrows_local;
-    uint64_t ncols_local;
 
     uint64_t M;
     uint64_t N;
@@ -100,8 +96,9 @@ public:
 	 * in the process. Works either in-place, or returns an entirely new sparse matrix. 
 	 */
 	SpmatLocal* redistribute_nonzeros(NonzeroDistribution* dist, bool transpose, bool in_place) {
-		int num_procs;
-		MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+		int num_procs, proc_rank;
+		MPI_Comm_size(MPI_COMM_WORLD, &num_procs);	
+		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
 		vector<int> sendcounts(num_procs, 0);
 		vector<int> recvcounts(num_procs, 0);
@@ -140,16 +137,26 @@ public:
 		int total_received_coords = 
 				std::accumulate(recvcounts.begin(), recvcounts.end(), 0);
 
-		SpmatLocal* result = new SpmatLocal();
-		result->coords.resize(total_received_coords);
+		SpmatLocal* result;
+		vector<spcoord_t>* destination_coords;
+		if(! in_place) {
+			result = new SpmatLocal();
+			result->initialized = true;
+			destination_coords = &(result->coords);
+		}
+		else {
+			result = nullptr;
+			destination_coords = &coords;
+		}
+
+		destination_coords->resize(total_received_coords);
 
 		MPI_Alltoallv(sendbuf, sendcounts.data(), offsets.data(), 
-				SPCOORD, result->coords.data(), recvcounts.data(), recvoffsets.data(), 
-				MPI_INT, MPI_COMM_WORLD
+				SPCOORD, destination_coords->data(), recvcounts.data(), recvoffsets.data(), 
+				SPCOORD, MPI_COMM_WORLD
 				);
 
-		std::sort(result->coords.begin(), result->coords.end(), sortbycolumns);		
-		result->initialized = true;
+		std::sort(destination_coords->begin(), destination_coords->end(), sortbycolumns);
 
 		return result;
 	}
@@ -221,11 +228,16 @@ public:
 		tups.SortColBased();
 		unpack_tuples(tups, coords);
 	
+		int rowIncrement = G->getnrow() / num_procs;
+		for(int i = 0; i < coords.size(); i++) {
+			coords[i].r += rowIncrement * proc_rank;
+		}
+
 		if(proc_rank == 0) {
 			cout << "File reader read " << nnz << " nonzeros." << endl;
 		}
 
-		int rowIncrement = G->getnrow() / num_procs;
+		redistribute_nonzeros(dist, false, true);	
 
 		for(int i = 0; i < num_procs; i++) {
 			if(proc_rank == i) {
@@ -233,8 +245,8 @@ public:
 				cout << "# Rows: " << G->seq().getnrow() << ", # Cols: "
 					<< G->seq().getncol() << endl;
 				cout << "======================" << endl;
-				for(int j = 0; j < tups.getnnz(); j++) {
-					cout << (rowIncrement * i + coords[j].r) 
+				for(int j = 0; j < coords.size(); j++) {
+					cout << coords[j].r
 					<< " " << coords[j].c 
 					<< " " << coords[j].value << endl;
 				}

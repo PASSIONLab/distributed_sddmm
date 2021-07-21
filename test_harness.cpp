@@ -73,9 +73,24 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
+class BlockCyclicColumn: public NonzeroDistribution {
+public:
+	int getOwner(int r, int c, int transpose) {
+        int blockWidth = divideAndRoundUp(N, 3);
+        int col_id = c / blockWidth; 
+        return col_id % 2;
+    }
+};
+
 void test_sparse_transpose() {
     SpmatLocal x;
-	x.loadMatrixAndRedistribute("../data/testmat.mtx", nullptr);
+
+    BlockCyclicColumn nonzero_dist;
+    nonzero_dist.M = 5;
+    nonzero_dist.N = 5; 
+    cout << nonzero_dist.getOwner(2, 3, false) << endl; 
+
+	x.loadMatrixAndRedistribute("../data/testmat.mtx", &nonzero_dist);
 }
 
 int main(int argc, char** argv) {
