@@ -78,9 +78,9 @@ public:
         this->fused = fused;
         this->auto_fusion = auto_fusion;
 
-        if(p % (c * c) != 0) {
+        if(p % c != 0) {
             if(proc_rank == 0) {
-                cout << "Error, for 1.5D algorithm, must have c^2 divide num_procs!" << endl;
+                cout << "Error, for 1.5D algorithm, must have c divide num_procs!" << endl;
                 exit(1);
             }
         }
@@ -200,8 +200,6 @@ public:
         assert(this->fused); 
         DenseMatrix *Arole, *Brole;
 
-        cout << "Starting fused operation..." << endl;
-
         if(mode == Amat) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
             Arole = &localA;
@@ -253,7 +251,7 @@ public:
                     sddmm_buffer,
                     accumulation_buffer,
                     *Brole,
-                    mode,
+                    Amat,
                     S.blockStarts[block_id],
                     S.blockStarts[block_id + 1]);
             }
@@ -267,15 +265,15 @@ public:
                     ST->blockStarts[block_id],
                     ST->blockStarts[block_id + 1]);
                 
-                /*
                 nnz_processed += kernel->spmm_local(
-                    ST,
+                    S,
                     sddmm_buffer,
                     accumulation_buffer,
                     *Brole,
-                    Bmat,
-                    transposedBlockStarts[block_id],
-                    transposedBlockStarts[block_id + 1]);*/
+                    Amat,
+                    S.blockStarts[block_id],
+                    S.blockStarts[block_id + 1]);
+ 
             }
 
             shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));
@@ -296,10 +294,6 @@ public:
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
                 MPI_SUM, 0, MPI_COMM_WORLD);
-
-        if(proc_rank == 0) {
-            cout << "Total processed: " << total_processed << endl;
-        }
     }
 
     /*

@@ -83,7 +83,7 @@ void test_sparse_transpose() {
     SpmatLocal x;
 
     StandardKernel local_ops;
-    Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 2, &local_ops, true, false);
+    Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 1, &local_ops, true, false);
 
     for(int i = 0; i < num_procs; i++) {
         if(proc_rank == i) {
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     string fname = "../data/testmat.mtx";
     StandardKernel local_ops;
     {
-        Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 1, &local_ops, true, false);
+        Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 4, &local_ops, true, false);
         test_fusion(&d_ops);
     }
 

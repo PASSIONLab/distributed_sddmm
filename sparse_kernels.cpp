@@ -80,9 +80,9 @@ size_t StandardKernel::spmm_local(
     double* Sptr = SValues.data();
     int r = A.cols();
 
-    #pragma omp parallel for
+    #pragma omp parallel for reduction(+:processed)
     for(int i = start; i < end; i++) {
-        //processed++;
+        processed++;
 
         if(mode == 0) {
             double* Arow = Aptr + r * S.coords[i].r;
