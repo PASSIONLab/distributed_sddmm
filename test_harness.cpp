@@ -47,21 +47,21 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     d_ops->sddmm(A, B, Svalues, standard_result); 
 
     double sqnorm; 
-    sqnorm = Sbuffer.norm(); 
+    sqnorm = Sbuffer.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
         cout << "S Result Buffer: " << sqnorm << endl;
     }
 
-    sqnorm = STbuffer.norm(); 
+    sqnorm = STbuffer.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
         cout << "ST Result Buffer: " << sqnorm << endl;
-    }
+    } 
 
-    sqnorm = standard_result.norm(); 
+    sqnorm = standard_result.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
@@ -72,20 +72,6 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
         cout << "Fusion testing complete!" << endl;
     }
 }
-
-class BlockCyclicColumn: public NonzeroDistribution {
-public:
-	int getOwner(int r, int c, int transpose) {
-        if(transpose) {
-            int temp = r;
-            r = c;
-            c = temp;
-        }
-        int blockWidth = divideAndRoundUp(N, 3);
-        int col_id = c / blockWidth; 
-        return col_id % 2;
-    }
-};
 
 void test_sparse_transpose() {
     int proc_rank, num_procs;
@@ -105,8 +91,8 @@ void test_sparse_transpose() {
             cout << "Rank in Fiber: " << d_ops.rankInFiber << endl;
             cout << "Rank in Layer: " << d_ops.rankInLayer << endl;
 
-            for(int j = 0; j < d_ops.S.coords.size(); j++) {
-                cout << d_ops.S.coords[j].string_rep() << endl;
+            for(int j = 0; j < d_ops.ST->coords.size(); j++) {
+                cout << d_ops.ST->coords[j].string_rep() << endl;
             }
             cout << "==================" << endl;
         }
@@ -118,11 +104,17 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     initialize_mpi_datatypes();
 
-    test_sparse_transpose();
+    //test_sparse_transpose();
+
+    string fname = "../data/testmat.mtx";
+    StandardKernel local_ops;
+    {
+        Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 1, &local_ops, true, false);
+        test_fusion(&d_ops);
+    }
 
     //string fname(argv[1]);
 
-    //StandardKernel local_ops;
     //FusedStandardKernel fused_local_ops;
 
     //Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);

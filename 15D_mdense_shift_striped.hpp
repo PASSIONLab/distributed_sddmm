@@ -92,7 +92,6 @@ public:
         perf_counter_keys = 
                 {"Dense Broadcast Time",
                 "Dense Reduction Time", 
-                "Sparse Allreduction Time", 
                 "Cyclic Shift Time",
                 "Computation Time" 
                 };
@@ -201,15 +200,19 @@ public:
         assert(this->fused); 
         DenseMatrix *Arole, *Brole;
 
+        cout << "Starting fused operation..." << endl;
+
         if(mode == Amat) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
             Arole = &localA;
             Brole = &localB;
+            assert(Svalues.size() == S.coords.size());
         } 
         else if(mode == Bmat) {
             assert(localB.rows() == result.rows() && localB.cols() == result.cols());
             Arole = &localB;
-            Brole = &localA;
+            Brole = &localA; 
+            assert(Svalues.size() == ST->coords.size());
         }
         else {
             assert(false);
@@ -254,7 +257,6 @@ public:
                     S.blockStarts[block_id],
                     S.blockStarts[block_id + 1]);
             }
-
             else if(mode == Bmat) {
                 nnz_processed += kernel->sddmm_local(
                     *ST,
@@ -262,8 +264,9 @@ public:
                     broadcast_buffer,
                     *Brole,
                     sddmm_buffer,
-                    transposedBlockStarts[block_id],
-                    transposedBlockStarts[block_id + 1]);
+                    ST->blockStarts[block_id],
+                    ST->blockStarts[block_id + 1]);
+                
                 /*
                 nnz_processed += kernel->spmm_local(
                     ST,
