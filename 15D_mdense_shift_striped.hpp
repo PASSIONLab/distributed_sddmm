@@ -206,18 +206,21 @@ public:
     void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
         assert(this->fused); 
         DenseMatrix *Arole, *Brole;
+        SpmatLocal* choice;
 
         if(mode == Amat) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
+            assert(Svalues.size() == S.coords.size());
             Arole = &localA;
             Brole = &localB;
-            assert(Svalues.size() == S.coords.size());
+            choice = &S;
         } 
         else if(mode == Bmat) {
             assert(localB.rows() == result.rows() && localB.cols() == result.cols());
-            Arole = &localB;
-            Brole = &localA; 
             assert(Svalues.size() == ST->coords.size());
+            Arole = &localB;
+            Brole = &localA;
+            choice = ST.get(); 
         }
         else {
             assert(false);
@@ -243,46 +246,27 @@ public:
 
             auto t = start_clock();
 
-            if(mode == Amat) { 
-                kernel->sddmm_local(
-                    S,
-                    Svalues,
-                    broadcast_buffer,
-                    *Brole,
-                    sddmm_buffer,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
+            // TODO: Here, need a conditional for auto-fusion or not 
 
-                nnz_processed += kernel->spmm_local(
-                    S,
-                    sddmm_buffer,
-                    accumulation_buffer,
-                    *Brole,
-                    Amat,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
-            }
-            else if(mode == Bmat) {
-                nnz_processed += kernel->sddmm_local(
-                    *ST,
-                    Svalues,
-                    broadcast_buffer,
-                    *Brole,
-                    sddmm_buffer,
-                    ST->blockStarts[block_id],
-                    ST->blockStarts[block_id + 1]);
-                
-                nnz_processed += kernel->spmm_local(
-                    S,
-                    sddmm_buffer,
-                    accumulation_buffer,
-                    *Brole,
-                    Amat,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
- 
-            }
-
+            nnz_processed += kernel->sddmm_local(
+                *choice,
+                Svalues,
+                broadcast_buffer,
+                *Brole,
+                sddmm_buffer,
+                choice->blockStarts[block_id],
+                choice->blockStarts[block_id + 1]); 
+             
+            nnz_processed += kernel->spmm_local(
+                *choice,
+                sddmm_buffer,
+                accumulation_buffer,
+                *Brole,
+                Amat,
+                choice->blockStarts[block_id],
+                choice->blockStarts[block_id + 1]); 
+            stop_clock_and_add(t, "Computation Time");
+   
             shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));
             MPI_Barrier(MPI_COMM_WORLD);
         }
