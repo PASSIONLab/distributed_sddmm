@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
 
     //test_sparse_transpose();
 
-    string fname = "../data/testmat.mtx";
+    string fname = "../data/scircuit.mtx";
     StandardKernel local_ops;
     {
         Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 4, &local_ops, true, false);
