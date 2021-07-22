@@ -106,23 +106,21 @@ int main(int argc, char** argv) {
 
     //test_sparse_transpose();
 
-    string fname = "../data/scircuit.mtx";
+    string fname(argv[1]);
     StandardKernel local_ops;
 
     /* 
     {
         Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 4, &local_ops, true, false);
         test_fusion(&d_ops);
-    }*/
-
-    //string fname(argv[1]);
+    }*/ 
 
     //FusedStandardKernel fused_local_ops;
 
     //Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
     //Sparse15D_MDense_Shift* d_ops = new Sparse15D_MDense_Shift(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
-    Sparse15D_MDense_Shift_Striped* d_ops 
+    /*Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 atoi(argv[1]), 
                 atoi(argv[2]), 
@@ -132,8 +130,8 @@ int main(int argc, char** argv) {
                 true,  // Whether we should support fusing SDDMM / SpMM
                 true   // Whether we should auto-fuse the provided operation, or rely on
                 );     // the backend local operation to do it for us 
-
-    /*
+    */
+ 
     Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 fname, 
@@ -142,9 +140,7 @@ int main(int argc, char** argv) {
                 &local_ops, 
                 false, // Whether we should support fusing SDDMM / SpMM
                 false  // Whether we should auto-fuse the provided operation, or rely on
-                );     // the backend local operation to do it for us 
-
-    */
+                );     // the backend local operation to do it for us  
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 

@@ -92,7 +92,6 @@ public:
 
         perf_counter_keys = 
                 {"Dense Broadcast Time",
-                "Dense Reduction Time", 
                 "Cyclic Shift Time",
                 "Computation Time" 
                 };
@@ -280,7 +279,7 @@ public:
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, fiber_axis);
-        stop_clock_and_add(t, "Dense Reduction Time");
+        stop_clock_and_add(t, "Dense Broadcast Time");
 
         int total_processed;
         MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
@@ -368,7 +367,7 @@ public:
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
                        MPI_DOUBLE, MPI_SUM, fiber_axis);
-            stop_clock_and_add(t, "Dense Reduction Time");
+            stop_clock_and_add(t, "Dense Broadcast Time");
         }
 
         int total_processed;

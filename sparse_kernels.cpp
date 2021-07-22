@@ -56,7 +56,7 @@ size_t StandardKernel::sddmm_local(
 
     //#pragma omp parallel for reduction(+:processed)
 
-    //#pragma omp parallel for
+    #pragma omp parallel for
     for(int i = start; i < end; i++) {
         //processed++;
         double* Arow = Aptr + r * S.coords[i].r;
@@ -84,7 +84,7 @@ size_t StandardKernel::spmm_local(
 
     //#pragma omp parallel for reduction(+:processed)
     
-    //#pragma omp parallel for
+    #pragma omp parallel for
     for(int i = start; i < end; i++) {
         //processed++;
 
