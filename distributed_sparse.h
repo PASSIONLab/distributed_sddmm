@@ -200,7 +200,11 @@ public:
         exit(1); 
     }
 
+    /*
+     * If any input replication is needed, this function performs it. 
+     */
     virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;
+ 
     virtual void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
     virtual void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
     virtual void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) = 0;

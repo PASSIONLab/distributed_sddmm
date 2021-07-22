@@ -66,6 +66,7 @@ public:
     shared_ptr<CommGrid> grid;
 
     int rankInFiber, rankInLayer;
+    MPI_Comm fiber_axis, layer_axis; 
 
     bool auto_fusion;
 
@@ -96,7 +97,12 @@ public:
                 "Computation Time" 
                 };
 
+        // Related to the grid
         grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
+        rankInFiber = grid->GetRankInProcCol();
+        rankInLayer = grid->GetRankInProcRow();
+        layer_axis = grid->GetRowWorld();
+        fiber_axis = grid->GetColWorld();
 
         this->R = R;
         this->c = c;
@@ -133,9 +139,6 @@ public:
             ST->divideIntoBlockCols(localArows, p, true);
         }
 
-        rankInFiber = grid->GetRankInProcCol();
-        rankInLayer = grid->GetRankInProcRow();
-
         check_initialized();
     }
 
@@ -155,6 +158,10 @@ public:
         // Empty method, no initialization needed... 
     }
 
+    /*
+     * TODO: We can eliminate these three boilerplate functions with a little
+     * cleverness.. 
+     */
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
         algorithm(localA, localB, SValues, nullptr, k_spmmA);
     }
@@ -175,7 +182,7 @@ public:
                 pMod(rankInLayer + 1, p / c), 0,
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
-                grid->GetRowWorld(), &stat);
+                layer_axis, &stat);
         stop_clock_and_add(t, "Cyclic Shift Time");
 
         mat = recvBuffer;
@@ -228,7 +235,7 @@ public:
 
         auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetColWorld());
+                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, fiber_axis);
         stop_clock_and_add(t, "Dense Broadcast Time");
 
         for(int i = 0; i < p / c; i++) {
@@ -288,7 +295,7 @@ public:
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
-                    MPI_DOUBLE, MPI_SUM, grid->GetColWorld());
+                    MPI_DOUBLE, MPI_SUM, fiber_axis);
         stop_clock_and_add(t, "Dense Reduction Time");
 
         int total_processed;
@@ -318,7 +325,7 @@ public:
         if(mode == k_spmmB || mode == k_sddmm) {
             auto t = start_clock();
             MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->GetColWorld());
+                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, fiber_axis);
             stop_clock_and_add(t, "Dense Broadcast Time");
         }
 
@@ -376,7 +383,7 @@ public:
 
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
-                       MPI_DOUBLE, MPI_SUM, grid->GetColWorld());
+                       MPI_DOUBLE, MPI_SUM, fiber_axis);
             stop_clock_and_add(t, "Dense Reduction Time");
         }
 
