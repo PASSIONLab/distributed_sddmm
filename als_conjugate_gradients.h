@@ -23,6 +23,7 @@ using namespace Eigen;
 
 class ALS_CG {
 public:
+    Distributed_Sparse* d_ops;
     DenseMatrix A;
     DenseMatrix B;
 
@@ -58,8 +59,8 @@ public:
 
 class Distributed_ALS : public ALS_CG {
 public:
-    Distributed_Sparse* d_ops;
     VectorXd ground_truth;
+    //VectorXd ground_truth_transpose;
 
     Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artifical_groundtruth);
 

@@ -51,7 +51,10 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r);
-    allreduceVector(rsold, reduction_world);
+    
+    if(d_ops->r_split) {
+        allreduceVector(rsold, reduction_world);
+    }
 
     // TODO: restabilize the residual to avoid numerical error
     // after a certain number of iterations
@@ -66,7 +69,10 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
             computeQueries(A, p, Bmat, Mp);
         }
         VectorXd bdot = batch_dot_product(p, Mp);
-        allreduceVector(bdot, reduction_world);
+
+        if(d_ops->r_split) {
+            allreduceVector(bdot, reduction_world);
+        }
 
         bdot.array() += nan_avoidance_constant; 
         VectorXd alpha = rsold.cwiseQuotient(bdot);
@@ -79,11 +85,17 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         }
         r -= scale_matrix_rows(alpha, Mp);
 
-        VectorXd rsnew = batch_dot_product(r, r); 
-        allreduceVector(rsnew, reduction_world);
+        VectorXd rsnew = batch_dot_product(r, r);
+
+        if(d_ops->r_split) {
+            allreduceVector(rsnew, reduction_world);
+        }
 
         double rsnew_norm_sqrt = sqrt(rsnew.sum());
-        MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+
+        if(d_ops->r_split) {
+            MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+        }
 
         rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);
 
@@ -127,7 +139,25 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         ground_truth = d_ops->like_S_values(0.0); 
 
         d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
-        d_ops->sddmm(Agt, Bgt, ones, ground_truth);
+        d_ops->sddmm(Agt, Bgt, ones, ground_truth); 
+
+
+        /*
+         * This is a patch, since we can't sparse-transpose
+         * just the value buffer. 
+         */
+        /*if(! d_ops->fused) {
+
+        }
+        else {
+            VectorXd onesTranspose = d_ops->like_ST_values(1.0);
+            Densematrix dummyResultA = d_ops->like_A_matrix(0.0);
+            Densematrix dummyResultB = d_ops->like_B_matrix(0.0);
+            d_ops->fusedSpMM(A, B, ones, ground_truth, dummyResultA, Amat);
+            d_ops->fusedSpMM(A, B, onesTranspose, ground_truth_transpose, 
+                    dummyResultB, Bmat);
+        }
+        */
     }
     else {
         ground_truth = d_ops->input_Svalues; // TODO: Fix this! 
@@ -199,12 +229,11 @@ void Distributed_ALS::computeQueries(
     VectorXd sddmm_result;
     VectorXd ones = d_ops->like_S_values(1.0);
 
-    //if(! d_ops->fused) {
-    if(true) {
+    if(! d_ops->fused) {
+    //if(true) {
         sddmm_result = d_ops->like_S_values(0.0);
 
         d_ops->sddmm(A, B, ones, sddmm_result);
-
 
         if(matrix_to_optimize == Amat) {
             d_ops->spmmA(result, B, sddmm_result);
@@ -217,8 +246,19 @@ void Distributed_ALS::computeQueries(
     }
     else {
         // If the local operation implements a fused kernel,
-        // there is no need to do an SDDMM first 
+        // there is no need to do an SDDMM first
+
+        if(matrix_to_optimize == Amat) {
+            ones = d_ops->like_S_values(1.0);
+            sddmm_result = d_ops->like_S_values(0.0);
+        }
+        else {
+            ones = d_ops->like_ST_values(1.0);
+            sddmm_result = d_ops->like_ST_values(0.0);
+        }
+
         d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
+
         if(matrix_to_optimize == Amat) {
             result += lambda * A;
         }

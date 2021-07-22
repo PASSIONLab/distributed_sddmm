@@ -108,10 +108,12 @@ int main(int argc, char** argv) {
 
     string fname = "../data/scircuit.mtx";
     StandardKernel local_ops;
+
+    /* 
     {
         Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 4, &local_ops, true, false);
         test_fusion(&d_ops);
-    }
+    }*/
 
     //string fname(argv[1]);
 
@@ -120,7 +122,7 @@ int main(int argc, char** argv) {
     //Sparse15D_MDense_Bcast* d_ops = new Sparse15D_MDense_Bcast(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
     //Sparse15D_MDense_Shift* d_ops = new Sparse15D_MDense_Shift(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
-    /*Sparse15D_MDense_Shift_Striped* d_ops 
+    Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 atoi(argv[1]), 
                 atoi(argv[2]), 
@@ -128,9 +130,8 @@ int main(int argc, char** argv) {
                 atoi(argv[4]), 
                 &local_ops, 
                 true,  // Whether we should support fusing SDDMM / SpMM
-                false  // Whether we should auto-fuse the provided operation, or rely on
-                );     // the backend local operation to do it for us
-    */
+                true   // Whether we should auto-fuse the provided operation, or rely on
+                );     // the backend local operation to do it for us 
 
     /*
     Sparse15D_MDense_Shift_Striped* d_ops 
@@ -150,11 +151,11 @@ int main(int argc, char** argv) {
     //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
-    //Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
 
-    //d_ops->reset_performance_timers();
-    //x->run_cg(5);
-    //d_ops->print_performance_statistics();
+    d_ops->reset_performance_timers();
+    x->run_cg(5);
+    d_ops->print_performance_statistics();
 
     MPI_Finalize();
 }
