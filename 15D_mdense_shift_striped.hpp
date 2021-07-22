@@ -106,13 +106,6 @@ public:
         localAcols = R;
         localBcols = R; 
 
-        this->M = S.M;
-        this->N = S.N;
-
-        // TODO: Check the calculation of localArows! 
-        localArows = divideAndRoundUp(this->M, p);
-        localBrows = divideAndRoundUp(this->N, p);
-
         r_split = false;
         
         ShardedBlockCyclicColumn nonzero_dist(p, c);
@@ -122,6 +115,11 @@ public:
         if(fused) {
             ST.reset(S.redistribute_nonzeros(&nonzero_dist, true, false));
         }        
+
+        this->M = S.M;
+        this->N = S.N;
+        localArows = divideAndRoundUp(this->M, p);
+        localBrows = divideAndRoundUp(this->N, p);
 
         // Postprocessing nonzeros for easy feeding to local kernels 
         for(int i = 0; i < S.coords.size(); i++) {

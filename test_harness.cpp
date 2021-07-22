@@ -97,7 +97,7 @@ void test_sparse_transpose() {
     SpmatLocal x;
 
     StandardKernel local_ops;
-    Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 2, &local_ops, false, false);
+    Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 2, &local_ops, true, false);
 
     for(int i = 0; i < num_procs; i++) {
         if(proc_rank == i) {
