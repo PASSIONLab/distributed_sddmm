@@ -23,7 +23,7 @@ using namespace std;
 class NonzeroDistribution {
 public:
 	int M, N;
-
+	MPI_Comm world;
 	/*
 	 * Returns the processor that is supposed to own a particular nonzero. 
 	 */
@@ -36,12 +36,13 @@ public:
 	// These are unzipped versions of the sparse matrix G. 
 	vector<spcoord_t> coords;	
     vector<uint64_t> blockStarts;
-	VectorXd Svalues;
 
-    uint64_t dist_nnz;
-
+	/*
+	 * Global properties of the distributed sparse matrix. 
+	 */
     uint64_t M;
     uint64_t N;
+    uint64_t dist_nnz;
 
 	bool initialized;
 
@@ -63,23 +64,6 @@ public:
 		}
 	}	
 
-	void initialize(PSpMat_s32p64_Int *G) {	
-		dist_nnz = G->getnnz();
-		local_nnz = G->seq().getnnz();
-		nrows_local = G->seq().getnrow();
-		ncols_local = G->seq().getncol();
-
-		M = G->getnrow();
-		N = G->getncol();
-
-		SpTuples<int64_t,int> tups(G->seq()); 
-		tups.SortColBased();
-
-		unpack_tuples(tups, coords);	
-		
-		initialized=true;
-	}
-
 	/*
 	 * This is a bad prefix sum function.
 	 */
@@ -94,11 +78,16 @@ public:
 	/*
 	 * Redistributes nonzeros according to the provided distribution, optionally transposing the matrix
 	 * in the process. Works either in-place, or returns an entirely new sparse matrix. 
+	 *
+	 * TODO: Write extra code to amortize away the process of a transpose. 
 	 */
 	SpmatLocal* redistribute_nonzeros(NonzeroDistribution* dist, bool transpose, bool in_place) {
 		int num_procs, proc_rank;
-		MPI_Comm_size(MPI_COMM_WORLD, &num_procs);	
-		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+		MPI_Comm_size(dist->world, &num_procs);	
+		MPI_Comm_rank(dist->world, &proc_rank);
+
+		dist->M = M;
+		dist->N = N;
 
 		vector<int> sendcounts(num_procs, 0);
 		vector<int> recvcounts(num_procs, 0);
@@ -115,20 +104,18 @@ public:
 
 		for(int i = 0; i < coords.size(); i++) {
 			int owner = dist->getOwner(coords[i].r, coords[i].c, transpose);
-			sendbuf[bufindices[owner]] = coords[i];
-
-			if(transpose) {
-				// TODO: Need to handle this case... 
-				assert(false);
-				//sendbuf[bufindices[owner]].r 	
-			}
+			int idx = bufindices[owner];
+	
+			sendbuf[idx].r = transpose ? coords[i].c : coords[i].r;
+			sendbuf[idx].c = transpose ? coords[i].r : coords[i].c;	
+			sendbuf[idx].value = coords[i].value;	
 
 			bufindices[owner]++;
 		}
 
 		// Broadcast the number of nonzeros that each processor is going to receive
 		MPI_Alltoall(sendcounts.data(), 1, MPI_INT, recvcounts.data(), 1, 
-				MPI_INT, MPI_COMM_WORLD);
+				MPI_INT, dist->world);
 
 		vector<int> recvoffsets;
 		prefix_sum(recvcounts, recvoffsets);
@@ -138,43 +125,64 @@ public:
 				std::accumulate(recvcounts.begin(), recvcounts.end(), 0);
 
 		SpmatLocal* result;
-		vector<spcoord_t>* destination_coords;
-		if(! in_place) {
-			result = new SpmatLocal();
-			result->initialized = true;
-			destination_coords = &(result->coords);
+
+		if(in_place) {
+			result = this;
 		}
 		else {
-			result = nullptr;
-			destination_coords = &coords;
+			result = new SpmatLocal();
 		}
 
-		destination_coords->resize(total_received_coords);
+		result->M = transpose ? this->N : this->M; 
+		result->N = transpose ? this->M : this->N; 
+		result->dist_nnz = this->dist_nnz; 
+
+		result->initialized = true;
+		(result->coords).resize(total_received_coords);
 
 		MPI_Alltoallv(sendbuf, sendcounts.data(), offsets.data(), 
-				SPCOORD, destination_coords->data(), recvcounts.data(), recvoffsets.data(), 
-				SPCOORD, MPI_COMM_WORLD
+				SPCOORD, (result->coords).data(), recvcounts.data(), recvoffsets.data(), 
+				SPCOORD, dist->world 
 				);
 
-		std::sort(destination_coords->begin(), destination_coords->end(), sortbycolumns);
+		std::sort((result->coords).begin(), (result->coords).end(), sortbycolumns);
+
+		delete[] sendbuf;
 
 		return result;
 	}
 
-	static void loadMatrixIntoLayer(bool readFromFile, 
+	void loadMatrixAndRedistribute(bool readFromFile, 
 			int logM, 
 			int nnz_per_row,
 			string filename,
-			shared_ptr<CommGrid> layerGrid,
-			SpmatLocal* S
-			) {
-		int proc_rank;
-		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+			NonzeroDistribution* dist) {
+
+		MPI_Comm WORLD;
+		MPI_Comm_dup(dist->world, &WORLD);
+
+		int proc_rank, num_procs;
+		MPI_Comm_rank(WORLD, &proc_rank);
+		MPI_Comm_size(WORLD, &num_procs);
+
+		shared_ptr<CommGrid> simpleGrid;
+		simpleGrid.reset(new CommGrid(WORLD, num_procs, 1));
 
 		PSpMat_s32p64_Int * G; 
+		int nnz;
 
-		if(! readFromFile) {
-			DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(layerGrid);
+		if(readFromFile) {
+			G = new PSpMat_s32p64_Int(simpleGrid);
+			// This has a load-balancing problem...	
+			G->ParallelReadMM(filename, true, maximum<double>());	
+
+			nnz = G->getnnz();
+			if(proc_rank == 0) {
+				cout << "File reader read " << nnz << " nonzeros." << endl;
+			}
+		}
+		else { // This uses the Graph500 R-mat generator 
+			DistEdgeList<int64_t> * DEL = new DistEdgeList<int64_t>(simpleGrid);
 
 			double initiator[4] = {0.25, 0.25, 0.25, 0.25};
 			unsigned long int scale      = logM;
@@ -185,96 +193,50 @@ public:
 			G = new PSpMat_s32p64_Int(*DEL, false);
 
 			delete DEL;
-			int nnz = G->getnnz();
 
+			nnz = G->getnnz();
 			if(proc_rank == 0) {
 				cout << "R-mat generator created " << nnz << " nonzeros." << endl;
-			}
-		}
-		else {
-			G = new PSpMat_s32p64_Int(layerGrid);
-			G->ParallelReadMM(filename, true, maximum<double>());	
-
-			int nnz = G->getnnz();
-
-			if(proc_rank == 0) {
-				cout << "File reader read " << nnz << " nonzeros." << endl;
-			}
-		}
-
-		S->initialize(G);	
-	}
-
-	void loadMatrixAndRedistribute(string filename, NonzeroDistribution* dist) {
-		MPI_Comm WORLD;
-		MPI_Comm_dup(MPI_COMM_WORLD, &WORLD);
-
-		int proc_rank, num_procs;
-		MPI_Comm_rank(WORLD, &proc_rank);
-		MPI_Comm_size(WORLD, &num_procs);
-
-		shared_ptr<CommGrid> simpleGrid;
-		simpleGrid.reset(new CommGrid(WORLD, num_procs, 1));
-
-		PSpMat_s32p64_Int * G; 
-
-		G = new PSpMat_s32p64_Int(simpleGrid);
-
-		// This has a load-balancing problem...	
-		G->ParallelReadMM(filename, true, maximum<double>());	
-		int nnz = G->getnnz();
-
-		SpTuples<int64_t,int> tups(G->seq()); 
-		tups.SortColBased();
-		unpack_tuples(tups, coords);
+			}	
+		}	
 	
-		int rowIncrement = G->getnrow() / num_procs;
+		SpTuples<int64_t,int> tups(G->seq()); 
+
+		unpack_tuples(tups, coords);
+		
+		this->M = G->getnrow();
+		this->N = G->getncol();
+		this->dist_nnz = nnz; 
+		
+		int rowIncrement = this->M / num_procs;
 		for(int i = 0; i < coords.size(); i++) {
 			coords[i].r += rowIncrement * proc_rank;
 		}
 
-		if(proc_rank == 0) {
-			cout << "File reader read " << nnz << " nonzeros." << endl;
-		}
-
-		redistribute_nonzeros(dist, false, true);	
-
-		for(int i = 0; i < num_procs; i++) {
-			if(proc_rank == i) {
-				cout << "Tuples for Process " << i << ": " << endl;
-				cout << "# Rows: " << G->seq().getnrow() << ", # Cols: "
-					<< G->seq().getncol() << endl;
-				cout << "======================" << endl;
-				for(int j = 0; j < coords.size(); j++) {
-					cout << coords[j].r
-					<< " " << coords[j].c 
-					<< " " << coords[j].value << endl;
-				}
-				cout << "======================" << endl;
-			}
-			MPI_Barrier(WORLD);
-		}
+		redistribute_nonzeros(dist, false, true);
+		initialized = true;
 
 		delete G;
 	}
 
 	/*
 	 * This method assumes the tuples are sorted in a column major order,
-	 * and it also changes the column coordinates 
+	 * and it also changes the column coordinates. DO NOT call this function
+	 * unless you're sure there is no more work to do with the current sparse
+	 * matrix. 
 	 */
 	void divideIntoBlockCols(int blockWidth, int targetDivisions, bool modIndex) {
 		blockStarts.clear();
         // Locate block starts within the local sparse matrix (i.e. divide a long
         // block row into subtiles) 
         int currentStart = 0;
-        for(uint64_t i = 0; i < local_nnz; i++) {
+        for(uint64_t i = 0; i < coords.size(); i++) {
             while(coords[i].c >= currentStart) {
                 blockStarts.push_back(i);
                 currentStart += blockWidth;
             }
 
             // This modding step helps indexing. 
-
 			if(modIndex) {
 				coords[i].c %= blockWidth;
 			}
@@ -283,10 +245,8 @@ public:
 		assert(blockStarts.size() <= targetDivisions + 1);
 
         while(blockStarts.size() < targetDivisions + 1) {
-            blockStarts.push_back(local_nnz);
+            blockStarts.push_back(coords.size());
         }
 	}
-
 };
-
 

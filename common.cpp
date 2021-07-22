@@ -26,6 +26,12 @@ int divideAndRoundUp(int num, int denom) {
     }
 } 
 
+
+string spcoord_t::string_rep() {
+    return std::to_string(r) + " " + std::to_string(c) + " " + std::to_string(value);
+}
+
+
 MPI_Datatype SPCOORD;
 
 void initialize_mpi_datatypes() {

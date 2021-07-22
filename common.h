@@ -2,6 +2,7 @@
 #define COMMON_HEADER
 
 #include <chrono>
+#include <string>
 #include "CombBLAS/CombBLAS.h"
 #include <Eigen/Dense>
 
@@ -27,6 +28,8 @@ struct spcoord_t {
 	uint64_t r;
 	uint64_t c;
 	double value;
+
+	string string_rep();
 };
 
 bool sortbycolumns(spcoord_t &a, spcoord_t &b);

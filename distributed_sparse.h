@@ -51,6 +51,7 @@ public:
     //MPI_Comm A_col_world, B_col_world;
     //MPI_Comm A_replication_world, B_replication_world;
 
+    bool r_split;
     MPI_Comm A_R_split_world, B_R_split_world;
 
     bool verbose;
@@ -128,7 +129,7 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(S.local_nnz, value); 
+        return VectorXd::Constant(S.coords.size(), value); 
     }
 
     DenseMatrix like_A_matrix(double value) {

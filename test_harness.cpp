@@ -76,6 +76,11 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
 class BlockCyclicColumn: public NonzeroDistribution {
 public:
 	int getOwner(int r, int c, int transpose) {
+        if(transpose) {
+            int temp = r;
+            r = c;
+            c = temp;
+        }
         int blockWidth = divideAndRoundUp(N, 3);
         int col_id = c / blockWidth; 
         return col_id % 2;
@@ -83,14 +88,35 @@ public:
 };
 
 void test_sparse_transpose() {
+    int proc_rank, num_procs;
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
     SpmatLocal x;
 
     BlockCyclicColumn nonzero_dist;
+    nonzero_dist.world = MPI_COMM_WORLD;
+
     nonzero_dist.M = 5;
     nonzero_dist.N = 5; 
-    cout << nonzero_dist.getOwner(2, 3, false) << endl; 
 
-	x.loadMatrixAndRedistribute("../data/testmat.mtx", &nonzero_dist);
+	x.loadMatrixAndRedistribute(true, 
+            -1, -1, 
+            "../data/testmat.mtx",
+            &nonzero_dist);
+
+    x.redistribute_nonzeros(&nonzero_dist, true, true);
+
+    for(int i = 0; i < num_procs; i++) {
+        if(proc_rank == i) {
+            cout << "Process " << i << ":" << endl;
+            for(int j = 0; j < x.coords.size(); j++) {
+                cout << x.coords[j].string_rep() << endl;
+            }
+            cout << "==================" << endl;
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -137,7 +163,7 @@ int main(int argc, char** argv) {
     //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
-    //Distributed_ALS* x = new Distributed_ALS(d_ops, d_ops->grid->GetLayerWorld(), true);
+    //Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
 
     //d_ops->reset_performance_timers();
     //x->run_cg(5);

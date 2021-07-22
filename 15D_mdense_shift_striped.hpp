@@ -20,27 +20,59 @@ using namespace combblas;
 using namespace Eigen;
 
 /*
+ * Layout for redistributing the sparse matrix. 
+ */
+class BlockCyclicColumn: public NonzeroDistribution {
+public:
+    int p, c;
+
+    BlockCyclicColumn(int p, int c) {
+        this->p = p;
+        this->c = c;
+    }
+
+	int getOwner(int row, int col, int transpose) {
+        int rDim = transpose ? this->N : this->M;
+        int cDim = transpose ? this->M : this->N;
+
+        int rows_in_block = divideAndRoundUp(rDim, p) * c; 
+        int cols_in_block = divideAndRoundUp(cDim, p); 
+
+        if(transpose) {
+            int temp = row;
+            row = col;
+            col = temp;
+        }
+        
+        int block_row = row / rows_in_block;
+        int block_col = col / cols_in_block;
+
+        int rowRank = block_row;
+        int layerRank = block_col % c;
+
+        return p / c * layerRank + rowRank;
+    }
+};
+
+/*
  * Unlike its non-striped counterpart, this algorithm uses reductions of smaller
  * messages instead of one large AllReduce 
  */
-
 class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
     int c; // # of layers 
 
-    unique_ptr<CommGrid3D> grid;
+    shared_ptr<CommGrid> grid;
 
     int rankInFiber, rankInLayer;
 
     bool auto_fusion;
 
     // This is only used for the fused algorithm
-    SpmatLocal ST;
+    unique_ptr<SpmatLocal> ST;
     vector<uint64_t> transposedBlockStarts; 
 
-    // We can either read from a file or use the R-mat generator for testing purposes
     void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused, bool auto_fusion) {
-        // STEP 0: Fill information about this algorithm so that the printout functions work correctly. 
 
         this->fused = fused;
         this->auto_fusion = auto_fusion;
@@ -64,7 +96,7 @@ public:
                 "Computation Time" 
                 };
 
-        grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, p / c, 1));
+        grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
 
         this->R = R;
         this->c = c;
@@ -73,39 +105,39 @@ public:
         localAcols = R;
         localBcols = R; 
 
-        SpmatLocal * tptr;
-        if(fused) {
-            tptr = &ST;
-        }
-        else {
-            tptr = nullptr;
-        }
-
-        if(grid->GetRankInFiber() == 0) {
-            SpmatLocal::loadMatrixIntoLayer(readFromFile,
-               logM,
-               nnz_per_row,
-               filename,
-               grid->GetCommGridLayer(),
-               &S
-            );
-        }
-
-        // TODO: NEED TO RE-ENABLE THIS!
-        //S.block_cyclic_shard(grid->GetRankInFiber(), 0, grid->GetFiberWorld(), p, c);
-
         this->M = S.M;
         this->N = S.N;
 
         // TODO: Check the calculation of localArows! 
-        localArows = divideAndRoundUp(this->M, p) + p;
-        localBrows = divideAndRoundUp(this->N, p) + p;
+        localArows = divideAndRoundUp(this->M, p);
+        localBrows = divideAndRoundUp(this->N, p);
 
-        rankInFiber = grid->GetRankInFiber();
-        rankInLayer = grid->GetRankInLayer();
+        r_split = false;
+        
+        BlockCyclicColumn nonzero_dist(p, c);
+        S.loadMatrixAndRedistribute(readFromFile, logM, 
+                nnz_per_row, filename, &nonzero_dist);
+        
+        if(fused) {
+            ST.reset(S.redistribute_nonzeros(&nonzero_dist, true, false));
+        }        
 
-        A_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
-        B_R_split_world = grid->GetCommGridLayer()->GetRowWorld();
+        // Postprocessing nonzeros for easy feeding to local kernels 
+        for(int i = 0; i < coords.size(); i++) {
+            S.coords[i].r %= localArows;
+        }
+
+        if(fused) {
+            for(int i = 0; i < ST.coords.size(); i++) {
+                ST.coords[i].r %= localBrows;
+            } 
+        }
+
+        S.divideIntoBlockCols(localBrows, p, true);
+        ST.divideIntoBlockCols(localArows, p, true);
+
+        rankInFiber = GetRankInProcCol();
+        rankInRow = GetRankInProcRow();
 
         check_initialized();
     }
@@ -121,13 +153,9 @@ public:
         : Distributed_Sparse(k) {
         constructor_helper(true, 0, -1, filename, R, c, fused, auto_fusion);
     }
-
-    // Synchronizes data across three levels of the processor grid
+ 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-		// A and B are distributed across the entire process grid, so no initial synchronization needed. 
-        if(SValues != nullptr) {
-            MPI_Bcast((void*) SValues->data(), SValues->size(), MPI_DOUBLE,     0, grid->GetFiberWorld());
-        }
+    
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
@@ -140,9 +168,6 @@ public:
 
     void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
         algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
-        auto t = start_clock();
-        MPI_Allreduce(MPI_IN_PLACE, sddmm_result.data(), sddmm_result.size(), MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld()); 
-        stop_clock_and_add(t, "Sparse Allreduction Time");
     }
 
     void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer, int dst) {
@@ -153,14 +178,14 @@ public:
                 pMod(rankInLayer + 1, p / c), 0,
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
-                grid->GetLayerWorld(), &stat);
+                grid->GetRowWorld(), &stat);
         stop_clock_and_add(t, "Cyclic Shift Time");
 
         mat = recvBuffer;
     }
 
     VectorXd like_ST_values(double value) {
-        return VectorXd::Constant(ST.local_nnz, value); 
+        return VectorXd::Constant(ST.coords.size(), value); 
     }
 
     /*
@@ -204,7 +229,7 @@ public:
 
         auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetFiberWorld());
+                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->GetColWorld());
         stop_clock_and_add(t, "Dense Broadcast Time");
 
         for(int i = 0; i < p / c; i++) {
@@ -264,7 +289,7 @@ public:
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
-                    MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+                    MPI_DOUBLE, MPI_SUM, grid->GetColWorld());
         stop_clock_and_add(t, "Dense Reduction Time");
 
         int total_processed;
@@ -298,15 +323,15 @@ public:
         if(mode == k_spmmB || mode == k_sddmm) {
             auto t = start_clock();
             MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->GetFiberWorld());
+                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->GetColWorld());
             stop_clock_and_add(t, "Dense Broadcast Time");
         }
 
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
-            assert(S.blockStarts[block_id] <= S.local_nnz);
-            assert(S.blockStarts[block_id + 1] <= S.local_nnz);
+            assert(S.blockStarts[block_id] <= S.coords.size());
+            assert(S.blockStarts[block_id + 1] <= S.coords.size());
 
             auto t = start_clock();
 
@@ -356,7 +381,7 @@ public:
 
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
-                       MPI_DOUBLE, MPI_SUM, grid->GetFiberWorld());
+                       MPI_DOUBLE, MPI_SUM, grid->GetColWorld());
             stop_clock_and_add(t, "Dense Reduction Time");
         }
 
