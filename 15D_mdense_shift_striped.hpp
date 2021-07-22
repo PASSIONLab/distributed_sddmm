@@ -22,13 +22,14 @@ using namespace Eigen;
 /*
  * Layout for redistributing the sparse matrix. 
  */
-class BlockCyclicColumn: public NonzeroDistribution {
+class ShardedBlockCyclicColumn: public NonzeroDistribution {
 public:
     int p, c;
 
-    BlockCyclicColumn(int p, int c) {
+    ShardedBlockCyclicColumn(int p, int c) {
         this->p = p;
         this->c = c;
+        world = MPI_COMM_WORLD;
     }
 
 	int getOwner(int row, int col, int transpose) {
@@ -114,30 +115,29 @@ public:
 
         r_split = false;
         
-        BlockCyclicColumn nonzero_dist(p, c);
+        ShardedBlockCyclicColumn nonzero_dist(p, c);
         S.loadMatrixAndRedistribute(readFromFile, logM, 
                 nnz_per_row, filename, &nonzero_dist);
-        
+
         if(fused) {
             ST.reset(S.redistribute_nonzeros(&nonzero_dist, true, false));
         }        
 
         // Postprocessing nonzeros for easy feeding to local kernels 
-        for(int i = 0; i < coords.size(); i++) {
+        for(int i = 0; i < S.coords.size(); i++) {
             S.coords[i].r %= localArows;
         }
+        S.divideIntoBlockCols(localBrows, p, true);
 
         if(fused) {
-            for(int i = 0; i < ST.coords.size(); i++) {
-                ST.coords[i].r %= localBrows;
+            for(int i = 0; i < ST->coords.size(); i++) {
+                ST->coords[i].r %= localBrows;
             } 
+            ST->divideIntoBlockCols(localArows, p, true);
         }
 
-        S.divideIntoBlockCols(localBrows, p, true);
-        ST.divideIntoBlockCols(localArows, p, true);
-
-        rankInFiber = GetRankInProcCol();
-        rankInRow = GetRankInProcRow();
+        rankInFiber = grid->GetRankInProcCol();
+        rankInLayer = grid->GetRankInProcRow();
 
         check_initialized();
     }
@@ -155,7 +155,7 @@ public:
     }
  
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-    
+        // Empty method, no initialization needed... 
     }
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
@@ -185,7 +185,7 @@ public:
     }
 
     VectorXd like_ST_values(double value) {
-        return VectorXd::Constant(ST.coords.size(), value); 
+        return VectorXd::Constant(ST->coords.size(), value); 
     }
 
     /*
@@ -259,7 +259,7 @@ public:
 
             else if(mode == Bmat) {
                 nnz_processed += kernel->sddmm_local(
-                    ST,
+                    *ST,
                     Svalues,
                     broadcast_buffer,
                     *Brole,

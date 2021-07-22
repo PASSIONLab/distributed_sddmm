@@ -92,26 +92,21 @@ void test_sparse_transpose() {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
+    string fname = "../data/testmat.mtx";
+
     SpmatLocal x;
 
-    BlockCyclicColumn nonzero_dist;
-    nonzero_dist.world = MPI_COMM_WORLD;
-
-    nonzero_dist.M = 5;
-    nonzero_dist.N = 5; 
-
-	x.loadMatrixAndRedistribute(true, 
-            -1, -1, 
-            "../data/testmat.mtx",
-            &nonzero_dist);
-
-    x.redistribute_nonzeros(&nonzero_dist, true, true);
+    StandardKernel local_ops;
+    Sparse15D_MDense_Shift_Striped d_ops(fname, 8, 2, &local_ops, false, false);
 
     for(int i = 0; i < num_procs; i++) {
         if(proc_rank == i) {
             cout << "Process " << i << ":" << endl;
-            for(int j = 0; j < x.coords.size(); j++) {
-                cout << x.coords[j].string_rep() << endl;
+            cout << "Rank in Fiber: " << d_ops.rankInFiber << endl;
+            cout << "Rank in Layer: " << d_ops.rankInLayer << endl;
+
+            for(int j = 0; j < d_ops.S.coords.size(); j++) {
+                cout << d_ops.S.coords[j].string_rep() << endl;
             }
             cout << "==================" << endl;
         }
