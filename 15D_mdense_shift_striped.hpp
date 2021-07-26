@@ -61,7 +61,7 @@ public:
  */
 class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
-    int c; // # of layers 
+    int c; // Replication factor for the 1.5D Algorithm 
 
     shared_ptr<CommGrid> grid;
 
@@ -72,12 +72,13 @@ public:
 
     // This is only used for the fused algorithm
     unique_ptr<SpmatLocal> ST;
-    vector<uint64_t> transposedBlockStarts; 
 
-    void constructor_helper(bool readFromFile, int logM, int nnz_per_row, string filename, int R, int c, bool fused, bool auto_fusion) {
-
+    Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, bool fused, KernelImplementation* k) 
+        : Distributed_Sparse(k) 
+    {
         this->fused = fused;
-        this->auto_fusion = auto_fusion;
+        this->R = R;
+        this->c = c;
 
         if(p % c != 0) {
             if(proc_rank == 0) {
@@ -103,18 +104,18 @@ public:
         layer_axis = grid->GetColWorld();
         fiber_axis = grid->GetRowWorld();
 
-        this->R = R;
-        this->c = c;
-        this->nnz_per_row = nnz_per_row;
-
         localAcols = R;
         localBcols = R; 
 
         r_split = false;
         
         ShardedBlockCyclicColumn nonzero_dist(p, c);
-        S.loadMatrixAndRedistribute(readFromFile, logM, 
-                nnz_per_row, filename, &nonzero_dist);
+
+        // Copies the nonzeros of the sparse matrix locally (so we can do whatever
+        // we want with them; this does incur a memory overhead)
+        S.reset(
+            S_input.redistribute_nonzeros(&nonzero_dist, false, false);
+        )
 
         if(fused) {
             ST.reset(S.redistribute_nonzeros(&nonzero_dist, true, false));
@@ -126,10 +127,10 @@ public:
         localBrows = divideAndRoundUp(this->N, p);
 
         // Postprocessing nonzeros for easy feeding to local kernels 
-        for(int i = 0; i < S.coords.size(); i++) {
-            S.coords[i].r %= localArows;
+        for(int i = 0; i < S->coords.size(); i++) {
+            S->coords[i].r %= localArows;
         }
-        S.divideIntoBlockCols(localBrows, p, true);
+        S->divideIntoBlockCols(localBrows, p, true);
 
         if(fused) {
             for(int i = 0; i < ST->coords.size(); i++) {
@@ -140,37 +141,9 @@ public:
 
         check_initialized();
     }
-
-    // Initiates the algorithm for a Graph500 benchmark 
-    Sparse15D_MDense_Shift_Striped (int logM, int nnz_per_row, int R, int c, KernelImplementation* k, bool fused, bool auto_fusion)
-        : Distributed_Sparse(k) {
-        constructor_helper(false, logM, nnz_per_row, "", R, c, fused, auto_fusion);
-    }
-
-    // Reads the underlying sparse matrix from a file
-    Sparse15D_MDense_Shift_Striped (string &filename, int R, int c, KernelImplementation* k, bool fused, bool auto_fusion) 
-        : Distributed_Sparse(k) {
-        constructor_helper(true, 0, -1, filename, R, c, fused, auto_fusion);
-    }
  
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        // Empty method, no initialization needed... 
-    }
-
-    /*
-     * TODO: We can eliminate these three boilerplate functions with a little
-     * cleverness.. 
-     */
-    void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        algorithm(localA, localB, SValues, nullptr, k_spmmA);
-    }
-
-    void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        algorithm(localA, localB, SValues, nullptr, k_spmmB);
-    }
-
-    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
-        algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
+        // Empty method, no initialization needed 
     }
 
     void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer, int dst) {
@@ -209,10 +182,10 @@ public:
 
         if(mode == Amat) {
             assert(localA.rows() == result.rows() && localA.cols() == result.cols());
-            assert(Svalues.size() == S.coords.size());
+            assert(Svalues.size() == S->coords.size());
             Arole = &localA;
             Brole = &localB;
-            choice = &S;
+            choice = S.get();
         } 
         else if(mode == Bmat) {
             assert(localB.rows() == result.rows() && localB.cols() == result.cols());
@@ -315,40 +288,40 @@ public:
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
 
-            assert(S.blockStarts[block_id] <= S.coords.size());
-            assert(S.blockStarts[block_id + 1] <= S.coords.size());
+            assert(S->blockStarts[block_id] <= S->coords.size());
+            assert(S->blockStarts[block_id + 1] <= S->coords.size());
 
             auto t = start_clock();
 
             if(mode == k_sddmm) {
                 nnz_processed += kernel->sddmm_local(
-                    S,
+                    *S,
                     SValues,
                     accumulation_buffer,
                     localB,
                     *sddmm_result_ptr,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
+                    S->blockStarts[block_id],
+                    S->blockStarts[block_id + 1]);
             }
             else if(mode == k_spmmA) { 
                 nnz_processed += kernel->spmm_local(
-                    S,
+                    *S,
                     SValues,
                     accumulation_buffer,
                     localB,
                     Amat,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
+                    S->blockStarts[block_id],
+                    S->blockStarts[block_id + 1]);
             }
             else if(mode == k_spmmB) {
                 nnz_processed += kernel->spmm_local(
-                    S,
+                    *S,
                     SValues,
                     accumulation_buffer,
                     localB,
                     Bmat,
-                    S.blockStarts[block_id],
-                    S.blockStarts[block_id + 1]);
+                    S->blockStarts[block_id],
+                    S->blockStarts[block_id + 1]);
             }
 
             stop_clock_and_add(t, "Computation Time"); 

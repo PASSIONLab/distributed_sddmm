@@ -152,11 +152,10 @@ public:
 		return result;
 	}
 
-	void loadMatrixAndRedistribute(bool readFromFile, 
+	void loadTuples(bool readFromFile, 
 			int logM, 
 			int nnz_per_row,
-			string filename,
-			NonzeroDistribution* dist) {
+			string filename) {
 
 		MPI_Comm WORLD;
 		MPI_Comm_dup(dist->world, &WORLD);
@@ -213,9 +212,7 @@ public:
 			coords[i].r += rowIncrement * proc_rank;
 		}
 
-		redistribute_nonzeros(dist, false, true);
 		initialized = true;
-
 		delete G;
 	}
 

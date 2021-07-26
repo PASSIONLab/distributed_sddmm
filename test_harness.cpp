@@ -104,10 +104,11 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     initialize_mpi_datatypes();
 
-    //test_sparse_transpose();
-
     string fname(argv[1]);
+
     StandardKernel local_ops;
+    SpmatLocal S;
+    S.loadTuples(true, -1, -1, fname);
 
     /* 
     {
@@ -131,16 +132,15 @@ int main(int argc, char** argv) {
                 true   // Whether we should auto-fuse the provided operation, or rely on
                 );     // the backend local operation to do it for us 
     */
- 
+
     Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
-                fname, 
+                &S, 
                 atoi(argv[2]), 
-                atoi(argv[3]), 
+                atoi(argv[3]),
+                true, 
                 &local_ops, 
-                true, // Whether we should support fusing SDDMM / SpMM
-                true  // Whether we should auto-fuse the provided operation, or rely on
-                );     // the backend local operation to do it for us  
+                ); 
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 

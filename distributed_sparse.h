@@ -37,10 +37,9 @@ public:
     int localArows, localAcols, localBrows, localBcols;
 
     // Related to the sparse matrix
-    SpmatLocal S;
+    unique_ptr<SpmatLocal> S;
     VectorXd input_Svalues; // The values that sparse matrix S came with;
                             // when reading a file, this value is filled.
-    int nnz_per_row;
 
     int superclass_constructor_sentinel;
 
@@ -204,10 +203,30 @@ public:
      * If any input replication is needed, this function performs it. 
      */
     virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;
- 
-    virtual void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
-    virtual void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) = 0;
-    virtual void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) = 0;
+
+    /*
+     * The five functions below are just convenience functions. 
+     */
+
+    void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        algorithm(localA, localB, SValues, nullptr, k_spmmA);
+    }
+
+    void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        algorithm(localA, localB, SValues, nullptr, k_spmmB);
+    }
+
+    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
+    }
+
+    virtual void algorithm( DenseMatrix &localA, 
+                            DenseMatrix &localB, 
+                            VectorXd &SValues, 
+                            VectorXd *sddmm_result_ptr, 
+                            KernelMode mode
+                            ) = 0;
+
 };
 
 #endif
