@@ -138,8 +138,8 @@ int main(int argc, char** argv) {
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 &local_ops, 
-                false, // Whether we should support fusing SDDMM / SpMM
-                false  // Whether we should auto-fuse the provided operation, or rely on
+                true, // Whether we should support fusing SDDMM / SpMM
+                true  // Whether we should auto-fuse the provided operation, or rely on
                 );     // the backend local operation to do it for us  
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);

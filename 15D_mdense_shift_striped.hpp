@@ -97,11 +97,11 @@ public:
                 };
 
         // Related to the grid
-        grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
-        rankInFiber = grid->GetRankInProcCol();
-        rankInLayer = grid->GetRankInProcRow();
-        layer_axis = grid->GetRowWorld();
-        fiber_axis = grid->GetColWorld();
+        grid.reset(new CommGrid(MPI_COMM_WORLD, p / c, c));
+        rankInFiber = grid->GetRankInProcRow();
+        rankInLayer = grid->GetRankInProcCol();
+        layer_axis = grid->GetColWorld();
+        fiber_axis = grid->GetRowWorld();
 
         this->R = R;
         this->c = c;
