@@ -55,8 +55,6 @@ size_t StandardKernel::sddmm_local(
     int r = A.cols();
 
     //#pragma omp parallel for reduction(+:processed)
-
-    #pragma omp parallel for
     for(int i = start; i < end; i++) {
         //processed++;
         double* Arow = Aptr + r * S.coords[i].r;
@@ -83,8 +81,6 @@ size_t StandardKernel::spmm_local(
     int r = A.cols();
 
     //#pragma omp parallel for reduction(+:processed)
-    
-    #pragma omp parallel for
     for(int i = start; i < end; i++) {
         //processed++;
 
@@ -123,7 +119,7 @@ size_t FusedStandardKernel::sddmm_local(
     double* res = result.data();
     int r = A.cols();
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int i = start; i < end; i++) {
         processed++;
         double* Arow = Aptr + r * S.coords[i].r;

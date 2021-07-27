@@ -94,7 +94,7 @@ public:
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
         assert(superclass_constructor_sentinel == 3);
-        assert(S.initialized);
+        assert(S->initialized);
     }
 
     void print_algorithm_info() {
@@ -128,7 +128,7 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(S.coords.size(), value); 
+        return VectorXd::Constant(S->coords.size(), value); 
     }
 
     DenseMatrix like_A_matrix(double value) {

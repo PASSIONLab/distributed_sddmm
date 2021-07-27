@@ -152,13 +152,16 @@ public:
 		return result;
 	}
 
+	/*
+	 * Distributes tuples arbitrarily among all processors.
+	 */
 	void loadTuples(bool readFromFile, 
 			int logM, 
 			int nnz_per_row,
 			string filename) {
 
 		MPI_Comm WORLD;
-		MPI_Comm_dup(dist->world, &WORLD);
+		MPI_Comm_dup(MPI_COMM_WORLD, &WORLD);
 
 		int proc_rank, num_procs;
 		MPI_Comm_rank(WORLD, &proc_rank);

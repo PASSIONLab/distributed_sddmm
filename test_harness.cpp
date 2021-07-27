@@ -73,7 +73,7 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
-void test_sparse_transpose() {
+/*void test_sparse_transpose() {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -98,7 +98,7 @@ void test_sparse_transpose() {
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
-}
+}*/
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
@@ -138,20 +138,22 @@ int main(int argc, char** argv) {
                 &S, 
                 atoi(argv[2]), 
                 atoi(argv[3]),
-                true, 
-                &local_ops, 
+                false, 
+                &local_ops
                 ); 
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
-    //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
+    srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
     Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
 
     d_ops->reset_performance_timers();
-    x->run_cg(5);
+    x->run_cg(1);
     d_ops->print_performance_statistics();
+
+    delete d_ops;
 
     MPI_Finalize();
 }

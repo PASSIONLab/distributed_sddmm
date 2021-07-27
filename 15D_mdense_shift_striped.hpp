@@ -73,6 +73,25 @@ public:
     // This is only used for the fused algorithm
     unique_ptr<SpmatLocal> ST;
 
+    /*
+     * This is a debugging function.
+     */
+    void print_nonzero_distribution() {
+        for(int i = 0; i < p; i++) {
+            if(proc_rank == i) {
+                cout << "Process " << i << ":" << endl;
+                cout << "Rank in Fiber: " << rankInFiber << endl;
+                cout << "Rank in Layer: " << rankInLayer << endl;
+
+                for(int j = 0; j < S->coords.size(); j++) {
+                    cout << S->coords[j].string_rep() << endl;
+                }
+                cout << "==================" << endl;
+            }
+            MPI_Barrier(MPI_COMM_WORLD);
+        }
+    }
+
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, bool fused, KernelImplementation* k) 
         : Distributed_Sparse(k) 
     {
@@ -113,16 +132,14 @@ public:
 
         // Copies the nonzeros of the sparse matrix locally (so we can do whatever
         // we want with them; this does incur a memory overhead)
-        S.reset(
-            S_input.redistribute_nonzeros(&nonzero_dist, false, false);
-        )
+        S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
 
         if(fused) {
-            ST.reset(S.redistribute_nonzeros(&nonzero_dist, true, false));
-        }        
+            ST.reset(S->redistribute_nonzeros(&nonzero_dist, true, false));
+        }
 
-        this->M = S.M;
-        this->N = S.N;
+        this->M = S->M;
+        this->N = S->N;
         localArows = divideAndRoundUp(this->M, p);
         localBrows = divideAndRoundUp(this->N, p);
 
@@ -131,6 +148,8 @@ public:
             S->coords[i].r %= localArows;
         }
         S->divideIntoBlockCols(localBrows, p, true);
+
+        //print_nonzero_distribution();
 
         if(fused) {
             for(int i = 0; i < ST->coords.size(); i++) {
@@ -219,7 +238,6 @@ public:
             auto t = start_clock();
 
             // TODO: Here, need a conditional for auto-fusion or not 
-
             nnz_processed += kernel->sddmm_local(
                 *choice,
                 Svalues,
