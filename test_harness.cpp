@@ -10,14 +10,6 @@
 
 using namespace std;
 
-void deterministic_initialize(DenseMatrix &X) {
-    for(int i = 0; i < X.rows(); i++) {
-        for(int j = 0; j < X.cols(); j++) {
-            X(i, j) = ((float) i + j) / X.size();
-        }
-    }
-}
-
 void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     int proc_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
@@ -29,8 +21,8 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     DenseMatrix A = d_ops->like_A_matrix(0.0);    
     DenseMatrix B = d_ops->like_B_matrix(0.0);    
 
-    deterministic_initialize(A);
-    deterministic_initialize(B);
+    //deterministic_initialize(A);
+    //deterministic_initialize(B);
 
     DenseMatrix dummy_resultA = d_ops->like_A_matrix(0.0);    
     DenseMatrix dummy_resultB = d_ops->like_B_matrix(0.0);    
@@ -71,6 +63,42 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     if(proc_rank == 0) {
         cout << "Fusion testing complete!" << endl;
     }
+}
+
+void dummyInitialize(Sparse15D_MDense_Shift_Striped* d_ops, DenseMatrix &mat) {
+    int size = mat.size();
+    int offset = (d_ops->rankInLayer * d_ops->c + d_ops->rankInFiber) * size;
+    for(int i = 0; i < mat.rows(); i++) {
+        for(int j = 0; j < mat.cols(); j++) {
+            mat(i, j) = offset + i * mat.cols() + j;
+        }
+    }
+}
+
+void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
+    int proc_rank, num_procs;
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    DenseMatrix A = d_ops->like_A_matrix(0.0);    
+    DenseMatrix B = d_ops->like_B_matrix(0.0);
+
+    VectorXd S = d_ops->like_S_values(1.0);
+
+    dummyInitialize(d_ops, A);
+    dummyInitialize(d_ops, B);
+
+    VectorXd result = d_ops->like_S_values(0.0);
+
+    d_ops->sddmm(A, B, S, result);
+
+    double value = result.squaredNorm();
+    MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    if(proc_rank == 0) {
+        cout << value << endl;
+    }
+
 }
 
 /*void test_sparse_transpose() {
@@ -147,11 +175,14 @@ int main(int argc, char** argv) {
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
-    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    test_15D(d_ops);
 
+    /* 
+    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
     d_ops->reset_performance_timers();
     x->run_cg(1);
-    d_ops->print_performance_statistics();
+    d_ops->print_performance_statistics(); 
+    */
 
     delete d_ops;
 
