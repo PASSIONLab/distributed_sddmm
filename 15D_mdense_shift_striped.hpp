@@ -117,11 +117,11 @@ public:
                 };
 
         // Related to the grid
-        grid.reset(new CommGrid(MPI_COMM_WORLD, p / c, c));
-        rankInFiber = grid->GetRankInProcRow();
-        rankInLayer = grid->GetRankInProcCol();
-        layer_axis = grid->GetColWorld();
-        fiber_axis = grid->GetRowWorld();
+        grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
+        rankInFiber = grid->GetRankInProcCol();
+        rankInLayer = grid->GetRankInProcRow();
+        layer_axis = grid->GetRowWorld();
+        fiber_axis = grid->GetColWorld();
 
         localAcols = R;
         localBcols = R; 
@@ -145,15 +145,15 @@ public:
 
         // Postprocessing nonzeros for easy feeding to local kernels 
         for(int i = 0; i < S->coords.size(); i++) {
-            S->coords[i].r %= localArows;
+            S->coords[i].r %= localArows * c;
         }
-        S->divideIntoBlockCols(localBrows, p, true);
+        S->divideIntoBlockCols(localBrows, p, true); 
 
         //print_nonzero_distribution();
 
         if(fused) {
             for(int i = 0; i < ST->coords.size(); i++) {
-                ST->coords[i].r %= localBrows;
+                ST->coords[i].r %= localBrows * c;
             } 
             ST->divideIntoBlockCols(localArows, p, true);
         }

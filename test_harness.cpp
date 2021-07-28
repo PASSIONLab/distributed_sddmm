@@ -94,8 +94,12 @@ void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
 
     double value = result.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+ 
+    double A_fingerprint = A.squaredNorm(); 
+    MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
+        //cout << A_fingerprint << endl; 
         cout << value << endl;
     }
 
