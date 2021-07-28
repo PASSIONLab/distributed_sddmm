@@ -179,14 +179,12 @@ int main(int argc, char** argv) {
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
     //test_fusion(d_ops);
 
-    test_15D(d_ops);
-
-    /* 
+    //test_15D(d_ops);
+ 
     Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
     d_ops->reset_performance_timers();
-    x->run_cg(1);
-    d_ops->print_performance_statistics(); 
-    */
+    x->run_cg(5);
+    d_ops->print_performance_statistics();  
 
     delete d_ops;
 

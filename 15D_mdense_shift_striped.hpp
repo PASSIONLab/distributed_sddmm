@@ -116,7 +116,10 @@ public:
                 "Computation Time" 
                 };
 
-        // Related to the grid
+        /*
+         * WARNING: DO NOT TRANSPOSE THE GRID WITHOUT ALSO CHANGING THE
+         * DATA DISTRIBUTION INDEXING!!! 
+         */
         grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
         rankInFiber = grid->GetRankInProcCol();
         rankInLayer = grid->GetRankInProcRow();
@@ -148,8 +151,6 @@ public:
             S->coords[i].r %= localArows * c;
         }
         S->divideIntoBlockCols(localBrows, p, true); 
-
-        //print_nonzero_distribution();
 
         if(fused) {
             for(int i = 0; i < ST->coords.size(); i++) {
