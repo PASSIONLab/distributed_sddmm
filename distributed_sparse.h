@@ -61,19 +61,19 @@ public:
     /*
      * Some boilerplate, but also forces subclasses to initialize what they need to 
      */
-    Distributed_Sparse(KernelImplementation* k) {
+    Distributed_Sparse(KernelImplementation* k, int R) {
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &p);
         verbose = false;
         fused = false;
 
         kernel = k;
+        this->R = R;
 
         // Dummy initializations
         algorithm_name = "";
         M = -1;
         N = -1;
-        R = -1;
         localArows = -1;
         localAcols = -1;
         localBrows = -1;

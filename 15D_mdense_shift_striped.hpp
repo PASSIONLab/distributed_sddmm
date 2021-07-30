@@ -93,10 +93,9 @@ public:
     }
 
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, bool fused, KernelImplementation* k) 
-        : Distributed_Sparse(k) 
+        : Distributed_Sparse(k, R) 
     {
         this->fused = fused;
-        this->R = R;
         this->c = c;
 
         if(p % c != 0) {
@@ -106,7 +105,7 @@ public:
             }
         }
 
-        algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift with Reduce";
+        algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift";
         proc_grid_names = {"# Block Rows per Layer", "Layers"};
         proc_grid_dimensions = {p/c, c};
 
@@ -166,7 +165,7 @@ public:
         // Empty method, no initialization needed 
     }
 
-    void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer, int dst) {
+    void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer) {
         MPI_Status stat;
         auto t = start_clock();
 
@@ -258,7 +257,7 @@ public:
                 choice->blockStarts[block_id + 1]); 
             stop_clock_and_add(t, "Computation Time");
    
-            shiftDenseMatrix(*Brole, recvRowSlice, pMod(rankInLayer + 1, p / c));
+            shiftDenseMatrix(*Brole, recvRowSlice);
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
