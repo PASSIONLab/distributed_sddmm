@@ -19,38 +19,21 @@ using namespace std;
 using namespace combblas;
 using namespace Eigen;
 
-/*
- * Layout for redistributing the sparse matrix. 
- */
 class ShardedBlockCyclicColumn: public NonzeroDistribution {
 public:
     int p, c;
 
-    ShardedBlockCyclicColumn(int p, int c) {
+    ShardedBlockCyclicColumn(int M, int N, int p, int c) { 
+        world = MPI_COMM_WORLD;
         this->p = p;
         this->c = c;
-        world = MPI_COMM_WORLD;
+        rows_in_block = divideAndRoundUp(M, p) * c; 
+        cols_in_block = divideAndRoundUp(N, p); 
     }
 
-	int getOwner(int row, int col, int transpose) {
-        int rDim = transpose ? this->N : this->M;
-        int cDim = transpose ? this->M : this->N;
-
-        int rows_in_block = divideAndRoundUp(rDim, p) * c; 
-        int cols_in_block = divideAndRoundUp(cDim, p); 
-
-        if(transpose) {
-            int temp = row;
-            row = col;
-            col = temp;
-        }
-        
-        int block_row = row / rows_in_block;
-        int block_col = col / cols_in_block;
-
-        int rowRank = block_row;
-        int layerRank = block_col % c;
-
+	int blockOwner(int row_block, int col_block) {
+        int rowRank = row_block;
+        int layerRank = col_block % c;
         return p / c * layerRank + rowRank;
     }
 };
@@ -129,19 +112,20 @@ public:
         localBcols = R; 
 
         r_split = false;
-        
-        ShardedBlockCyclicColumn nonzero_dist(p, c);
+
+        this->M = S_input->M;
+        this->N = S_input->N;
+        ShardedBlockCyclicColumn standard_dist(M, N, p, c);
+        ShardedBlockCyclicColumn transpose_dist(N, M, p, c);
 
         // Copies the nonzeros of the sparse matrix locally (so we can do whatever
         // we want with them; this does incur a memory overhead)
-        S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
+        S.reset(S_input->redistribute_nonzeros(&standard_dist, false, false));
 
         if(fused) {
-            ST.reset(S->redistribute_nonzeros(&nonzero_dist, true, false));
+            ST.reset(S->redistribute_nonzeros(&transpose_dist, true, false));
         }
 
-        this->M = S->M;
-        this->N = S->N;
         localArows = divideAndRoundUp(this->M, p);
         localBrows = divideAndRoundUp(this->N, p);
 
@@ -343,7 +327,7 @@ public:
             }
 
             stop_clock_and_add(t, "Computation Time"); 
-            shiftDenseMatrix(localB, recvRowSlice, pMod(rankInLayer + 1, p / c));
+            shiftDenseMatrix(localB, recvRowSlice);
             MPI_Barrier(MPI_COMM_WORLD);
         }
 

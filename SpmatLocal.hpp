@@ -20,14 +20,28 @@ using namespace std;
  *   the other processors. 
  */
 
+/*
+ * This class handles block distributions. 
+ */
 class NonzeroDistribution {
 public:
-	int M, N;
 	MPI_Comm world;
+
+	int rows_in_block, cols_in_block;
+
+	virtual int blockOwner(int row_block, int col_block) = 0;
+
 	/*
 	 * Returns the processor that is supposed to own a particular nonzero. 
 	 */
-	virtual int getOwner(int r, int c, int transpose) = 0;
+	int getOwner(int r, int c, int transpose) {
+		if(! transpose) {
+			return blockOwner(r / rows_in_block, c / cols_in_block);	
+		}
+		else {
+			return blockOwner(c / rows_in_block, r / cols_in_block);
+		}
+	}
 };
 
 class SpmatLocal {
@@ -85,9 +99,6 @@ public:
 		int num_procs, proc_rank;
 		MPI_Comm_size(dist->world, &num_procs);	
 		MPI_Comm_rank(dist->world, &proc_rank);
-
-		dist->M = M;
-		dist->N = N;
 
 		vector<int> sendcounts(num_procs, 0);
 		vector<int> recvcounts(num_procs, 0);
