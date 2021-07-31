@@ -10,6 +10,8 @@
 
 using namespace std;
 
+typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
+
 class KernelImplementation {
 public:
     // Performs an operation that looks like a local SDDMM
@@ -39,6 +41,51 @@ public:
         int mode,
         uint64_t start,
         uint64_t end) = 0;
+
+    size_t triple_function(
+            KernelMode mode,
+            SpmatLocal &S,
+            VectorXd &SValues,
+            DenseMatrix &localA,
+            DenseMatrix &localB,
+            VectorXd *sddmm_result_ptr,
+            uint64_t start,
+            uint64_t end) {
+        
+        size_t nnz_processed = 0;
+        if(mode == k_sddmm) {
+            nnz_processed += sddmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                *sddmm_result_ptr,
+                start,
+                end);
+        }
+        else if(mode == k_spmmA) { 
+            nnz_processed += spmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                Amat,
+                start,
+                end);
+        }
+        else if(mode == k_spmmB) {
+            nnz_processed += spmm_local(
+                S,
+                SValues,
+                localA,
+                localB,
+                Bmat,
+                start,
+                end);
+        }
+        return nnz_processed;
+    }
+
 };
 
 /*
@@ -89,7 +136,5 @@ public:
         uint64_t start,
         uint64_t end);
 };
-
-typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
 
 #endif

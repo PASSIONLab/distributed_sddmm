@@ -295,6 +295,16 @@ public:
 
             auto t = start_clock();
 
+            /*kernel->triple_function(mode,
+                *S,
+                SValues,
+                accumulation_buffer,
+                localB,
+                sddmm_result_ptr,
+                S->blockStarts[block_id],
+                S->blockStarts[block_id + 1]);
+            */
+
             if(mode == k_sddmm) {
                 nnz_processed += kernel->sddmm_local(
                     *S,

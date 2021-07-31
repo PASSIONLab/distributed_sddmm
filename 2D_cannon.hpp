@@ -24,33 +24,18 @@ using namespace Eigen;
  */
 class Standard2D: public NonzeroDistribution {
 public:
-    int p;
+    int sqrtp;
 
-    Standard2D(int p) {
-        this->p = p;
+    Standard2D(int M, int N, int sqrtp) {
         world = MPI_COMM_WORLD;
+        this->sqrtp = sqrtp;
+        
+        rows_in_block = divideAndRoundUp(M, sqrtp);
+        cols_in_block = divideAndRoundUp(N, sqrtp);
     }
 
-	int getOwner(int row, int col, int transpose) {
-        int rDim = transpose ? this->N : this->M;
-        int cDim = transpose ? this->M : this->N;
-
-        int rows_in_block = divideAndRoundUp(rDim, p) * c; 
-        int cols_in_block = divideAndRoundUp(cDim, p); 
-
-        if(transpose) {
-            int temp = row;
-            row = col;
-            col = temp;
-        }
-        
-        int block_row = row / rows_in_block;
-        int block_col = col / cols_in_block;
-
-        int rowRank = block_row;
-        int layerRank = block_col % c;
-
-        return p / c * layerRank + rowRank;
+	int blockOwner(int row_block, int col_block) {
+        return sqrtp * row_block + col_block;
     }
 };
 
