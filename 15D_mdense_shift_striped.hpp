@@ -159,20 +159,6 @@ public:
         // Empty method, no initialization needed 
     }
 
-    void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer) {
-        MPI_Status stat;
-        auto t = start_clock();
-
-        MPI_Sendrecv(mat.data(), mat.size(), MPI_DOUBLE,
-                pMod(rankInLayer + 1, p / c), 0,
-                recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
-                MPI_ANY_SOURCE, 0,
-                layer_axis, &stat);
-        stop_clock_and_add(t, "Cyclic Shift Time");
-
-        mat = recvBuffer;
-    }
-
     VectorXd like_ST_values(double value) {
         return VectorXd::Constant(ST->coords.size(), value); 
     }
@@ -213,9 +199,6 @@ public:
 
         int nnz_processed = 0;
 
-        // Temporary buffer to hold the received portion of B-role matrix. 
-        DenseMatrix recvRowSlice(Brole->rows(), Brole->cols());
-
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
 		DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
@@ -250,8 +233,11 @@ public:
                 choice->blockStarts[block_id],
                 choice->blockStarts[block_id + 1]); 
             stop_clock_and_add(t, "Computation Time");
-   
-            shiftDenseMatrix(*Brole, recvRowSlice);
+
+            t = start_clock();
+            shiftDenseMatrix(*Brole, layer_axis, pMod(rankInLayer + 1, p / c));
+            stop_clock_and_add(t, "Cyclic Shift Time");
+
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
@@ -283,9 +269,6 @@ public:
                             ) { 
         int nnz_processed = 0;
 
-        // Temporary buffer to hold the received portion of matrix B.
-        DenseMatrix recvRowSlice(localB.rows(), localB.cols());
-
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localA.rows() * c, R, 0.0); 
@@ -316,7 +299,11 @@ public:
                 S->blockStarts[block_id + 1]);
 
             stop_clock_and_add(t, "Computation Time"); 
-            shiftDenseMatrix(localB, recvRowSlice);
+
+            t = start_clock();
+            shiftDenseMatrix(localB, layer_axis, pMod(rankInLayer + 1, p / c));
+            stop_clock_and_add(t, "Cyclic Shift Time");
+
             MPI_Barrier(MPI_COMM_WORLD);
         }
 

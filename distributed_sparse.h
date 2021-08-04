@@ -230,6 +230,76 @@ public:
 
     virtual void dummyInitialize(DenseMatrix &loc) = 0;
 
+    /*
+     * Convenience functions. 
+     */
+
+    void shiftDenseMatrix(DenseMatrix &mat, MPI_Comm world, int send_dst) {
+        MPI_Status stat;
+        DenseMatrix recvBuffer(mat.rows(), mat.cols());
+
+        MPI_Sendrecv(mat.data(), mat.size(), MPI_DOUBLE,
+                send_dst, 0,
+                recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+
+        mat = recvBuffer;
+    }
+
+    /*
+     * This changes coordinates in the local sparse matrix buffer. 
+     */
+    void shiftSparseMatrix(VectorXd *Svalues, VectorXd *sddmm_result, MPI_Comm world, int send_dst) {
+        int nnz_to_send, nnz_to_receive;
+        nnz_to_send = S->coords.size();
+
+        MPI_Status stat;
+
+        // Send the buffer sizes; we can definitely optimize this operation. 
+        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
+                send_dst, 0,
+                &nnz_to_receive, 1, MPI_INT,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+
+        vector<spcoord_t> coords_recv;
+        coords_recv.resize(nnz_to_receive);
+
+        MPI_Sendrecv(S->coords.data(), nnz_to_send, SPCOORD,
+                send_dst, 0,
+                coords_recv.data(), nnz_to_receive, SPCOORD,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+        S->coords = coords_recv; 
+
+        /*
+        * To-do: we can do an MPI_allgather at initialization to avoid sending
+        * the number of coordinates first.
+        */
+
+        if(Svalues != nullptr) {
+            VectorXd Svalues_recv(nnz_to_receive);
+            MPI_Sendrecv(Svalues->data(), nnz_to_send, MPI_DOUBLE,
+                    send_dst, 0,
+                    Svalues_recv.data(), nnz_to_receive, MPI_DOUBLE,
+                    MPI_ANY_SOURCE, 0,
+                    world, &stat);
+            *Svalues = Svalues_recv;
+        }
+
+        if(sddmm_result != nullptr) {
+            VectorXd sddmm_result_recv(nnz_to_receive);
+            MPI_Sendrecv(sddmm_result->data(), nnz_to_send, MPI_DOUBLE,
+                    send_dst, 0,
+                    sddmm_result_recv.data(), nnz_to_receive, MPI_DOUBLE,
+                    MPI_ANY_SOURCE, 0,
+                    world, &stat);
+
+            *sddmm_result = sddmm_result_recv;
+        }
+    }
+
 };
 
 #endif

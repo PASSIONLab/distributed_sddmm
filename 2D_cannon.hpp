@@ -49,7 +49,9 @@ public:
     int sqrtp;
 
     int rankInRow, rankInCol;
-    MPI_Comm row_axis, col_axis; 
+    MPI_Comm row_axis, col_axis;
+
+    bool initial_shift;
 
     void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
         if(proc_rank == 0) {
@@ -96,6 +98,7 @@ public:
     }
 
     Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) {
+        initial_shift = true;
         sqrtp = (int) sqrt(p);
 
         if(sqrtp * sqrtp != p) {
@@ -142,7 +145,9 @@ public:
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
 
-        // print_nonzero_distribution();
+        // Skew the S-matrix in preparation for repeated Cannon's algorithm. 
+        shiftSparseMatrix(nullptr, nullptr, row_axis, 
+                pMod(rankInRow - rankInCol, sqrtp));
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
@@ -152,79 +157,8 @@ public:
         check_initialized();    
     }
 
-    void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer) {
-        MPI_Status stat;
-        auto t = start_clock();
-
-        MPI_Sendrecv(mat.data(), mat.size(), MPI_DOUBLE,
-                pMod(rankInCol + 1, sqrtp), 0,
-                recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
-                MPI_ANY_SOURCE, 0,
-                col_axis, &stat);
-        stop_clock_and_add(t, "Dense Cyclic Shift Time");
-
-        mat = recvBuffer;
-    }
-
-    /*
-     * This overwrites data in the local sparse matrix buffer. 
-     */
-    void shiftSparseMatrix(VectorXd &Svalues, VectorXd *sddmm_result) {
-        int nnz_to_send, nnz_to_receive;
-        nnz_to_send = S->coords.size();
-
-        int dst = pMod(rankInRow + 1, sqrtp);
-
-        MPI_Status stat;
-        auto t = start_clock();
-
-        // Send the buffer sizes; we can definitely optimize this operation. 
-        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
-                dst, 0,
-                &nnz_to_receive, 1, MPI_INT,
-                MPI_ANY_SOURCE, 0,
-                row_axis, &stat);
-
-        VectorXd Svalues_recv(nnz_to_receive);
-        vector<spcoord_t> coords_recv;
-        coords_recv.resize(nnz_to_receive);
-
-        /*
-        * To-do: we can do an MPI_allgather at initialization to avoid sending
-        * the number of coordinates first.
-        */
-
-        MPI_Sendrecv(Svalues.data(), nnz_to_send, MPI_DOUBLE,
-                dst, 0,
-                Svalues_recv.data(), nnz_to_receive, MPI_DOUBLE,
-                MPI_ANY_SOURCE, 0,
-                row_axis, &stat);
-        Svalues = Svalues_recv;
-
-        if(sddmm_result != nullptr) {
-            VectorXd sddmm_result_recv(nnz_to_receive);
-            MPI_Sendrecv(sddmm_result->data(), nnz_to_send, MPI_DOUBLE,
-                    dst, 0,
-                    sddmm_result_recv.data(), nnz_to_receive, MPI_DOUBLE,
-                    MPI_ANY_SOURCE, 0,
-                    row_axis, &stat);
-
-            *sddmm_result = sddmm_result_recv;
-        }
-
-        MPI_Sendrecv(S->coords.data(), nnz_to_send, SPCOORD,
-                dst, 0,
-                coords_recv.data(), nnz_to_receive, SPCOORD,
-                MPI_ANY_SOURCE, 0,
-                row_axis, &stat);
-
-        S->coords = coords_recv; 
-
-        stop_clock_and_add(t, "Sparse Cyclic Shift Time");
-    }
-
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        // Empty method, 2D Cannon needs no initial synchronization 
+         
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -234,8 +168,14 @@ public:
                             KernelMode mode
                             ) {
 
-        DenseMatrix recvBuffer(localB.rows(), localB.cols());
         int nnz_processed;
+
+        // This snippet is for reproducibility and should really be
+        // moved 
+        if(initial_shift) {
+            shiftDenseMatrix(localB, col_axis, 
+                    pMod(rankInCol - rankInRow, sqrtp));
+        }
 
         for(int i = 0; i < sqrtp; i++) {
             if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {
@@ -260,8 +200,10 @@ public:
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtp > 1) {
-                shiftDenseMatrix(localB, recvBuffer);
-                shiftSparseMatrix(SValues, sddmm_result_ptr);
+                shiftDenseMatrix(localB, col_axis, 
+                        pMod(rankInCol + 1, sqrtp));
+                shiftSparseMatrix(&SValues, sddmm_result_ptr, row_axis, 
+                        pMod(rankInRow + 1, sqrtp));
             }
         }
 

@@ -66,7 +66,7 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
-void verify_operation(Distributed_Sparse* d_ops) {
+void verify_operation(Sparse2D_Cannon* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -80,6 +80,8 @@ void verify_operation(Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(B);
 
     VectorXd result = d_ops->like_S_values(0.0);
+
+    d_ops->initial_shift = true;
     d_ops->sddmm(A, B, S, result);
 
     double value = result.squaredNorm();
