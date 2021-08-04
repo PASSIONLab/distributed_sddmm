@@ -66,7 +66,7 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
-void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
+void verify_operation(Distributed_Sparse* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -76,11 +76,10 @@ void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
 
     VectorXd S = d_ops->like_S_values(1.0);
 
-    dummyInitialize(d_ops, A);
-    dummyInitialize(d_ops, B);
+    d_ops->dummyInitialize(A);
+    d_ops->dummyInitialize(B);
 
     VectorXd result = d_ops->like_S_values(0.0);
-
     d_ops->sddmm(A, B, S, result);
 
     double value = result.squaredNorm();
@@ -90,8 +89,8 @@ void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
-        //cout << A_fingerprint << endl; 
-        cout << value << endl;
+        cout << "Fingerprint of A matrix: " << A_fingerprint << endl; 
+        cout << "SDDMM Fingerpint: " << value << endl;
     }
 
 }
@@ -156,6 +155,7 @@ int main(int argc, char** argv) {
                 );     // the backend local operation to do it for us 
     */
 
+    /*
     Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 &S, 
@@ -164,14 +164,16 @@ int main(int argc, char** argv) {
                 false, 
                 &local_ops
                 );
+    */
 
-
-    /*Sparse2D_Cannon* d_ops 
+    Sparse2D_Cannon* d_ops 
         = new Sparse2D_Cannon(
                 &S, 
                 atoi(argv[2]),
                 &local_ops
-                );*/
+                );
+
+    verify_operation(d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
@@ -180,10 +182,10 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
  
-    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
-    d_ops->reset_performance_timers();
-    x->run_cg(5);
-    d_ops->print_performance_statistics();  
+    //Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    //d_ops->reset_performance_timers();
+    //x->run_cg(5);
+    //d_ops->print_performance_statistics();  
 
     delete d_ops;
 

@@ -227,6 +227,9 @@ public:
                             KernelMode mode
                             ) = 0;
 
+
+    virtual void dummyInitialize(DenseMatrix &loc) = 0;
+
 };
 
 #endif

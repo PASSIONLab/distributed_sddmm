@@ -51,7 +51,12 @@ public:
     int rankInRow, rankInCol;
     MPI_Comm row_axis, col_axis; 
 
-    void print_nonzero_distribution() {
+    void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
+        if(proc_rank == 0) {
+            cout << "===============================" << endl;
+            cout << "===============================" << endl;
+        }
+
         for(int i = 0; i < p; i++) {
             if(proc_rank == i) {
                 cout << "Process " << i << ":" << endl;
@@ -61,14 +66,26 @@ public:
                 for(int j = 0; j < S->coords.size(); j++) {
                     cout << S->coords[j].string_rep() << endl;
                 }
+
                 cout << "==================" << endl;
+                cout << "A matrix: " << endl;
+                cout << localA << endl; 
+                cout << "==================" << endl;
+
+                cout << "==================" << endl;
+                cout << "B matrix: " << endl;
+                cout << localB << endl; 
+                cout << "==================" << endl;
+
             }
+
+
             MPI_Barrier(MPI_COMM_WORLD);
         }
     }
 
     // Debugging function to deterministically initialize the A and B matrices.
-    void dummy_initialize(DenseMatrix &loc) {
+    void dummyInitialize(DenseMatrix &loc) {
         int firstRow = loc.rows() * rankInCol;
         int firstCol = loc.cols() * rankInRow; 
         for(int i = 0; i < loc.rows(); i++) {
@@ -221,6 +238,15 @@ public:
         int nnz_processed;
 
         for(int i = 0; i < sqrtp; i++) {
+            if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {
+                cout << *sddmm_result_ptr << endl;
+                cout << "==================" << endl;
+                cout << localA << endl;
+                cout << "==================" << endl;
+                cout << localB << endl;
+                cout << "==================" << endl;
+            }
+            //print_nonzero_distribution(localA, localB);
             auto t = start_clock();
             nnz_processed += kernel->triple_function(
                 mode,
@@ -233,11 +259,15 @@ public:
                 S->coords.size()); 
             stop_clock_and_add(t, "Computation Time");
 
-
             if(sqrtp > 1) {
                 shiftDenseMatrix(localB, recvBuffer);
                 shiftSparseMatrix(SValues, sddmm_result_ptr);
             }
+        }
+
+        if(proc_rank == 0) {
+            cout << *sddmm_result_ptr << endl;
+            cout << "==================" << endl;
         }
 
     }
