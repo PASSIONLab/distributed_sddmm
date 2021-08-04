@@ -67,10 +67,7 @@ public:
         }
     }
 
-    Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k) {
-        this->fused = false;
-        this->R = R;
-
+    Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) {
         sqrtp = (int) sqrt(p);
 
         if(sqrtp * sqrtp != p) {
@@ -104,11 +101,11 @@ public:
 
         r_split = true;
 
-        Standard2D nonzero_dist(p);
+        this->M = S_input->M;
+        this->M = S_input->N;
+        Standard2D nonzero_dist(M, N, sqrtp);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        this->M = S->M;
-        this->N = S->N;
 
         localArows = divideAndRoundUp(this->M, sqrtp);
         localBrows = divideAndRoundUp(this->N, sqrtp);
@@ -138,7 +135,7 @@ public:
     /*
      * This overwrites data in the local sparse matrix buffer. 
      */
-    void shiftSparseMatrix(VectorXd &Svalues) {
+    void shiftSparseMatrix(VectorXd &Svalues, VectorXd *sddmm_result) {
         int nnz_to_send, nnz_to_receive;
         nnz_to_send = S->coords.size();
 
@@ -147,7 +144,7 @@ public:
         MPI_Status stat;
         auto t = start_clock();
 
-        // Send the buffer sizes 
+        // Send the buffer sizes; we can definitely optimize this operation. 
         MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
                 dst, 0,
                 &nnz_to_receive, 1, MPI_INT,
@@ -159,32 +156,41 @@ public:
         coords_recv.resize(nnz_to_receive);
 
         /*
-         * To-do: we can probably dispatch these requests
-         * asynchronously, something to optimize in the near future.
-         */
+        * To-do: we can do an MPI_allgather at initialization to avoid sending
+        * the number of coordinates first.
+        */
 
         MPI_Sendrecv(Svalues.data(), nnz_to_send, MPI_DOUBLE,
                 dst, 0,
                 Svalues_recv.data(), nnz_to_receive, MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
+        Svalues = Svalues_recv;
+
+        if(sddmm_result != nullptr) {
+            VectorXd sddmm_result_recv(nnz_to_receive);
+            MPI_Sendrecv(sddmm_result->data(), nnz_to_send, MPI_DOUBLE,
+                    dst, 0,
+                    sddmm_result_recv.data(), nnz_to_receive, MPI_DOUBLE,
+                    MPI_ANY_SOURCE, 0,
+                    row_axis, &stat);
+
+            *sddmm_result = sddmm_result_recv;
+        }
 
         MPI_Sendrecv(S->coords.data(), nnz_to_send, MPI_DOUBLE,
                 dst, 0,
                 coords_recv.data(), nnz_to_receive, MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
+        S->coords = coords_recv; 
 
         stop_clock_and_add(t, "Cyclic Shift Time");
-
-        Svalues = Svalues_recv;
-        S->coords = coords_recv; 
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
         // Empty method, 2D Cannon needs no initial synchronization 
     }
-
 
     void algorithm(         DenseMatrix &localA, 
                             DenseMatrix &localB, 
@@ -193,43 +199,23 @@ public:
                             KernelMode mode
                             ) {
 
-        DenseMatrix &recvBuffer(localB.rows(), localB.cols());
+        DenseMatrix recvBuffer(localB.rows(), localB.cols());
+        int nnz_processed;
 
         for(int i = 0; i < sqrtp; i++) {
-            if(mode == k_sddmm) {
-                nnz_processed += kernel->sddmm_local(
-                    *S,
-                    SValues,
-                    localA,
-                    localB,
-                    *sddmm_result_ptr,
-                    0,
-                    SValues.size());
-            }
-            else if(mode == k_spmmA) { 
-                nnz_processed += kernel->spmm_local(
-                    *S,
-                    SValues,
-                    localA,
-                    localB,
-                    Amat,
-                    0,
-                    SValues.size());
-            }
-            else if(mode == k_spmmB) {
-                nnz_processed += kernel->spmm_local(
-                    *S,
-                    SValues,
-                    localA,
-                    localB,
-                    Bmat,
-                    0,
-                    SValues.size());
-            }
+            nnz_processed += kernel->triple_function(
+                mode,
+                *S,
+                SValues,
+                localA,
+                localB,
+                sddmm_result_ptr,
+                0,
+                S->coords.size());
         }
 
         shiftDenseMatrix(localB, recvBuffer);
-        shiftSparseMatrix(SValues);
+        shiftSparseMatrix(SValues, sddmm_result_ptr);
     }
-}
+};
 

@@ -295,7 +295,8 @@ public:
 
             auto t = start_clock();
 
-            /*kernel->triple_function(mode,
+            nnz_processed += kernel->triple_function(
+                mode,
                 *S,
                 SValues,
                 accumulation_buffer,
@@ -303,38 +304,6 @@ public:
                 sddmm_result_ptr,
                 S->blockStarts[block_id],
                 S->blockStarts[block_id + 1]);
-            */
-
-            if(mode == k_sddmm) {
-                nnz_processed += kernel->sddmm_local(
-                    *S,
-                    SValues,
-                    accumulation_buffer,
-                    localB,
-                    *sddmm_result_ptr,
-                    S->blockStarts[block_id],
-                    S->blockStarts[block_id + 1]);
-            }
-            else if(mode == k_spmmA) { 
-                nnz_processed += kernel->spmm_local(
-                    *S,
-                    SValues,
-                    accumulation_buffer,
-                    localB,
-                    Amat,
-                    S->blockStarts[block_id],
-                    S->blockStarts[block_id + 1]);
-            }
-            else if(mode == k_spmmB) {
-                nnz_processed += kernel->spmm_local(
-                    *S,
-                    SValues,
-                    accumulation_buffer,
-                    localB,
-                    Bmat,
-                    S->blockStarts[block_id],
-                    S->blockStarts[block_id + 1]);
-            }
 
             stop_clock_and_add(t, "Computation Time"); 
             shiftDenseMatrix(localB, recvRowSlice);

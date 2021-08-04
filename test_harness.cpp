@@ -1,8 +1,9 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
 #include "15D_mdense_shift_striped.hpp"
+#include "2D_cannon.hpp"
+
 #include "SpmatLocal.hpp"
-//#include "25D_mdense_nostage.hpp"
 
 #include "sparse_kernels.h"
 #include "common.h"
@@ -165,7 +166,7 @@ int main(int argc, char** argv) {
                 );     // the backend local operation to do it for us 
     */
 
-    Sparse15D_MDense_Shift_Striped* d_ops 
+    /*Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 &S, 
                 atoi(argv[2]), 
@@ -173,6 +174,15 @@ int main(int argc, char** argv) {
                 false, 
                 &local_ops
                 ); 
+    */
+
+    Sparse2D_Cannon* d_ops 
+        = new Sparse2D_Cannon(
+                &S, 
+                atoi(argv[2]),
+                &local_ops
+                ); 
+
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
