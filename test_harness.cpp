@@ -66,16 +66,6 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     }
 }
 
-void dummyInitialize(Sparse15D_MDense_Shift_Striped* d_ops, DenseMatrix &mat) {
-    int size = mat.size();
-    int offset = (d_ops->rankInLayer * d_ops->c + d_ops->rankInFiber) * size;
-    for(int i = 0; i < mat.rows(); i++) {
-        for(int j = 0; j < mat.cols(); j++) {
-            mat(i, j) = offset + i * mat.cols() + j;
-        }
-    }
-}
-
 void test_15D(Sparse15D_MDense_Shift_Striped* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
@@ -166,22 +156,22 @@ int main(int argc, char** argv) {
                 );     // the backend local operation to do it for us 
     */
 
-    /*Sparse15D_MDense_Shift_Striped* d_ops 
+    Sparse15D_MDense_Shift_Striped* d_ops 
         = new Sparse15D_MDense_Shift_Striped(
                 &S, 
                 atoi(argv[2]), 
                 atoi(argv[3]),
                 false, 
                 &local_ops
-                );*/
+                );
 
 
-    Sparse2D_Cannon* d_ops 
+    /*Sparse2D_Cannon* d_ops 
         = new Sparse2D_Cannon(
                 &S, 
                 atoi(argv[2]),
                 &local_ops
-                );
+                );*/
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 

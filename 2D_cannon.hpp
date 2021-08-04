@@ -67,6 +67,17 @@ public:
         }
     }
 
+    // Debugging function to deterministically initialize the A and B matrices.
+    void dummy_initialize(DenseMatrix &loc) {
+        int firstRow = loc.rows() * rankInCol;
+        int firstCol = loc.cols() * rankInRow; 
+        for(int i = 0; i < loc.rows(); i++) {
+            for(int j = 0; j < loc.cols(); j++) {
+                loc(i, j) = (firstRow + i) * R + firstCol + j;
+            }
+        }
+    }
+
     Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) {
         sqrtp = (int) sqrt(p);
 
@@ -171,7 +182,7 @@ public:
                 Svalues_recv.data(), nnz_to_receive, MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
-        //Svalues = Svalues_recv;
+        Svalues = Svalues_recv;
 
         if(sddmm_result != nullptr) {
             VectorXd sddmm_result_recv(nnz_to_receive);
@@ -181,7 +192,7 @@ public:
                     MPI_ANY_SOURCE, 0,
                     row_axis, &stat);
 
-            //*sddmm_result = sddmm_result_recv;
+            *sddmm_result = sddmm_result_recv;
         }
 
         MPI_Sendrecv(S->coords.data(), nnz_to_send, SPCOORD,
@@ -190,7 +201,7 @@ public:
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
 
-        //S->coords = coords_recv; 
+        S->coords = coords_recv; 
 
         stop_clock_and_add(t, "Sparse Cyclic Shift Time");
     }

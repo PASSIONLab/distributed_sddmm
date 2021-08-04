@@ -75,6 +75,16 @@ public:
         }
     }
 
+    void dummyInitialize(DenseMatrix &loc) {
+        int size = loc.size();
+        int offset = (rankInLayer * c + rankInFiber) * size;
+        for(int i = 0; i < loc.rows(); i++) {
+            for(int j = 0; j < loc.cols(); j++) {
+                loc(i, j) = offset + i * loc.cols() + j;
+            }
+        }
+    }
+
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, bool fused, KernelImplementation* k) 
         : Distributed_Sparse(k, R) 
     {
