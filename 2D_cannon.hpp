@@ -81,7 +81,8 @@ public:
         proc_grid_dimensions = {sqrtp, sqrtp};
 
         perf_counter_keys = 
-                {"Cyclic Shift Time",
+                {"Dense Cyclic Shift Time",
+                 "Sparse Cyclic Shift Time",
                 "Computation Time" 
                 };
 
@@ -90,6 +91,9 @@ public:
         rankInCol = grid->GetRankInProcCol();
         row_axis = grid->GetRowWorld();
         col_axis = grid->GetColWorld();
+
+        A_R_split_world = col_axis;
+        B_R_split_world = col_axis;
 
         localAcols = R / sqrtp;
         localBcols = R / sqrtp; 
@@ -102,20 +106,22 @@ public:
         r_split = true;
 
         this->M = S_input->M;
-        this->M = S_input->N;
+        this->N = S_input->N;
+        localArows = divideAndRoundUp(this->M, sqrtp);
+        localBrows = divideAndRoundUp(this->N, sqrtp);
+
         Standard2D nonzero_dist(M, N, sqrtp);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
 
-        localArows = divideAndRoundUp(this->M, sqrtp);
-        localBrows = divideAndRoundUp(this->N, sqrtp);
+        // print_nonzero_distribution();
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
             S->coords[i].c %= localBrows;
         }
 
-        check_initialized();
+        check_initialized();    
     }
 
     void shiftDenseMatrix(DenseMatrix &mat, DenseMatrix &recvBuffer) {
@@ -127,7 +133,7 @@ public:
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 col_axis, &stat);
-        stop_clock_and_add(t, "Cyclic Shift Time");
+        stop_clock_and_add(t, "Dense Cyclic Shift Time");
 
         mat = recvBuffer;
     }
@@ -165,7 +171,7 @@ public:
                 Svalues_recv.data(), nnz_to_receive, MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
-        Svalues = Svalues_recv;
+        //Svalues = Svalues_recv;
 
         if(sddmm_result != nullptr) {
             VectorXd sddmm_result_recv(nnz_to_receive);
@@ -175,17 +181,18 @@ public:
                     MPI_ANY_SOURCE, 0,
                     row_axis, &stat);
 
-            *sddmm_result = sddmm_result_recv;
+            //*sddmm_result = sddmm_result_recv;
         }
 
-        MPI_Sendrecv(S->coords.data(), nnz_to_send, MPI_DOUBLE,
+        MPI_Sendrecv(S->coords.data(), nnz_to_send, SPCOORD,
                 dst, 0,
-                coords_recv.data(), nnz_to_receive, MPI_DOUBLE,
+                coords_recv.data(), nnz_to_receive, SPCOORD,
                 MPI_ANY_SOURCE, 0,
                 row_axis, &stat);
-        S->coords = coords_recv; 
 
-        stop_clock_and_add(t, "Cyclic Shift Time");
+        //S->coords = coords_recv; 
+
+        stop_clock_and_add(t, "Sparse Cyclic Shift Time");
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
@@ -203,6 +210,7 @@ public:
         int nnz_processed;
 
         for(int i = 0; i < sqrtp; i++) {
+            auto t = start_clock();
             nnz_processed += kernel->triple_function(
                 mode,
                 *S,
@@ -211,11 +219,16 @@ public:
                 localB,
                 sddmm_result_ptr,
                 0,
-                S->coords.size());
+                S->coords.size()); 
+            stop_clock_and_add(t, "Computation Time");
+
+
+            if(sqrtp > 1) {
+                shiftDenseMatrix(localB, recvBuffer);
+                shiftSparseMatrix(SValues, sddmm_result_ptr);
+            }
         }
 
-        shiftDenseMatrix(localB, recvBuffer);
-        shiftSparseMatrix(SValues, sddmm_result_ptr);
     }
 };
 

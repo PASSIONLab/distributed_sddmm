@@ -173,16 +173,15 @@ int main(int argc, char** argv) {
                 atoi(argv[3]),
                 false, 
                 &local_ops
-                ); 
-    */
+                );*/
+
 
     Sparse2D_Cannon* d_ops 
         = new Sparse2D_Cannon(
                 &S, 
                 atoi(argv[2]),
                 &local_ops
-                ); 
-
+                );
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
