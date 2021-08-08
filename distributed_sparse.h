@@ -242,7 +242,9 @@ public:
                 send_dst, 0,
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
-                world, &stat);
+                world, &stat);        
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         mat = recvBuffer;
     }
@@ -271,6 +273,9 @@ public:
                 coords_recv.data(), nnz_to_receive, SPCOORD,
                 MPI_ANY_SOURCE, 0,
                 world, &stat);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
         S->coords = coords_recv; 
 
         /*
@@ -286,6 +291,8 @@ public:
                     MPI_ANY_SOURCE, 0,
                     world, &stat);
             *Svalues = Svalues_recv;
+
+            MPI_Barrier(MPI_COMM_WORLD);
         }
 
         if(sddmm_result != nullptr) {
@@ -297,6 +304,9 @@ public:
                     world, &stat);
 
             *sddmm_result = sddmm_result_recv;
+
+            MPI_Barrier(MPI_COMM_WORLD);
+
         }
     }
 

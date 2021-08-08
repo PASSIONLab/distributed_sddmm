@@ -168,7 +168,7 @@ public:
                             KernelMode mode
                             ) {
 
-        int nnz_processed;
+        int nnz_processed; 
 
         // This snippet is for reproducibility and should really be
         // moved 
@@ -178,15 +178,21 @@ public:
         }
 
         for(int i = 0; i < sqrtp; i++) {
-            if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {
+            /*if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {
                 cout << *sddmm_result_ptr << endl;
                 cout << "==================" << endl;
                 cout << localA << endl;
                 cout << "==================" << endl;
                 cout << localB << endl;
                 cout << "==================" << endl;
-            }
+            }*/
             //print_nonzero_distribution(localA, localB);
+
+            if(proc_rank == 0) {
+                cout << "Starting iteration " << i << endl;
+            }
+
+
             auto t = start_clock();
             nnz_processed += kernel->triple_function(
                 mode,
@@ -200,17 +206,26 @@ public:
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtp > 1) {
+                if(proc_rank == 0) {
+                    cout << "Starting shift!" << endl; 
+                }
+
                 shiftDenseMatrix(localB, col_axis, 
                         pMod(rankInCol + 1, sqrtp));
+
                 shiftSparseMatrix(&SValues, sddmm_result_ptr, row_axis, 
                         pMod(rankInRow + 1, sqrtp));
+
+                if(proc_rank == 0) {
+                    cout << "Shifted the dense matrix!" << endl; 
+                }
             }
         }
 
-        if(proc_rank == 0) {
+        /*if(proc_rank == 0) {
             cout << *sddmm_result_ptr << endl;
             cout << "==================" << endl;
-        }
+        }*/
 
     }
 };
