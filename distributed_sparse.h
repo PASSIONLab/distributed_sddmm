@@ -99,7 +99,7 @@ public:
 
     void print_algorithm_info() {
         cout << algorithm_name << endl;
-        cout << "Matrix Dimensions: " 
+        cout << "Sparse Matrix Dimensions: " 
         << this->M << " x " << this->N << endl;
         cout << "R-Value: " << this->R << endl;
 

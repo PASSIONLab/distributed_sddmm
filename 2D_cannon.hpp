@@ -98,7 +98,7 @@ public:
     }
 
     Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) {
-        initial_shift = true;
+        initial_shift = false;
         sqrtp = (int) sqrt(p);
 
         if(sqrtp * sqrtp != p) {
@@ -123,8 +123,8 @@ public:
         row_axis = grid->GetRowWorld();
         col_axis = grid->GetColWorld();
 
-        A_R_split_world = col_axis;
-        B_R_split_world = col_axis;
+        A_R_split_world = row_axis;
+        B_R_split_world = row_axis;
 
         localAcols = R / sqrtp;
         localBcols = R / sqrtp; 
@@ -188,10 +188,9 @@ public:
             }*/
             //print_nonzero_distribution(localA, localB);
 
-            if(proc_rank == 0) {
+            /*if(proc_rank == 0) {
                 cout << "Starting iteration " << i << endl;
-            }
-
+            }*/
 
             auto t = start_clock();
             nnz_processed += kernel->triple_function(
@@ -206,19 +205,16 @@ public:
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtp > 1) {
-                if(proc_rank == 0) {
-                    cout << "Starting shift!" << endl; 
-                }
-
+                t = start_clock();
                 shiftDenseMatrix(localB, col_axis, 
                         pMod(rankInCol + 1, sqrtp));
+                stop_clock_and_add(t, "Dense Cyclic Shift Time");
 
+
+                t = start_clock();
                 shiftSparseMatrix(&SValues, sddmm_result_ptr, row_axis, 
                         pMod(rankInRow + 1, sqrtp));
-
-                if(proc_rank == 0) {
-                    cout << "Shifted the dense matrix!" << endl; 
-                }
+                stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
         }
 

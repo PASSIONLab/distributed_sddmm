@@ -56,9 +56,6 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         allreduceVector(rsold, reduction_world);
     }
 
-    // TODO: restabilize the residual to avoid numerical error
-    // after a certain number of iterations
-
     int cg_iter;
     for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
 
@@ -132,6 +129,11 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         initialize_dense_matrix(Agt, d_ops->R);
         initialize_dense_matrix(Bgt, d_ops->R);
 
+        d_ops->dummyInitialize(Agt);
+        d_ops->dummyInitialize(Bgt);
+        Agt /= d_ops->M * d_ops->R;
+        Bgt /= d_ops->N * d_ops->R;
+
         // Compute a ground truth using an SDDMM, setting all sparse values to 1 
         VectorXd ones = d_ops->like_S_values(1.0);
         ground_truth = d_ops->like_S_values(0.0); 
@@ -188,8 +190,15 @@ void Distributed_ALS::initializeEmbeddings() {
     A = d_ops->like_A_matrix(1.0);
     B = d_ops->like_B_matrix(1.0);
 
-    initialize_dense_matrix(A, d_ops->R);
-    initialize_dense_matrix(B, d_ops->R);
+    //initialize_dense_matrix(A, d_ops->R);
+    //initialize_dense_matrix(B, d_ops->R);
+    d_ops->dummyInitialize(A);
+    d_ops->dummyInitialize(B);
+    A /= d_ops->M * d_ops->R;
+    B /= d_ops->N * d_ops->R;
+
+    A *= 1.4;
+    B /= 1.3;
 
     d_ops->initial_synchronize(&A, &B, nullptr);
 }
@@ -204,8 +213,8 @@ void ALS_CG::run_cg(int n_alternating_steps) {
     }
 
     for(int i = 0; i < n_alternating_steps; i++) {
-        cg_optimizer(Amat, 10);
-        cg_optimizer(Bmat, 10);
+        cg_optimizer(Amat, 5);
+        cg_optimizer(Bmat, 5);
 
         residual = computeResidual();
         if(proc_rank == 0) {
@@ -241,6 +250,13 @@ void Distributed_ALS::computeQueries(
             d_ops->spmmB(A, result, sddmm_result);
             result += lambda * B;
         }
+
+        double sqnorm = sddmm_result.squaredNorm();
+        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+        if(proc_rank == 0) {
+            cout << "Query fingerprint: " << sqnorm << endl; 
+        } 
     }
     else {
         // If the local operation implements a fused kernel,

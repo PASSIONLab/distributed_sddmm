@@ -82,17 +82,18 @@ void verify_operation(Sparse2D_Cannon* d_ops) {
     VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->initial_shift = true;
-    d_ops->sddmm(A, B, S, result);
+    //d_ops->sddmm(A, B, S, result);
+    d_ops->spmmA(A, B, S);
 
-    double value = result.squaredNorm();
+    double value = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
  
-    double A_fingerprint = A.squaredNorm(); 
-    MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    double B_fingerprint = B.squaredNorm(); 
+    MPI_Allreduce(MPI_IN_PLACE, &B_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
-        cout << "Fingerprint of A matrix: " << A_fingerprint << endl; 
-        cout << "SDDMM Fingerpint: " << value << endl;
+        cout << "Fingerprint of A matrix: " << B_fingerprint << endl; 
+        cout << "SpMMA Fingerpint: " << value << endl;
     }
 
 }
@@ -175,7 +176,7 @@ int main(int argc, char** argv) {
                 &local_ops
                 );
 
-    verify_operation(d_ops);
+    //verify_operation(d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
@@ -184,10 +185,10 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
  
-    //Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
-    //d_ops->reset_performance_timers();
-    //x->run_cg(5);
-    //d_ops->print_performance_statistics();  
+    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    d_ops->reset_performance_timers();
+    x->run_cg(5);
+    d_ops->print_performance_statistics();   
 
     delete d_ops;
 
