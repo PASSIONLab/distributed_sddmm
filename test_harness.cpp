@@ -81,7 +81,6 @@ void verify_operation(Sparse2D_Cannon* d_ops) {
 
     VectorXd result = d_ops->like_S_values(0.0);
 
-    d_ops->initial_shift = true;
     //d_ops->sddmm(A, B, S, result);
     d_ops->spmmA(A, B, S);
 

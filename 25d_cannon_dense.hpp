@@ -22,16 +22,16 @@ using namespace Eigen;
 /*
  * Layout for redistributing the sparse matrix. 
  */
-class Standard2D: public NonzeroDistribution {
+class Floor2D: public NonzeroDistribution {
 public:
-    int sqrtp;
+    int sqrtpc;
 
-    Standard2D(int M, int N, int sqrtp) {
+    Floor2D(int M, int N, int sqrtpc) {
         world = MPI_COMM_WORLD;
-        this->sqrtp = sqrtp;
+        this->sqrtpc = sqrtpc;
         
-        rows_in_block = divideAndRoundUp(M, sqrtp);
-        cols_in_block = divideAndRoundUp(N, sqrtp);
+        rows_in_block = divideAndRoundUp(M, sqrtpc);
+        cols_in_block = divideAndRoundUp(N, sqrtpc);
     }
 
 	int blockOwner(int row_block, int col_block) {
@@ -50,6 +50,8 @@ public:
 
     int rankInRow, rankInCol;
     MPI_Comm row_axis, col_axis;
+
+    bool initial_shift;
 
     void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
         if(proc_rank == 0) {
@@ -79,7 +81,6 @@ public:
 
             }
 
-
             MPI_Barrier(MPI_COMM_WORLD);
         }
     }
@@ -95,7 +96,8 @@ public:
         }
     }
 
-    Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) { 
+    Sparse2D_Cannon(SpmatLocal* S_input, int R, KernelImplementation* k) : Distributed_Sparse(k, R) {
+        initial_shift = false;
         sqrtp = (int) sqrt(p);
 
         if(sqrtp * sqrtp != p) {
@@ -154,9 +156,8 @@ public:
         check_initialized();    
     }
 
-    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        shiftDenseMatrix(*localB, col_axis, 
-                pMod(rankInCol - rankInRow, sqrtp));
+    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
+         
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -167,6 +168,13 @@ public:
                             ) {
 
         int nnz_processed; 
+
+        // This snippet is for reproducibility and should really be
+        // moved 
+        if(initial_shift) {
+            shiftDenseMatrix(localB, col_axis, 
+                    pMod(rankInCol - rankInRow, sqrtp));
+        }
 
         for(int i = 0; i < sqrtp; i++) {
             /*if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {

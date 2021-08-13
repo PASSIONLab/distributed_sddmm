@@ -26,7 +26,7 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         for(int j = 0; j < r; j++) {
             sum += A[j] * B[j];
         }
-        return sum; 
+        return sum;
 }
 
 
