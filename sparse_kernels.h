@@ -18,10 +18,8 @@ public:
     // and returns the number of nonzeros processed 
     virtual size_t sddmm_local(
         SpmatLocal &S,
-        VectorXd &SValues, 
         DenseMatrix &A,
         DenseMatrix &B,
-        VectorXd &result,
         uint64_t start,
         uint64_t end) = 0;
 
@@ -35,7 +33,6 @@ public:
     */
     virtual size_t spmm_local(
         SpmatLocal &S,
-        VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
@@ -45,10 +42,8 @@ public:
     size_t triple_function(
             KernelMode mode,
             SpmatLocal &S,
-            VectorXd &SValues,
             DenseMatrix &localA,
             DenseMatrix &localB,
-            VectorXd *sddmm_result_ptr,
             uint64_t start,
             uint64_t end) {
         
@@ -56,17 +51,14 @@ public:
         if(mode == k_sddmm) {
             nnz_processed += sddmm_local(
                 S,
-                SValues,
                 localA,
                 localB,
-                *sddmm_result_ptr,
                 start,
                 end);
         }
         else if(mode == k_spmmA) { 
             nnz_processed += spmm_local(
                 S,
-                SValues,
                 localA,
                 localB,
                 Amat,
@@ -76,7 +68,6 @@ public:
         else if(mode == k_spmmB) {
             nnz_processed += spmm_local(
                 S,
-                SValues,
                 localA,
                 localB,
                 Bmat,
@@ -85,7 +76,6 @@ public:
         }
         return nnz_processed;
     }
-
 };
 
 /*
@@ -95,16 +85,13 @@ class StandardKernel : public KernelImplementation {
 public:
     size_t sddmm_local(
         SpmatLocal &S,
-        VectorXd &SValues, 
         DenseMatrix &A,
         DenseMatrix &B,
-        VectorXd &result,
         uint64_t start,
         uint64_t end);
 
     size_t spmm_local(
         SpmatLocal &S,
-        VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
@@ -116,25 +103,22 @@ public:
  * Allows a single SpMM operation to do both an SpMM and an SDDMM
  * in one shot. 
  */
-class FusedStandardKernel : public KernelImplementation {
+/*class FusedStandardKernel : public KernelImplementation {
 public:
     size_t sddmm_local(
         SpmatLocal &S,
-        VectorXd &SValues, 
         DenseMatrix &A,
-        DenseMatrix &B,
-        VectorXd &result,
+        DenseMatrix &B, 
         uint64_t start,
         uint64_t end);
 
     size_t spmm_local(
         SpmatLocal &S,
-        VectorXd &SValues,
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
         uint64_t start,
         uint64_t end);
-};
+};*/
 
 #endif

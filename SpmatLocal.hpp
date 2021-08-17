@@ -259,5 +259,23 @@ public:
             blockStarts.push_back(coords.size());
         }
 	}
+
+	void setValues(VectorXd &values) {
+		assert(values.size() == coords.size());
+		for(int i = 0; i < values.size(); i++) {
+			coords[i].value = values[i];
+		}
+	}	
+
+	VectorXd getValues() {
+		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
+
+		for(int i = 0; i < coords.size(); i++) {
+			values[i] = coords[i].value;
+		}
+
+		return values;
+	}
+
 };
 

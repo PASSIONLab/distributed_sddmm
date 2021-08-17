@@ -22,37 +22,35 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
         }
         return (_mm512_reduce_add_pd(lane1));*/
 
-        double sum = 0;
+        /*double sum = 0;
         for(int j = 0; j < r; j++) {
             sum += A[j] * B[j];
         }
-        return sum;
+        return sum;*/
 }
 
 
 // Parameters: output row, input row, coefficient
 inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
-    /*for(int j = 0; j < r; j+=8) {
+    for(int j = 0; j < r; j+=8) {
         __m512d Avec1 = _mm512_loadu_pd(A + j);
         __m512d Bvec1 = _mm512_loadu_pd(B + j);
 
         Avec1 = _mm512_fmadd_pd(_mm512_set1_pd(coeff), Bvec1, Avec1);
 
         _mm512_storeu_pd(A + j, Avec1);
-    }*/
-
-    for(int j = 0; j < r; j++) {
-        A[j] += coeff * B[j];
     }
+
+    /*for(int j = 0; j < r; j++) {
+        A[j] += coeff * B[j];
+    }*/
 }
 
 // TODO: Add assertions making sure all of the sizes match 
 size_t StandardKernel::sddmm_local(
     SpmatLocal &S, 
-    VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
-    VectorXd& result,
     uint64_t start,
     uint64_t end) {
 
@@ -60,7 +58,6 @@ size_t StandardKernel::sddmm_local(
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = SValues.data();
     double* res = result.data();
     int r = A.cols();
 
@@ -69,14 +66,13 @@ size_t StandardKernel::sddmm_local(
         //processed++;
         double* Arow = Aptr + r * S.coords[i].r;
         double* Brow = Bptr + r * S.coords[i].c; 
-        res[i] += Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
+        S.coords[i].value += vectorized_dot_product(Arow, Brow, r); 
     }
     return processed;
 }
 
 size_t StandardKernel::spmm_local(
     SpmatLocal &S,
-    VectorXd &SValues,
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,
@@ -87,7 +83,6 @@ size_t StandardKernel::spmm_local(
 
     double* Aptr = A.data();
     double* Bptr = B.data();
-    double* Sptr = SValues.data();
     int r = A.cols();
 
     //#pragma omp parallel for reduction(+:processed)
@@ -97,12 +92,12 @@ size_t StandardKernel::spmm_local(
         if(mode == 0) {
             double* Arow = Aptr + r * S.coords[i].r;
             double* Brow = Bptr + r * S.coords[i].c; 
-            row_fmadd(Arow, Brow, Sptr[i], r); 
+            row_fmadd(Arow, Brow, S.coords[i].value, r); 
         }
         else if(mode == 1) {
             double* Arow = Aptr + r * S.coords[i].r;
             double* Brow = Bptr + r * S.coords[i].c; 
-            row_fmadd(Brow, Arow, Sptr[i], r); 
+            row_fmadd(Brow, Arow, S.coords[i].value, r); 
         }
         else {
             assert(false);
@@ -110,76 +105,3 @@ size_t StandardKernel::spmm_local(
     }
     return processed;
 }
-
-size_t FusedStandardKernel::sddmm_local(
-    SpmatLocal &S, 
-    VectorXd &SValues,
-    DenseMatrix &A,
-    DenseMatrix &B,
-    VectorXd& result,
-    uint64_t start,
-    uint64_t end) {
-
-    // Does the same operation as the standard kernel
-    size_t processed = 0;
-
-    double* Aptr = A.data();
-    double* Bptr = B.data();
-    double* Sptr = SValues.data();
-    double* res = result.data();
-    int r = A.cols();
-
-    //#pragma omp parallel for
-    for(int i = start; i < end; i++) {
-        processed++;
-        double* Arow = Aptr + r * S.coords[i].r;
-        double* Brow = Bptr + r * S.coords[i].c; 
-        res[i] += Sptr[i] * vectorized_dot_product(Arow, Brow, r); 
-    }
-    return processed;
-}
-
-size_t FusedStandardKernel::spmm_local(
-    SpmatLocal &S,
-    VectorXd &SValues,
-    DenseMatrix &A,
-    DenseMatrix &B,
-    int mode,
-    uint64_t start,
-    uint64_t end) {
-
-    size_t processed = 0;
-
-    double* Aptr = A.data();
-    double* Bptr = B.data();
-    double* Sptr = SValues.data();
-    int r = A.cols();
-
-    // #pragma omp parallel for
-    for(int i = start; i < end; i++) {
-        processed++;
-
-        if(mode == 0) {
-            double* Arow = Aptr + r * S.coords[i].r;
-            double* Brow = Bptr + r * S.coords[i].c;
-            
-            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
-            //double coeff = Sptr[i];
-
-            row_fmadd(Arow, Brow, coeff, r); 
-        }
-        else if(mode == 1) {
-            double* Arow = Aptr + r * S.coords[i].r;
-            double* Brow = Bptr + r * S.coords[i].c; 
-     
-            double coeff = Sptr[i] * vectorized_dot_product(Arow, Brow, r);
-
-            row_fmadd(Brow, Arow, coeff, r); 
-        }
-        else {
-            assert(false);
-        }
-    }
-    return processed;
-}
-

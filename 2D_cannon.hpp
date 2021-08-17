@@ -51,6 +51,8 @@ public:
     int rankInRow, rankInCol;
     MPI_Comm row_axis, col_axis;
 
+    vector<int> nnz_in_row_axis;
+
     void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
         if(proc_rank == 0) {
             cout << "===============================" << endl;
@@ -78,7 +80,6 @@ public:
                 cout << "==================" << endl;
 
             }
-
 
             MPI_Barrier(MPI_COMM_WORLD);
         }
@@ -139,12 +140,23 @@ public:
         localBrows = divideAndRoundUp(this->N, sqrtp);
 
         Standard2D nonzero_dist(M, N, sqrtp);
-
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
 
+        nnz_in_row_axis.resize(sqrtp);
+        int my_nnz = S->coords.size();
+        MPI_Allgather(&my_nnz, 
+                1, 
+                MPI_INT, 
+                nnz_in_row_axis.data(), 
+                1,
+                MPI_INT,
+                row_axis
+                );
+
+
+        int dst = pMod(rankInRow - rankInCol, sqrtp);
         // Skew the S-matrix in preparation for repeated Cannon's algorithm. 
-        shiftSparseMatrix(nullptr, nullptr, row_axis, 
-                pMod(rankInRow - rankInCol, sqrtp));
+        shiftSparseMatrix(row_axis, dst, nnz_in_row_axis[dst]);
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
@@ -168,6 +180,13 @@ public:
 
         int nnz_processed; 
 
+        // TODO: Can eliminate some unecessary copies here... 
+
+
+        if(mode != k_sddmm) {
+            S->setValues(SValues);
+        }
+
         for(int i = 0; i < sqrtp; i++) {
             /*if((i == 0 && proc_rank == 0) || (i == 1 && rankInRow == 1 && rankInCol == 0)) {
                 cout << *sddmm_result_ptr << endl;
@@ -187,10 +206,8 @@ public:
             nnz_processed += kernel->triple_function(
                 mode,
                 *S,
-                SValues,
                 localA,
                 localB,
-                sddmm_result_ptr,
                 0,
                 S->coords.size()); 
             stop_clock_and_add(t, "Computation Time");
@@ -203,17 +220,16 @@ public:
 
 
                 t = start_clock();
-                shiftSparseMatrix(&SValues, sddmm_result_ptr, row_axis, 
-                        pMod(rankInRow + 1, sqrtp));
+                int dst = pMod(rankInRow + 1, sqrtp);
+                shiftSparseMatrix(row_axis, dst, nnz_in_row_axis[dst]);
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
         }
 
-        /*if(proc_rank == 0) {
-            cout << *sddmm_result_ptr << endl;
-            cout << "==================" << endl;
-        }*/
-
+        // TODO: Can eliminate some unecessary copies here... 
+        if(mode == k_sddmm) {
+            *sddmm_result_ptr = SValues.cwiseProduct(S->getValues());
+        }
     }
 };
 
