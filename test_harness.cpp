@@ -78,10 +78,12 @@ void verify_operation(Distributed_Sparse* d_ops) {
 
     VectorXd S = d_ops->like_S_values(1.0);
 
-    d_ops->dummyInitialize(A);
+    //d_ops->dummyInitialize(A);
     d_ops->dummyInitialize(B);
 
     VectorXd result = d_ops->like_S_values(0.0);
+
+    d_ops->initial_synchronize(&A, &B, nullptr);
 
     //d_ops->sddmm(A, B, S, result);
     d_ops->spmmA(A, B, S);
@@ -94,10 +96,10 @@ void verify_operation(Distributed_Sparse* d_ops) {
 
     d_ops->print_nonzero_distribution(A, B);
 
-    /*if(proc_rank == 0) {
+    if(proc_rank == 0) {
         cout << "Fingerprint of B matrix: " << B_fingerprint << endl; 
-        cout << "SpMMA Fingerpint: " << value << endl;
-    }*/
+        cout << "SpMMA Fingerprint: " << value << endl;
+    }
 }
 
 /*void test_sparse_transpose() {

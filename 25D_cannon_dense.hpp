@@ -88,8 +88,8 @@ public:
 
     // Debugging function to deterministically initialize the A and B matrices.
     void dummyInitialize(DenseMatrix &loc) {
-        int firstRow = loc.rows() * rankInCol;
-        int firstCol = loc.cols() * (c * rankInFiber + rankInRow); 
+        int firstRow = loc.rows() * (rankInFiber + c * rankInCol);
+        int firstCol = loc.cols() * (rankInRow); 
         for(int i = 0; i < loc.rows(); i++) {
             for(int j = 0; j < loc.cols(); j++) {
                 loc(i, j) = (firstRow + i) * R + firstCol + j;
@@ -99,7 +99,7 @@ public:
 
     Sparse25D_Cannon_Dense(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
-        int sqrtpc = (int) sqrt(p / c);
+        sqrtpc = (int) sqrt(p / c);
 
         proc_grid_dimensions = {sqrtpc, sqrtpc, c};
 
@@ -168,8 +168,8 @@ public:
         shiftSparseMatrix(row_axis, dst, nnz_in_row_axis[dst]);
 
         for(int i = 0; i < S->coords.size(); i++) {
-            //S->coords[i].r %= localArows;
-            //S->coords[i].c %= localBrows;
+            S->coords[i].r %= localArows;
+            S->coords[i].c %= localBrows;
         }
 
         check_initialized();    

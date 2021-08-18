@@ -140,27 +140,11 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
 
         d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
         d_ops->sddmm(Agt, Bgt, ones, ground_truth); 
-
-
-        /*
-         * This is a patch, since we can't sparse-transpose
-         * just the value buffer. 
-         */
-        /*if(! d_ops->fused) {
-
-        }
-        else {
-            VectorXd onesTranspose = d_ops->like_ST_values(1.0);
-            Densematrix dummyResultA = d_ops->like_A_matrix(0.0);
-            Densematrix dummyResultB = d_ops->like_B_matrix(0.0);
-            d_ops->fusedSpMM(A, B, ones, ground_truth, dummyResultA, Amat);
-            d_ops->fusedSpMM(A, B, onesTranspose, ground_truth_transpose, 
-                    dummyResultB, Bmat);
-        }
-        */
     }
     else {
-        ground_truth = d_ops->input_Svalues; // TODO: Fix this! 
+        // TODO: This is broken!! Need a better way to initialize
+        // the ground truth 
+        //ground_truth = d_ops->input_Svalues; 
         d_ops->initial_synchronize(nullptr, nullptr, &ground_truth);
     }
 }

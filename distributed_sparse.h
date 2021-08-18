@@ -38,8 +38,6 @@ public:
 
     // Related to the sparse matrix
     unique_ptr<SpmatLocal> S;
-    VectorXd input_Svalues; // The values that sparse matrix S came with;
-                            // when reading a file, this value is filled.
 
     int superclass_constructor_sentinel;
 
