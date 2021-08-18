@@ -272,6 +272,9 @@ public:
         S->coords = coords_recv; 
     }
 
+    virtual void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB)  = 0;
+
+
 };
 
 #endif

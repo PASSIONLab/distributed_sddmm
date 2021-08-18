@@ -1,7 +1,9 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
-#include "15D_mdense_shift_striped.hpp"
+
+//#include "15D_mdense_shift_striped.hpp"
 #include "2D_cannon.hpp"
+#include "25D_cannon_dense.hpp"
 
 #include "SpmatLocal.hpp"
 
@@ -11,7 +13,7 @@
 
 using namespace std;
 
-void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
+/*void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     int proc_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
@@ -64,9 +66,9 @@ void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
     if(proc_rank == 0) {
         cout << "Fusion testing complete!" << endl;
     }
-}
+}*/
 
-void verify_operation(Sparse2D_Cannon* d_ops) {
+void verify_operation(Distributed_Sparse* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -90,11 +92,12 @@ void verify_operation(Sparse2D_Cannon* d_ops) {
     double B_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &B_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    if(proc_rank == 0) {
-        cout << "Fingerprint of A matrix: " << B_fingerprint << endl; 
-        cout << "SpMMA Fingerpint: " << value << endl;
-    }
+    d_ops->print_nonzero_distribution(A, B);
 
+    /*if(proc_rank == 0) {
+        cout << "Fingerprint of B matrix: " << B_fingerprint << endl; 
+        cout << "SpMMA Fingerpint: " << value << endl;
+    }*/
 }
 
 /*void test_sparse_transpose() {
@@ -168,14 +171,22 @@ int main(int argc, char** argv) {
                 );
     */
 
-    Sparse2D_Cannon* d_ops 
+    /*Sparse2D_Cannon* d_ops 
         = new Sparse2D_Cannon(
                 &S, 
                 atoi(argv[2]),
                 &local_ops
-                );
+                );*/
 
-    //verify_operation(d_ops);
+    Sparse25D_Cannon_Dense* d_ops
+        = new Sparse25D_Cannon_Dense(
+            &S,
+            atoi(argv[2]),
+            atoi(argv[3]),
+            &local_ops
+        );
+
+    verify_operation(d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
@@ -184,10 +195,10 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
  
-    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    /*Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
     d_ops->reset_performance_timers();
     x->run_cg(5);
-    d_ops->print_performance_statistics();   
+    d_ops->print_performance_statistics();*/
 
     delete d_ops;
 

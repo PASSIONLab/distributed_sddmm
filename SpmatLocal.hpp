@@ -276,6 +276,5 @@ public:
 
 		return values;
 	}
-
 };
 
