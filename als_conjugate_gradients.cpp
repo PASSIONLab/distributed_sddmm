@@ -226,20 +226,22 @@ void Distributed_ALS::computeQueries(
         d_ops->sddmm(A, B, ones, sddmm_result);
 
         if(matrix_to_optimize == Amat) {
+            result = lambda * A;
             d_ops->spmmA(result, B, sddmm_result);
-            result += lambda * A;
+            //result += lambda * A;
         }
         else if(matrix_to_optimize == Bmat) {
+            result = lambda * B;
             d_ops->spmmB(A, result, sddmm_result);
-            result += lambda * B;
+            //result += lambda * B;
         }
 
         double sqnorm = sddmm_result.squaredNorm();
         MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        /*if(proc_rank == 0) {
-            cout << "Query fingerprint: " << sqnorm << endl; 
-        }*/
+        if(proc_rank == 0) {
+            //cout << "Query fingerprint: " << sqnorm << endl; 
+        }
     }
     else {
         // If the local operation implements a fused kernel,

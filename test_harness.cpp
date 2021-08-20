@@ -78,33 +78,40 @@ void verify_operation(Distributed_Sparse* d_ops) {
 
     VectorXd S = d_ops->like_S_values(1.0);
 
-    //d_ops->dummyInitialize(A);
+    d_ops->dummyInitialize(A);
     d_ops->dummyInitialize(B);
+
+    cout << A << endl;
+    cout << B << endl;
 
     VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->initial_synchronize(&A, &B, nullptr);
 
-    //d_ops->sddmm(A, B, S, result);
+    d_ops->sddmm(A, B, S, result);
+
+    double sddmm_fingerprint = result.squaredNorm(); 
+    MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
     d_ops->spmmA(A, B, S);
 
-    double value = A.squaredNorm();
-    MPI_Allreduce(MPI_IN_PLACE, &value, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
- 
-    double B_fingerprint = B.squaredNorm(); 
-    MPI_Allreduce(MPI_IN_PLACE, &B_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    double spmmA_fingerprint = A.squaredNorm();
+    MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+    d_ops->spmmB(A, B, S);
 
-    //double sddmm_fingerprint = result.squaredNorm(); 
-    //MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    double spmmB_fingerprint = B.squaredNorm(); 
+    MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     //d_ops->print_nonzero_distribution(A, B);
 
     if(proc_rank == 0) {
-        cout << "Fingerprint of B matrix: " << B_fingerprint << endl; 
-        //cout << "Fingerprint of SDDMM: " << sddmm_fingerprint << endl; 
-        cout << "SpMMA Fingerprint: " << value << endl;
+        cout << "SDDMM Fingerprint: " << sddmm_fingerprint << endl;
+        cout << "SpMMA Fingerprint: " << spmmA_fingerprint << endl;
+        cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
     }
+
+    cout << result << endl;
 }
 
 /*void test_sparse_transpose() {
@@ -201,11 +208,12 @@ int main(int argc, char** argv) {
     //test_fusion(d_ops);
 
     //test_15D(d_ops);
- 
+
+
     Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
     d_ops->reset_performance_timers();
     x->run_cg(5);
-    d_ops->print_performance_statistics();
+    d_ops->print_performance_statistics(); 
 
     delete d_ops;
 

@@ -276,5 +276,11 @@ public:
 
 		return values;
 	}
+
+	void setValuesConstant(double cval) {
+		for(int i = 0; i < coords.size(); i++) {
+			coords[i].value = cval;
+		}
+	}
 };
 

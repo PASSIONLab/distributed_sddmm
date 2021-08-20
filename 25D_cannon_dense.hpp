@@ -192,6 +192,9 @@ public:
         if(mode != k_sddmm) {
             S->setValues(SValues);
         }
+        else {
+            S->setValuesConstant(0.0);
+        }
 
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localArows * c, localAcols, 0.0); 
 
@@ -256,9 +259,14 @@ public:
                 recvCounts.push_back(localArows * localAcols);
             }
 
+            DenseMatrix temp = localA;
+
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
                        MPI_DOUBLE, MPI_SUM, fiber_axis);
+
+            localA += temp;
+
             stop_clock_and_add(t, "Dense Fiber Communication Time");
         }
     }
