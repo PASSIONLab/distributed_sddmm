@@ -94,10 +94,15 @@ void verify_operation(Distributed_Sparse* d_ops) {
     double B_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &B_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    d_ops->print_nonzero_distribution(A, B);
+
+    //double sddmm_fingerprint = result.squaredNorm(); 
+    //MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    //d_ops->print_nonzero_distribution(A, B);
 
     if(proc_rank == 0) {
         cout << "Fingerprint of B matrix: " << B_fingerprint << endl; 
+        //cout << "Fingerprint of SDDMM: " << sddmm_fingerprint << endl; 
         cout << "SpMMA Fingerprint: " << value << endl;
     }
 }
@@ -188,7 +193,7 @@ int main(int argc, char** argv) {
             &local_ops
         );
 
-    verify_operation(d_ops);
+    //verify_operation(d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
@@ -197,10 +202,10 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
  
-    /*Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
     d_ops->reset_performance_timers();
     x->run_cg(5);
-    d_ops->print_performance_statistics();*/
+    d_ops->print_performance_statistics();
 
     delete d_ops;
 

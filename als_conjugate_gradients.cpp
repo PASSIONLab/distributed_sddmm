@@ -237,9 +237,9 @@ void Distributed_ALS::computeQueries(
         double sqnorm = sddmm_result.squaredNorm();
         MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-        if(proc_rank == 0) {
+        /*if(proc_rank == 0) {
             cout << "Query fingerprint: " << sqnorm << endl; 
-        } 
+        }*/
     }
     else {
         // If the local operation implements a fused kernel,

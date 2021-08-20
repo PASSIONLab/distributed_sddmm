@@ -11,22 +11,22 @@
 using namespace std;
 
 inline double vectorized_dot_product(double* A, double* B, size_t r) {
-        /*__m512d lane1 = _mm512_setzero_pd();
+    /*__m512d lane1 = _mm512_setzero_pd();
 
-        #pragma GCC unroll 20
-        for(int j = 0; j < r; j+=8) {
-            __m512d Avec1 = _mm512_loadu_pd(A + j);
-            __m512d Bvec1 = _mm512_loadu_pd(B + j);
+    #pragma GCC unroll 20
+    for(int j = 0; j < r; j+=8) {
+        __m512d Avec1 = _mm512_loadu_pd(A + j);
+        __m512d Bvec1 = _mm512_loadu_pd(B + j);
 
-            lane1 = _mm512_fmadd_pd(Avec1, Bvec1, lane1);
-        }
-        return (_mm512_reduce_add_pd(lane1));*/
+        lane1 = _mm512_fmadd_pd(Avec1, Bvec1, lane1);
+    }
+    return (_mm512_reduce_add_pd(lane1));*/
 
-        double sum = 0;
-        for(int j = 0; j < r; j++) {
-            sum += A[j] * B[j];
-        }
-        return sum;
+    double sum = 0;
+    for(int j = 0; j < r; j++) {
+        sum += A[j] * B[j];
+    }
+    return sum;
 }
 
 

@@ -248,13 +248,22 @@ public:
     }
 
     /*
-     * This changes coordinates in the local sparse matrix buffer. 
+     * This changes coordinates in the local sparse matrix buffer. TODO: we
+     * can definitely improve latency on this function... 
      */
     void shiftSparseMatrix(MPI_Comm world, int send_dst, int nnz_to_receive) {
         int nnz_to_send;
         nnz_to_send = S->coords.size();
 
         MPI_Status stat;
+
+        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
+                send_dst, 0,
+                &nnz_to_receive, 1, MPI_INT,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         vector<spcoord_t> coords_recv;
         coords_recv.resize(nnz_to_receive);

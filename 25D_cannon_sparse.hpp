@@ -22,27 +22,26 @@ using namespace Eigen;
 /*
  * Layout for redistributing the sparse matrix. 
  */
-class Block_Cyclic25D : public NonzeroDistribution {
+class Floor2D : public NonzeroDistribution {
 public:
     int sqrtpc;
     int c;
 
-    Block_Cyclic25D(int M, int N, int sqrtpc, int c) {
+    Floor2D(int M, int N, int sqrtpc, int c) {
         world = MPI_COMM_WORLD;
         this->sqrtpc = sqrtpc;
         this->c = c;
 
-        rows_in_block = divideAndRoundUp(M, sqrtpc * c) * c;
-        cols_in_block = divideAndRoundUp(N, sqrtpc * c);
+        rows_in_block = divideAndRoundUp(M, sqrtpc);
+        cols_in_block = divideAndRoundUp(N, sqrtpc);
     }
 
 	int blockOwner(int row_block, int col_block) {
-        return (col_block % c) * sqrtpc * sqrtpc + row_block * sqrtpc +
-            col_block / c;
+        return row_block * sqrtpc + col_block;
     }
 };
 
-class Sparse25D_Cannon_Dense : public Distributed_Sparse {
+class Sparse25D_Cannon_Sparse : public Distributed_Sparse {
 public:
     shared_ptr<CommGrid3D> grid;
 
@@ -84,16 +83,16 @@ public:
 
     // Debugging function to deterministically initialize the A and B matrices.
     void dummyInitialize(DenseMatrix &loc) {
-        int firstRow = loc.rows() * (rankInFiber + c * rankInCol);
+        /*int firstRow = loc.rows() * (rankInFiber + c * rankInCol);
         int firstCol = loc.cols() * (rankInRow); 
         for(int i = 0; i < loc.rows(); i++) {
             for(int j = 0; j < loc.cols(); j++) {
                 loc(i, j) = (firstRow + i) * R + firstCol + j;
             }
-        }
+        }*/
     }
 
-    Sparse25D_Cannon_Dense(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
+    Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
 
