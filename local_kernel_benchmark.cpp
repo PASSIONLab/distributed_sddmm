@@ -1,6 +1,8 @@
 #include <iostream>
 #include <mkl_spblas.h>
 #include <Eigen/Dense>
+#include "SpmatLocal.hpp"
+#include <mpi.h>
 
 using namespace std;
 using namespace Eigen;
@@ -8,7 +10,14 @@ using namespace Eigen;
 typedef Matrix<double, Dynamic, Dynamic, RowMajor> DenseMatrix;
 
 int main(int argc, char** argv) {
+	MPI_Init(&argc, &argv);	
 	cout << "Starting MKL SpGEMM Benchmark!" << endl;
+
+	// Plug into the Graph500 generator to generate sparse matrices
+	// with varying counts of nonzeros
+
+	SpmatLocal erdos_renyi;
+	erdos_renyi.loadTuples(false, 5, 3, "");
 
 	sparse_matrix_t A;
 
@@ -26,6 +35,8 @@ int main(int argc, char** argv) {
 
 	struct matrix_descr descr;
 	descr.type = SPARSE_MATRIX_TYPE_GENERAL;
+
+
 
 	mkl_sparse_d_create_csr(
 			&A, 
@@ -52,4 +63,6 @@ int main(int argc, char** argv) {
 			R); // ldc
 
 	cout << "Benchmark complete!" << endl;
+
+	MPI_Finalize();
 }
