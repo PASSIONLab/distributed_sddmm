@@ -24,7 +24,7 @@ link_directories(
     )
 
 add_executable(test_harness test_harness.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
-add_executable(local_kernel_benchmark local_kernel_benchmark.cpp)
+add_executable(local_kernel_benchmark local_kernel_benchmark.cpp common.cpp)
 
 foreach(TARGET test_harness local_kernel_benchmark)
     target_compile_options(${TARGET} PRIVATE -O3 -march=knl -DMKL_ILP64  -m64  -I$ENV{MKLROOT}/include) 

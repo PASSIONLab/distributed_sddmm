@@ -106,7 +106,7 @@ public:
             }
         }
 
-        algorithm_name = "2.5D Cannon's Algorithm Replicating Dense Matrices";
+        algorithm_name = "2.5D Cannon's Algorithm Replicating Sparse Matrix";
         proc_grid_names = {"# Rows", "# Cols", "# Layers"};
         proc_grid_dimensions = {sqrtpc, sqrtpc, c};
 
@@ -126,14 +126,14 @@ public:
         col_axis   = grid->GetCommGridLayer()->GetColWorld();
         fiber_axis = grid->GetFiberWorld();
 
-        A_R_split_world = row_axis;
-        B_R_split_world = row_axis;
+        A_R_split_world = row_axis; // The split worlds need to be fixed! 
+        B_R_split_world = row_axis; // This also needs to be fixed! 
 
-        localAcols = R / sqrtpc;
-        localBcols = R / sqrtpc; 
+        localAcols = R / (sqrtpc * c);
+        localBcols = R / (sqrtpc * c); 
 
-        if(localAcols * sqrtpc != R) {
-            cout << "Error, R must be divisible by sqrt(p) / c!" << endl;
+        if(localAcols * sqrtpc * c != R) {
+            cout << "Error, R must be divisible by sqrt(p) * c!" << endl;
             exit(1);
         }
 
@@ -141,11 +141,20 @@ public:
 
         this->M = S_input->M;
         this->N = S_input->N;
-        localArows = divideAndRoundUp(this->M, sqrtpc * c);
-        localBrows = divideAndRoundUp(this->N, sqrtpc * c);
+        localArows = divideAndRoundUp(this->M, sqrtpc);
+        localBrows = divideAndRoundUp(this->N, sqrtpc);
 
-        Block_Cyclic25D nonzero_dist(M, N, sqrtpc, c);
+        /* Distribute the nonzeros, storing them initially on the
+         * bottom face of the cuboid and then broadcasting.  
+         */
+        Floor2D nonzero_dist(M, N, sqrtpc, c);
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
+        int num_nnz = S->coords.size();
+        MPI_Bcast(&num_nnz, 1, MPI_INT, 0, fiber_axis);
+        if(rankInFiber > 0) {
+            S->coords.resize(num_nnz);
+        } 
+        MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, fiber_axis);
 
         nnz_in_row_axis.resize(sqrtpc);
         int my_nnz = S->coords.size();
@@ -158,15 +167,9 @@ public:
                 row_axis
                 );
 
-        //cout << "Process Rank: " << proc_rank << ": " << my_nnz << endl;
-
-        int src = pMod(rankInRow + rankInCol, sqrtpc);
-        int dst = pMod(rankInRow - rankInCol, sqrtpc);
-        // Skew the S-matrix in preparation for repeated Cannon's algorithm. 
-        shiftSparseMatrix(row_axis, dst, nnz_in_row_axis[src]);
-
+        // Postprocess the coordinates 
         for(int i = 0; i < S->coords.size(); i++) {
-            S->coords[i].r %= localArows * c;
+            S->coords[i].r %= localArows;
             S->coords[i].c %= localBrows;
         }
 
@@ -174,8 +177,10 @@ public:
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        shiftDenseMatrix(*localB, col_axis, 
-                pMod(rankInCol - rankInRow, sqrtpc));
+        // TODO: Properly do the initial synchronization!
+
+        //shiftDenseMatrix(*localB, col_axis, 
+        //        pMod(rankInCol - rankInRow, sqrtpc));
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -192,39 +197,34 @@ public:
             S->setValues(SValues);
         }
 
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localArows * c, localAcols, 0.0); 
+		//DenseMatrix accumulation_buffer = DenseMatrix::Constant(localArows * c, localAcols, 0.0); 
 
-        if(mode == k_spmmB || mode == k_sddmm) {
+        /*if(mode == k_spmmB || mode == k_sddmm) {
             auto t = start_clock();
             MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
                             accumulation_buffer.data(), localA.size(), MPI_DOUBLE, fiber_axis);
             stop_clock_and_add(t, "Dense Fiber Communication Time");
-        }
+        }*/
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
-            nnz_processed += kernel->triple_function(
+            /*nnz_processed += kernel->triple_function(
                 mode,
                 *S,
                 accumulation_buffer,
                 localB,
                 0,
-                S->coords.size()); 
+                S->coords.size());*/
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
                 t = start_clock();
-                shiftDenseMatrix(localB, col_axis, 
+                shiftDenseMatrix(localA, row_axis, 
+                        pMod(rankInCol + 1, sqrtpc));
+                shiftDenseMatrix(localB, row_axis, 
                         pMod(rankInCol + 1, sqrtpc));
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
-
-                t = start_clock();
-                int src = pMod(rankInRow - 1, sqrtpc);
-                int dst = pMod(rankInRow + 1, sqrtpc);
-                shiftSparseMatrix(row_axis, dst, nnz_in_row_axis[src]);
-                stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
-
 
             // ENTER THE DEBUGGING ZONE =========================== 
             /*for(int i = 0; i < p; i++) {
@@ -247,7 +247,7 @@ public:
             *sddmm_result_ptr = SValues.cwiseProduct(S->getValues());
         }
 
-        if(mode == k_spmmA) {
+        /*if(mode == k_spmmA) {
             auto t = start_clock(); 
 
             vector<int> recvCounts;
@@ -259,7 +259,7 @@ public:
                     localA.data(), recvCounts.data(),
                        MPI_DOUBLE, MPI_SUM, fiber_axis);
             stop_clock_and_add(t, "Dense Fiber Communication Time");
-        }
+        }*/
     }
 };
 
