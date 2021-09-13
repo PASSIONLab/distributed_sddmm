@@ -7,6 +7,7 @@
 #include "25D_cannon_sparse.hpp"
 
 #include "SpmatLocal.hpp"
+#include "FlexibleGrid.hpp"
 
 #include "sparse_kernels.h"
 #include "common.h"
@@ -145,11 +146,16 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     initialize_mpi_datatypes();
 
-    string fname(argv[1]);
+    {
+        FlexibleGrid grid(4, 4, 4, 6);
+        grid.self_test();
+    }
 
-    StandardKernel local_ops;
-    SpmatLocal S;
-    S.loadTuples(true, -1, -1, fname);
+    //string fname(argv[1]);
+
+    //StandardKernel local_ops;
+    //SpmatLocal S;
+    //S.loadTuples(true, -1, -1, fname);
 
     /* 
     {
@@ -192,17 +198,17 @@ int main(int argc, char** argv) {
                 &local_ops
                 );*/
 
-    Sparse25D_Cannon_Sparse* d_ops
+    /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
+        );*/
 
     //d_ops->print_nonzero_distribution(); 
 
-    verify_operation(d_ops);
+    //verify_operation(d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
