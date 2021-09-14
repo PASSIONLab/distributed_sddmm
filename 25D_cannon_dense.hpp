@@ -56,32 +56,6 @@ public:
 
     int sparse_shift;
 
-    void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
-        for(int i = 0; i < p; i++) {
-            if(proc_rank == i) {
-                cout << "==================================" << endl;
-                cout << "Process " << i << ":" << endl;
-                cout << "Rank in Row: " << rankInRow << endl;
-                cout << "Rank in Column: " << rankInCol << endl;
-                cout << "Rank in Fiber: " << rankInFiber << endl;
-
-                for(int j = 0; j < S->coords.size(); j++) {
-                    cout << S->coords[j].string_rep() << endl;
-                }
-
-                cout << "==================" << endl;
-                cout << "A matrix: " << endl;
-                cout << localA << endl; 
-                cout << "==================" << endl;
-                cout << "B matrix: " << endl;
-                cout << localB << endl; 
-                cout << "==================================" << endl;
-            }
-
-            MPI_Barrier(MPI_COMM_WORLD);
-        }
-    }
-
     // Debugging function to deterministically initialize the A and B matrices.
     void dummyInitialize(DenseMatrix &loc) {
         int firstRow = loc.rows() * (rankInFiber + c * rankInCol);

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <mpi.h>
 #include <vector>
@@ -127,7 +129,7 @@ public:
 
 		global_rank += ijk_temp[permutation[0]];
 		global_rank += ijk_temp[permutation[1]] * dim_list[permutation[0]];
-		global_rank += ijk_temp[permutation[2]] * dim_list[permutation[1]] * dim_list[permutation[2]]; 
+		global_rank += ijk_temp[permutation[2]] * dim_list[permutation[0]] * dim_list[permutation[1]]; 
 
 		return global_rank;
 	}

@@ -10,7 +10,7 @@
 #include "sparse_kernels.h"
 #include "common.h"
 #include "SpmatLocal.hpp"
-
+#include "FlexibleGrid.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -23,7 +23,6 @@ public:
     // General algorithm information
     string algorithm_name;
     vector<string> proc_grid_names;
-    vector<int> proc_grid_dimensions;
 
     // Related to performance counting
     vector<string>      perf_counter_keys;
@@ -38,6 +37,7 @@ public:
 
     // Related to the sparse matrix
     unique_ptr<SpmatLocal> S;
+    shared_ptr<FlexibleGrid> grid;
 
     int superclass_constructor_sentinel;
 
@@ -85,7 +85,6 @@ public:
         assert(algorithm_name != "");
 
         assert(proc_grid_names.size() > 0);
-        assert(proc_grid_dimensions.size() > 0);
         assert(perf_counter_keys.size() > 0);
 
         assert(M != -1 && N != -1 && R != -1);
@@ -98,9 +97,10 @@ public:
     void print_algorithm_info() {
         cout << algorithm_name << endl;
         cout << "Sparse Matrix Dimensions: " 
-        << this->M << " x " << this->N << endl;
+                << this->M << " x " << this->N << endl;
         cout << "R-Value: " << this->R << endl;
 
+        cout << "Grid Adjacency Mode: " << grid->adjacency << endl; 
         cout << "Grid Dimension Interpretations: ";        
         for(int i = 0; i < proc_grid_names.size(); i++) {
             cout << proc_grid_names[i];
@@ -111,9 +111,9 @@ public:
         cout << endl;
 
         cout << "Grid Dimensions : ";
-        for(int i = 0; i < proc_grid_dimensions.size(); i++) {
-            cout << proc_grid_dimensions[i];
-            if (i != proc_grid_dimensions.size() - 1) {
+        for(int i = 0; i < proc_grid_names.size(); i++) {
+            cout << grid->dim_list[i];
+            if (i != proc_grid_names.size() - 1) {
                 cout << " x ";
             }
         }
@@ -279,9 +279,31 @@ public:
         S->coords = coords_recv; 
     }
 
-    virtual void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB)  = 0;
+    void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
+        for(int i = 0; i < p; i++) {
+            if(proc_rank == i) {
+                cout << "==================================" << endl;
+                cout << "Process " << i << ":" << endl;
+                cout << "Rank in Row: " << grid->rankInRow << endl;
+                cout << "Rank in Column: " << grid->rankInCol << endl;
+                cout << "Rank in Fiber: " << grid->rankInFiber << endl;
 
+                for(int j = 0; j < S->coords.size(); j++) {
+                    cout << S->coords[j].string_rep() << endl;
+                }
 
+                cout << "==================" << endl;
+                cout << "A matrix: " << endl;
+                cout << localA << endl; 
+                cout << "==================" << endl;
+                cout << "B matrix: " << endl;
+                cout << localB << endl; 
+                cout << "==================================" << endl;
+            }
+
+            MPI_Barrier(MPI_COMM_WORLD);
+        }
+    }
 };
 
 #endif

@@ -24,62 +24,31 @@ using namespace Eigen;
  */
 class Floor2D : public NonzeroDistribution {
 public:
-    int sqrtpc;
-    int c;
+    shared_ptr<FlexibleGrid> grid;
 
-    Floor2D(int M, int N, int sqrtpc, int c) {
+    Floor2D(int M, int N, int sqrtpc, int c, shared_ptr<FlexibleGrid> &grid) {
+        this->grid = grid;
         world = MPI_COMM_WORLD;
-        this->sqrtpc = sqrtpc;
-        this->c = c;
 
         rows_in_block = divideAndRoundUp(M, sqrtpc);
         cols_in_block = divideAndRoundUp(N, sqrtpc);
     }
 
-	int blockOwner(int row_block, int col_block) {
-        return row_block * sqrtpc + col_block;
+	int blockOwner(int row_block, int col_block) { 
+        return grid->get_global_rank(row_block, col_block, 0); 
     }
 };
 
 class Sparse25D_Cannon_Sparse : public Distributed_Sparse {
 public:
-    shared_ptr<CommGrid3D> grid;
-
     int c;
     int sqrtpc;
-    int rankInRow, rankInCol, rankInFiber;
-
-    MPI_Comm row_axis, col_axis, fiber_axis;
-
-    vector<int> nnz_in_row_axis;
 
     int sparse_shift;
 
-    void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {
-        for(int i = 0; i < p; i++) {
-            if(proc_rank == i) {
-                cout << "==================================" << endl;
-                cout << "Process " << i << ":" << endl;
-                cout << "Rank in Row: " << rankInRow << endl;
-                cout << "Rank in Column: " << rankInCol << endl;
-                cout << "Rank in Fiber: " << rankInFiber << endl;
-
-                for(int j = 0; j < S->coords.size(); j++) {
-                    cout << S->coords[j].string_rep() << endl;
-                }
-
-                cout << "==================" << endl;
-                cout << "A matrix: " << endl;
-                cout << localA << endl; 
-                cout << "==================" << endl;
-                cout << "B matrix: " << endl;
-                cout << localB << endl; 
-                cout << "==================================" << endl;
-            }
-
-            MPI_Barrier(MPI_COMM_WORLD);
-        }
-    }
+    // These variables are purely for convenience 
+    int rankInRow, rankInCol, rankInFiber;
+    MPI_Comm row_axis, col_axis, fiber_axis;
 
     // Debugging function to deterministically initialize the A and B matrices.
     void dummyInitialize(DenseMatrix &loc) {
@@ -95,20 +64,17 @@ public:
     Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
-
-        proc_grid_dimensions = {sqrtpc, sqrtpc, c};
-
-        if(proc_rank == 0) {
-            if(sqrtpc * sqrtpc * c != p) {
+ 
+        if(sqrtpc * sqrtpc * c != p) {
+            if(proc_rank == 0) {
                 cout << "Error, for 2.5D algorithm, p / c must be a perfect square!" << endl;
                 cout << p << " " << c << endl;
-                exit(1);
             }
+            exit(1);
         }
 
         algorithm_name = "2.5D Cannon's Algorithm Replicating Sparse Matrix";
         proc_grid_names = {"# Rows", "# Cols", "# Layers"};
-        proc_grid_dimensions = {sqrtpc, sqrtpc, c};
 
         perf_counter_keys = 
                 {"Dense Cyclic Shift Time",
@@ -117,17 +83,17 @@ public:
                  "Computation Time" 
                 };
 
-        grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, sqrtpc, sqrtpc));
-        rankInRow = grid->GetCommGridLayer()->GetRankInProcRow();
-        rankInCol = grid->GetCommGridLayer()->GetRankInProcCol();
-        rankInFiber = grid->GetRankInFiber();
+        grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
+        rankInRow   = grid->rankInRow;
+        rankInCol   = grid->rankInCol;
+        rankInFiber = grid->rankInFiber;
 
-        row_axis   = grid->GetCommGridLayer()->GetRowWorld();
-        col_axis   = grid->GetCommGridLayer()->GetColWorld();
-        fiber_axis = grid->GetFiberWorld();
+        row_axis   = grid->row_world;
+        col_axis   = grid->col_world;
+        fiber_axis = grid->fiber_world;
 
-        A_R_split_world = row_axis; // The split worlds need to be fixed! 
-        B_R_split_world = row_axis; // This also needs to be fixed! 
+        A_R_split_world = grid->rowfiber_slice; 
+        B_R_split_world = grid->rowfiber_slice; 
 
         localAcols = R / (sqrtpc * c);
         localBcols = R / (sqrtpc * c); 
@@ -147,7 +113,7 @@ public:
         /* Distribute the nonzeros, storing them initially on the
          * bottom face of the cuboid and then broadcasting.  
          */
-        Floor2D nonzero_dist(M, N, sqrtpc, c);
+        Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
         int num_nnz = S->coords.size();
         MPI_Bcast(&num_nnz, 1, MPI_INT, 0, fiber_axis);
@@ -155,17 +121,6 @@ public:
             S->coords.resize(num_nnz);
         } 
         MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, fiber_axis);
-
-        nnz_in_row_axis.resize(sqrtpc);
-        int my_nnz = S->coords.size();
-        MPI_Allgather(&my_nnz, 
-                1, 
-                MPI_INT, 
-                nnz_in_row_axis.data(), 
-                1,
-                MPI_INT,
-                row_axis
-                );
 
         // Postprocess the coordinates 
         for(int i = 0; i < S->coords.size(); i++) {
