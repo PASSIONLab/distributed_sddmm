@@ -254,7 +254,27 @@ public:
                             ) = 0;
 
 
-    virtual void dummyInitialize(DenseMatrix &loc) = 0;
+    void dummyInitialize(DenseMatrix &loc, MatMode mode) {
+        // Assume that the dense matrices will always be stored in row major format. 
+
+        vector<DenseMatrix> &submatrices = (mode == Amat) ? aSubmatrices : bSubmatrices;
+
+        double* ptr = loc.data();
+
+        for(int t = 0; t < submatrices.size(); t++) {
+            int topRow = submatrices[t].topRow;
+            int leftcol = submatrices[t].leftCol;
+
+            for(int i = 0; i < loc.rows(); i++) {
+                for(int j = 0; j < loc.cols(); j++) {
+                    *ptr = (topRow + i) * R + leftCol + j;
+                    ptr++;
+                }
+            }
+
+        }
+ 
+    }
 
     /*
      * Convenience functions. 
