@@ -132,10 +132,10 @@ public:
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        // TODO: Properly do the initial synchronization!
-
-        //shiftDenseMatrix(*localB, col_axis, 
-        //        pMod(rankInCol - rankInRow, sqrtpc));
+        shiftDenseMatrix(*localA, row_axis, 
+                pMod(rankInRow - rankInCol, sqrtpc)); 
+        shiftDenseMatrix(*localB, col_axis, 
+                pMod(rankInCol - rankInRow, sqrtpc));
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -175,8 +175,8 @@ public:
             if(sqrtpc > 1) {
                 t = start_clock();
                 shiftDenseMatrix(localA, row_axis, 
-                        pMod(rankInCol + 1, sqrtpc));
-                shiftDenseMatrix(localB, row_axis, 
+                        pMod(rankInRow + 1, sqrtpc));
+                shiftDenseMatrix(localB, col_axis, 
                         pMod(rankInCol + 1, sqrtpc));
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
