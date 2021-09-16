@@ -15,6 +15,18 @@
 using namespace std;
 using namespace Eigen;
 
+class DenseSubmatrix {
+public:
+    int topRow, leftCol, rowCount, colCount;
+
+    DenseSubmatrix(int tR, int lC, int rC, int cC) {
+        topRow = tR;
+        leftCol = lc;
+        rowCount = rC;
+        colCount = cC;
+    }
+};
+
 class Distributed_Sparse {
 public:
     int proc_rank;     // Global process rank
@@ -32,24 +44,31 @@ public:
     // Matrix Dimensions, R is the short inner dimension
     int64_t M, N, R;
 
-    // Local dimensions of the dense matrices
+    // Local dimensions of the dense matrix buffers (which may contain multiple submatrices) 
     int localArows, localAcols, localBrows, localBcols;
+
+    // Gives the exact row and column indices of dense matrix submatrices
+    // stored by this implementation.
+    vector<DenseSubmatrix> aSubmatrices;
+    vector<DenseSubmatrix> bSubmatrices;
 
     // Related to the sparse matrix
     unique_ptr<SpmatLocal> S;
     shared_ptr<FlexibleGrid> grid;
+
+    // A contiguous interval of coordinates that this processor is responsible for in its input. 
+    int owned_coords_start, owned_coords_end;
 
     int superclass_constructor_sentinel;
 
     // Pointer to object implementing the local SDDMM / SPMM Operations 
     KernelImplementation *kernel;
  
+    bool r_split;
+    MPI_Comm A_R_split_world, B_R_split_world;
     //MPI_Comm A_row_world, B_row_world;
     //MPI_Comm A_col_world, B_col_world;
     //MPI_Comm A_replication_world, B_replication_world;
-
-    bool r_split;
-    MPI_Comm A_R_split_world, B_R_split_world;
 
     bool verbose;
     bool fused;
@@ -77,6 +96,9 @@ public:
         localBrows = -1;
         localBcols = -1;
 
+        owned_coords_start = -1;
+        owned_coords_end = -1;
+
         superclass_constructor_sentinel = 3;
         // TODO: Need to dummy-initialize the MPI constructors. 
     }
@@ -90,7 +112,13 @@ public:
         assert(M != -1 && N != -1 && R != -1);
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
+
+        assert(owned_coords_start != -1);
+        assert(owned_coords_end != -1);
+
         assert(superclass_constructor_sentinel == 3);
+        assert(aSubmatrices.size() > 0);
+        assert(bSubmatrices.size() > 0);
         assert(S->initialized);
     }
 
@@ -126,7 +154,7 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(S->coords.size(), value); 
+        return VectorXd::Constant(owned_coords_end - owned_coords_start, value); 
     }
 
     DenseMatrix like_A_matrix(double value) {

@@ -44,22 +44,7 @@ public:
     int c;
     int sqrtpc;
 
-    int sparse_shift;
-
-    // These variables are purely for convenience 
-    int rankInRow, rankInCol, rankInFiber;
-    MPI_Comm row_axis, col_axis, fiber_axis;
-
-    // Debugging function to deterministically initialize the A and B matrices.
-    void dummyInitialize(DenseMatrix &loc) {
-        /*int firstRow = loc.rows() * (rankInFiber + c * rankInCol);
-        int firstCol = loc.cols() * (rankInRow); 
-        for(int i = 0; i < loc.rows(); i++) {
-            for(int j = 0; j < loc.cols(); j++) {
-                loc(i, j) = (firstRow + i) * R + firstCol + j;
-            }
-        }*/
-    }
+    vector<int> ccount_in_layer;
 
     Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
@@ -84,19 +69,12 @@ public:
                 };
 
         grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
-        rankInRow   = grid->rankInRow;
-        rankInCol   = grid->rankInCol;
-        rankInFiber = grid->rankInFiber;
-
-        row_axis   = grid->row_world;
-        col_axis   = grid->col_world;
-        fiber_axis = grid->fiber_world;
 
         A_R_split_world = grid->rowfiber_slice; 
         B_R_split_world = grid->rowfiber_slice; 
 
         localAcols = R / (sqrtpc * c);
-        localBcols = R / (sqrtpc * c); 
+        localBcols = R / (sqrtpc * c);
 
         if(localAcols * sqrtpc * c != R) {
             cout << "Error, R must be divisible by sqrt(p) * c!" << endl;
@@ -110,6 +88,10 @@ public:
         localArows = divideAndRoundUp(this->M, sqrtpc);
         localBrows = divideAndRoundUp(this->N, sqrtpc);
 
+        // Define submatrix boundaries 
+        aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * grid->j + grid->k * localAcols, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * grid->j, localBcols * c * grid->i + grid->k * localBcols, localBrows, localBcols);
+
         /* Distribute the nonzeros, storing them initially on the
          * bottom face of the cuboid and then broadcasting.  
          */
@@ -122,6 +104,15 @@ public:
         } 
         MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, fiber_axis);
 
+        // Virtually shards the sparse matrix across layers. TODO: Need to do this for the
+        // transpose as well!
+        int share = divideAndRoundUp(S->coords.size(), c);
+        for(int i = 0; i < S->coords.size(); i += share) {
+            ccount_in_layer.push_back(std::min(S->coords.size() - share, share));
+        }
+        owned_coords_start = share * grid->k;
+        owned_coords_end = owned_coords_start + ccount_in_layer[grid->k];
+
         // Postprocess the coordinates 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
@@ -132,10 +123,10 @@ public:
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        shiftDenseMatrix(*localA, row_axis, 
-                pMod(rankInRow - rankInCol, sqrtpc)); 
-        shiftDenseMatrix(*localB, col_axis, 
-                pMod(rankInCol - rankInRow, sqrtpc));
+        shiftDenseMatrix(*localA, grid->row_world, 
+                pMod(grid->rankInRow - grid->rankInCol, sqrtpc)); 
+        shiftDenseMatrix(*localB, grid->col_world, 
+                pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -174,10 +165,10 @@ public:
 
             if(sqrtpc > 1) {
                 t = start_clock();
-                shiftDenseMatrix(localA, row_axis, 
-                        pMod(rankInRow + 1, sqrtpc));
-                shiftDenseMatrix(localB, col_axis, 
-                        pMod(rankInCol + 1, sqrtpc));
+                shiftDenseMatrix(localA, grid->row_world, 
+                        pMod(grid->rankInRow + 1, sqrtpc));
+                shiftDenseMatrix(localB, grid->col_world, 
+                        pMod(grid->rankInCol + 1, sqrtpc));
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
 
