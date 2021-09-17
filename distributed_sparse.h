@@ -154,6 +154,10 @@ public:
         return VectorXd::Constant(S->nnz_buffer_size, value); 
     }
 
+    VectorXd like_ST_values(double value) {
+        return VectorXd::Constant(ST->nnz_buffer_size, value); 
+    }
+
     DenseMatrix like_A_matrix(double value) {
         return DenseMatrix::Constant(localArows, localAcols, value);  
     }

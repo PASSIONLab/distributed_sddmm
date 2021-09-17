@@ -141,10 +141,24 @@ public:
                             KernelMode mode
                             ) {
 
-        int nnz_processed; 
+        DenseMatrix *Arole, *Brole;
+        SpmatLocal* choice;
 
-        // TODO: Need to modify if using the transposed matrix! 
-		VectorXd accumulation_buffer = VectorXd::Constant(S->coords.size(), 0.0); 
+        if(mode == k_spmmA || mode == k_spmmA) {
+            assert(Svalues.size() == S->coords.size());
+            Arole = &localA;
+            Brole = &localB;
+            choice = S.get();
+        } 
+        else if(mode == k_spmmB) {
+            assert(Svalues.size() == ST->coords.size());
+            Arole = &localB;
+            Brole = &localA;
+            choice = ST.get(); 
+        }
+
+        int nnz_processed = 0;
+		VectorXd accumulation_buffer = VectorXd::Constant(choice->coords.size(), 0.0); 
 
         if(mode != k_sddmm) {
             auto t = start_clock();
@@ -157,7 +171,7 @@ public:
                 MPI_DOUBLE,
                 grid->fiber_world
                 ); 
-            S->setValues(accumulation_buffer);
+            choice->setValues(accumulation_buffer);
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
 
         }
@@ -165,12 +179,12 @@ public:
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
             nnz_processed += kernel->triple_function(
-                mode,
-                *S,
-                localA,
-                localB,
+                mode == k_spmmB ? k_spmmA : mode,
+                *choice,
+                Arole,
+                Brole,
                 0,
-                S->coords.size());
+                choice->coords.size());
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
@@ -184,10 +198,10 @@ public:
         }
 
         if(mode == k_sddmm) {
-            accumulation_buffer = S->getValues();
+            accumulation_buffer = choice->getValues();
             auto t = start_clock();
 
-            vector<int> temp(c, S->nnz_buffer_size);
+            vector<int> temp(c, choice->nnz_buffer_size);
             MPI_Reduce_scatter(accumulation_buffer.data(),
                 sddmm_result_ptr->data(),
                 temp.data(),

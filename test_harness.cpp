@@ -79,6 +79,7 @@ void verify_operation(Distributed_Sparse* d_ops) {
     DenseMatrix B = d_ops->like_B_matrix(0.0);
 
     VectorXd S = d_ops->like_S_values(1.0);
+    VectorXd ST = d_ops->like_ST_values(1.0);
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
@@ -98,7 +99,7 @@ void verify_operation(Distributed_Sparse* d_ops) {
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    d_ops->spmmB(A, B, S);
+    d_ops->spmmB(A, B, ST);
 
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
