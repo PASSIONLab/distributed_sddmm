@@ -49,7 +49,6 @@ public:
 	// This is redundant, but it makes coding more convenient.
 	// These are unzipped versions of the sparse matrix G. 
 	vector<spcoord_t> coords;	
-    vector<uint64_t> blockStarts;
 
 	/*
 	 * Global properties of the distributed sparse matrix. 
@@ -60,9 +59,46 @@ public:
 
 	bool initialized;
 
+	// These are more specialized parameters
+
+    // A contiguous interval of coordinates that this processor is responsible for in its input;
+    // need to duplicate this for the transpose. 
+
+    int owned_coords_start, owned_coords_end, nnz_buffer_size;
+	bool coordinate_ownership_initialized;
+
+    vector<uint64_t> blockStarts;
+
 	SpmatLocal() {
 		initialized = false;
+		coordinate_ownership_initialized = false;
 	}
+
+	void own_all_coordinates() {
+		owned_coords_start = 0;
+		owned_coords_end = coords.size();
+		nnz_buffer_size = coords.size();
+
+		coordinate_ownership_initialized = true;
+	}
+
+	void shard_across_layers(int num_layers, int current_layer) {
+        vector<int> ccount_in_layer;
+        int share = divideAndRoundUp(coords.size(), num_layers);
+        for(int i = 0; i < coords.size(); i += share) {
+            if(share < coords.size() - i) {
+                ccount_in_layer.push_back(share);
+            }
+            else {
+                ccount_in_layer.push_back(coords.size() - i);
+            }
+        }
+        owned_coords_start = share * current_layer;
+        owned_coords_end = owned_coords_start + ccount_in_layer[current_layer];
+        nnz_buffer_size = share;
+
+		coordinate_ownership_initialized = true;
+	} 
 
 	void unpack_tuples( SpTuples<int64_t,int> &tups, 
 			vector<spcoord_t> &unpacked) {

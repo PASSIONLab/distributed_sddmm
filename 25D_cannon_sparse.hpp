@@ -44,6 +44,15 @@ public:
     int c;
     int sqrtpc;
 
+    void broadcastCoordinatesFromFloor(unique_ptr<SpmatLocal> &spmat) {
+        int num_nnz = spmat->coords.size();
+        MPI_Bcast(&num_nnz, 1, MPI_INT, 0, grid->fiber_world);
+        if(grid->rankInFiber > 0) {
+            spmat->coords.resize(num_nnz);
+        } 
+        MPI_Bcast(spmat->coords.data(), spmat->coords.size(), SPCOORD, 0, grid->fiber_world);
+    }
+
     Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
@@ -93,35 +102,26 @@ public:
          * bottom face of the cuboid and then broadcasting.  
          */
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
+        Floor2D transposeDist(N, M, sqrtpc, c, grid);
+
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        int num_nnz = S->coords.size();
-        MPI_Bcast(&num_nnz, 1, MPI_INT, 0, grid->fiber_world);
-        if(grid->rankInFiber > 0) {
-            S->coords.resize(num_nnz);
-        } 
-        MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, grid->fiber_world);
+        ST.reset(S_input->redistribute_nonzeros(&transposeDist, true, false));
+        broadcastCoordinatesFromFloor(S);
+        broadcastCoordinatesFromFloor(ST);
 
-        // Virtually shards the sparse matrix across layers. TODO: Need to do this for the
-        // transpose as well!
+        // Each processor is only responsible for a fraction of its nonzeros 
+        S->shard_across_layers(c, grid->k);
+        ST->shard_across_layers(c, grid->k);
 
-        vector<int> ccount_in_layer;
-        int share = divideAndRoundUp(S->coords.size(), c);
-        for(int i = 0; i < S->coords.size(); i += share) {
-            if(share < S->coords.size() - i) {
-                ccount_in_layer.push_back(share);
-            }
-            else {
-                ccount_in_layer.push_back(S->coords.size() - i);
-            }
-        }
-        owned_coords_start = share * grid->k;
-        owned_coords_end = owned_coords_start + ccount_in_layer[grid->k];
-        nnz_buffer_size = share;
-
-        // Postprocess the coordinates 
+        // Postprocess the coordinates
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
             S->coords[i].c %= localBrows;
+        }
+ 
+        for(int i = 0; i < ST->coords.size(); i++) {
+            S->coords[i].r %= localBrows;
+            S->coords[i].c %= localArows;
         }
 
         check_initialized(); 
@@ -153,7 +153,7 @@ public:
                 SValues.size(),
                 MPI_DOUBLE,
                 accumulation_buffer.data(),
-                nnz_buffer_size,
+                S->nnz_buffer_size,
                 MPI_DOUBLE,
                 grid->fiber_world
                 ); 
@@ -187,7 +187,7 @@ public:
             accumulation_buffer = S->getValues();
             auto t = start_clock();
 
-            vector<int> temp(c, nnz_buffer_size);
+            vector<int> temp(c, S->nnz_buffer_size);
             MPI_Reduce_scatter(accumulation_buffer.data(),
                 sddmm_result_ptr->data(),
                 temp.data(),

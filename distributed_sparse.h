@@ -54,11 +54,8 @@ public:
 
     // Related to the sparse matrix
     unique_ptr<SpmatLocal> S;
+    unique_ptr<SpmatLocal> ST;
     shared_ptr<FlexibleGrid> grid;
-
-    // A contiguous interval of coordinates that this processor is responsible for in its input;
-    // need to duplicate this for the transpose. 
-    int owned_coords_start, owned_coords_end, nnz_buffer_size;
 
     int superclass_constructor_sentinel;
 
@@ -97,10 +94,6 @@ public:
         localBrows = -1;
         localBcols = -1;
 
-        owned_coords_start = -1;
-        owned_coords_end = -1;
-        nnz_buffer_size = -1;
-
         superclass_constructor_sentinel = 3;
         // TODO: Need to dummy-initialize the MPI constructors. 
     }
@@ -115,14 +108,15 @@ public:
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
 
-        assert(owned_coords_start != -1);
-        assert(owned_coords_end != -1);
-        assert(nnz_buffer_size >= owned_coords_end - owned_coords_start);
 
         assert(superclass_constructor_sentinel == 3);
         assert(aSubmatrices.size() > 0);
         assert(bSubmatrices.size() > 0);
         assert(S->initialized);
+        assert(ST->initialized);
+
+        assert(S->coordinate_ownership_initialized);
+        assert(ST->coordinate_ownership_initialized);
     }
 
     void print_algorithm_info() {
@@ -157,7 +151,7 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(nnz_buffer_size, value); 
+        return VectorXd::Constant(S->nnz_buffer_size, value); 
     }
 
     DenseMatrix like_A_matrix(double value) {
