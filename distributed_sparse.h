@@ -21,7 +21,7 @@ public:
 
     DenseSubmatrix(int tR, int lC, int rC, int cC) {
         topRow = tR;
-        leftCol = lc;
+        leftCol = lC;
         rowCount = rC;
         colCount = cC;
     }
@@ -56,8 +56,9 @@ public:
     unique_ptr<SpmatLocal> S;
     shared_ptr<FlexibleGrid> grid;
 
-    // A contiguous interval of coordinates that this processor is responsible for in its input. 
-    int owned_coords_start, owned_coords_end;
+    // A contiguous interval of coordinates that this processor is responsible for in its input;
+    // need to duplicate this for the transpose. 
+    int owned_coords_start, owned_coords_end, nnz_buffer_size;
 
     int superclass_constructor_sentinel;
 
@@ -98,6 +99,7 @@ public:
 
         owned_coords_start = -1;
         owned_coords_end = -1;
+        nnz_buffer_size = -1;
 
         superclass_constructor_sentinel = 3;
         // TODO: Need to dummy-initialize the MPI constructors. 
@@ -115,6 +117,7 @@ public:
 
         assert(owned_coords_start != -1);
         assert(owned_coords_end != -1);
+        assert(nnz_buffer_size >= owned_coords_end - owned_coords_start);
 
         assert(superclass_constructor_sentinel == 3);
         assert(aSubmatrices.size() > 0);
@@ -154,7 +157,7 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(owned_coords_end - owned_coords_start, value); 
+        return VectorXd::Constant(nnz_buffer_size, value); 
     }
 
     DenseMatrix like_A_matrix(double value) {
@@ -257,13 +260,13 @@ public:
     void dummyInitialize(DenseMatrix &loc, MatMode mode) {
         // Assume that the dense matrices will always be stored in row major format. 
 
-        vector<DenseMatrix> &submatrices = (mode == Amat) ? aSubmatrices : bSubmatrices;
+        vector<DenseSubmatrix> &submatrices = (mode == Amat) ? aSubmatrices : bSubmatrices;
 
         double* ptr = loc.data();
 
         for(int t = 0; t < submatrices.size(); t++) {
             int topRow = submatrices[t].topRow;
-            int leftcol = submatrices[t].leftCol;
+            int leftCol = submatrices[t].leftCol;
 
             for(int i = 0; i < loc.rows(); i++) {
                 for(int j = 0; j < loc.cols(); j++) {
@@ -271,9 +274,7 @@ public:
                     ptr++;
                 }
             }
-
-        }
- 
+        } 
     }
 
     /*

@@ -44,8 +44,6 @@ public:
     int c;
     int sqrtpc;
 
-    vector<int> ccount_in_layer;
-
     Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
@@ -63,8 +61,7 @@ public:
 
         perf_counter_keys = 
                 {"Dense Cyclic Shift Time",
-                 "Sparse Cyclic Shift Time",
-                 "Dense Fiber Communication Time",
+                 "Sparse Fiber Communication Time",
                  "Computation Time" 
                 };
 
@@ -77,7 +74,7 @@ public:
         localBcols = R / (sqrtpc * c);
 
         if(localAcols * sqrtpc * c != R) {
-            cout << "Error, R must be divisible by sqrt(p) * c!" << endl;
+            cout << "Error, R must be divisible by sqrt(pc)!" << endl;
             exit(1);
         }
 
@@ -98,20 +95,28 @@ public:
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
         int num_nnz = S->coords.size();
-        MPI_Bcast(&num_nnz, 1, MPI_INT, 0, fiber_axis);
-        if(rankInFiber > 0) {
+        MPI_Bcast(&num_nnz, 1, MPI_INT, 0, grid->fiber_world);
+        if(grid->rankInFiber > 0) {
             S->coords.resize(num_nnz);
         } 
-        MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, fiber_axis);
+        MPI_Bcast(S->coords.data(), S->coords.size(), SPCOORD, 0, grid->fiber_world);
 
         // Virtually shards the sparse matrix across layers. TODO: Need to do this for the
         // transpose as well!
+
+        vector<int> ccount_in_layer;
         int share = divideAndRoundUp(S->coords.size(), c);
         for(int i = 0; i < S->coords.size(); i += share) {
-            ccount_in_layer.push_back(std::min(S->coords.size() - share, share));
+            if(share < S->coords.size() - i) {
+                ccount_in_layer.push_back(share);
+            }
+            else {
+                ccount_in_layer.push_back(S->coords.size() - i);
+            }
         }
         owned_coords_start = share * grid->k;
         owned_coords_end = owned_coords_start + ccount_in_layer[grid->k];
+        nnz_buffer_size = share;
 
         // Postprocess the coordinates 
         for(int i = 0; i < S->coords.size(); i++) {
@@ -138,29 +143,34 @@ public:
 
         int nnz_processed; 
 
-        // TODO: Can eliminate some unecessary copies here... 
+        // TODO: Need to modify if using the transposed matrix! 
+		VectorXd accumulation_buffer = VectorXd::Constant(S->coords.size(), 0.0); 
+
         if(mode != k_sddmm) {
-            S->setValues(SValues);
-        }
-
-		//DenseMatrix accumulation_buffer = DenseMatrix::Constant(localArows * c, localAcols, 0.0); 
-
-        /*if(mode == k_spmmB || mode == k_sddmm) {
             auto t = start_clock();
-            MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, fiber_axis);
-            stop_clock_and_add(t, "Dense Fiber Communication Time");
-        }*/
+            MPI_Allgather(
+                SValues.data(),
+                SValues.size(),
+                MPI_DOUBLE,
+                accumulation_buffer.data(),
+                nnz_buffer_size,
+                MPI_DOUBLE,
+                grid->fiber_world
+                ); 
+            S->setValues(accumulation_buffer);
+            stop_clock_and_add(t, "Sparse Fiber Communication Time");
+
+        }
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
-            /*nnz_processed += kernel->triple_function(
+            nnz_processed += kernel->triple_function(
                 mode,
                 *S,
-                accumulation_buffer,
+                localA,
                 localB,
                 0,
-                S->coords.size());*/
+                S->coords.size());
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
@@ -171,41 +181,23 @@ public:
                         pMod(grid->rankInCol + 1, sqrtpc));
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
-
-            // ENTER THE DEBUGGING ZONE =========================== 
-            /*for(int i = 0; i < p; i++) {
-                if(proc_rank == i) {
-                    cout << "Accumulation Buffer: " << endl
-                        << accumulation_buffer << endl; 
-                }
-                MPI_Barrier(MPI_COMM_WORLD);
-            }
-
-            if(proc_rank == 0) {
-                cout << "Completed round!" << endl;
-            }*/
-            // END THE DEBUGGING ZONE =========================== 
-
         }
 
-        // TODO: Can eliminate some unecessary copies here... 
         if(mode == k_sddmm) {
-            *sddmm_result_ptr = SValues.cwiseProduct(S->getValues());
+            accumulation_buffer = S->getValues();
+            auto t = start_clock();
+
+            vector<int> temp(c, nnz_buffer_size);
+            MPI_Reduce_scatter(accumulation_buffer.data(),
+                sddmm_result_ptr->data(),
+                temp.data(),
+                MPI_DOUBLE,
+                MPI_SUM,
+                grid->fiber_world
+            );
+            stop_clock_and_add(t, "Sparse Fiber Communication Time");
+            *sddmm_result_ptr = SValues.cwiseProduct(*sddmm_result_ptr);
         }
-
-        /*if(mode == k_spmmA) {
-            auto t = start_clock(); 
-
-            vector<int> recvCounts;
-            for(int i = 0; i < c; i++) {
-                recvCounts.push_back(localArows * localAcols);
-            }
-
-            MPI_Reduce_scatter(accumulation_buffer.data(), 
-                    localA.data(), recvCounts.data(),
-                       MPI_DOUBLE, MPI_SUM, fiber_axis);
-            stop_clock_and_add(t, "Dense Fiber Communication Time");
-        }*/
     }
 };
 

@@ -2,7 +2,7 @@
 //#include "15D_mdense_shift.hpp"
 
 //#include "15D_mdense_shift_striped.hpp"
-// #include "2D_cannon.hpp"
+//#include "2D_cannon.hpp"
 //#include "25D_cannon_dense.hpp"
 #include "25D_cannon_sparse.hpp"
 
@@ -80,12 +80,12 @@ void verify_operation(Distributed_Sparse* d_ops) {
 
     VectorXd S = d_ops->like_S_values(1.0);
 
-    d_ops->dummyInitialize(A);
-    d_ops->dummyInitialize(B);
+    d_ops->dummyInitialize(A, Amat);
+    d_ops->dummyInitialize(B, Bmat);
 
-    d_ops->print_nonzero_distribution(A, B);
+    //d_ops->print_nonzero_distribution(A, B);
 
-    /*VectorXd result = d_ops->like_S_values(0.0);
+    VectorXd result = d_ops->like_S_values(0.0);
     d_ops->initial_synchronize(&A, &B, nullptr);
 
     d_ops->sddmm(A, B, S, result);
@@ -103,7 +103,7 @@ void verify_operation(Distributed_Sparse* d_ops) {
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    //d_ops->print_nonzero_distribution(A, B);
+    //d_ops->print_nonzero_distribution(A, B); 
 
     if(proc_rank == 0) {
         cout << "SDDMM Fingerprint: " << sddmm_fingerprint << endl;
@@ -111,8 +111,8 @@ void verify_operation(Distributed_Sparse* d_ops) {
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
     }
 
-    cout << result << endl;
-    */
+    d_ops->grid->gather_and_pretty_print("SpMMA Sample:", (int) A(0));
+
 }
 
 /*void test_sparse_transpose() {
