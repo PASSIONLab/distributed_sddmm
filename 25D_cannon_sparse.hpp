@@ -120,8 +120,8 @@ public:
         }
  
         for(int i = 0; i < ST->coords.size(); i++) {
-            S->coords[i].r %= localBrows;
-            S->coords[i].c %= localArows;
+            ST->coords[i].r %= localBrows;
+            ST->coords[i].c %= localArows;
         }
 
         check_initialized(); 
