@@ -128,10 +128,12 @@ public:
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        shiftDenseMatrix(*localA, grid->row_world, 
-                pMod(grid->rankInRow - grid->rankInCol, sqrtpc)); 
-        shiftDenseMatrix(*localB, grid->col_world, 
-                pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
+        if(sqrtpc > 1) {
+            shiftDenseMatrix(*localA, grid->row_world, 
+                    pMod(grid->rankInRow - grid->rankInCol, sqrtpc)); 
+            shiftDenseMatrix(*localB, grid->col_world, 
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
+        }
     }
 
     void algorithm(         DenseMatrix &localA, 
@@ -144,15 +146,15 @@ public:
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
 
-        if(mode == k_spmmA || mode == k_spmmA) {
-            assert(Svalues.size() == S->coords.size());
+        if(mode == k_spmmA || mode == k_sddmm) {
+            assert(SValues.size() == S->coords.size());
             Arole = &localA;
             Brole = &localB;
             choice = S.get();
         } 
         else if(mode == k_spmmB) {
-            assert(Svalues.size() == ST->coords.size());
-            Arole = &localB;
+            assert(SValues.size() == ST->coords.size());
+            Arole = &localB; 
             Brole = &localA;
             choice = ST.get(); 
         }
@@ -167,13 +169,12 @@ public:
                 SValues.size(),
                 MPI_DOUBLE,
                 accumulation_buffer.data(),
-                S->nnz_buffer_size,
+                choice->nnz_buffer_size,
                 MPI_DOUBLE,
                 grid->fiber_world
                 ); 
             choice->setValues(accumulation_buffer);
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
-
         }
 
         for(int i = 0; i < sqrtpc; i++) {
@@ -181,8 +182,8 @@ public:
             nnz_processed += kernel->triple_function(
                 mode == k_spmmB ? k_spmmA : mode,
                 *choice,
-                Arole,
-                Brole,
+                *Arole,
+                *Brole,
                 0,
                 choice->coords.size());
             stop_clock_and_add(t, "Computation Time");

@@ -2,6 +2,7 @@
 #include <mkl_spblas.h>
 #include <Eigen/Dense>
 #include <mpi.h>
+#include <omp.h>
 
 #include "SpmatLocal.hpp"
 #include "common.h"
@@ -14,11 +15,13 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time)
 	erdos_renyi.loadTuples(false, logM, nnz_per_row, "");	
 	//std::sort(erdos_renyi.coords.begin(), erdos_renyi.coords.end(), sortbycolumns);
 
-	MKL_INT* rows = new MKL_INT[erdos_renyi.coords.size()];
-	MKL_INT* cols = new MKL_INT[erdos_renyi.coords.size()];
-	double* values  = new double[erdos_renyi.coords.size()];
+	int num_coords = erdos_renyi.coords.size();
 
-	for(int i = 0; i < erdos_renyi.coords.size(); i++) {
+	MKL_INT* rows = new MKL_INT[num_coords];
+	MKL_INT* cols = new MKL_INT[num_coords];
+	double* values  = new double[num_coords];
+
+	for(int i = 0; i < num_coords; i++) {
 		rows[i] = erdos_renyi.coords[i].r;
 		cols[i] = erdos_renyi.coords[i].c;
 		values[i] = 1.0; 
@@ -43,27 +46,50 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time)
 		DenseMatrix B = DenseMatrix::Constant(erdos_renyi.N, R, 1.0);
 		DenseMatrix C = DenseMatrix::Constant(erdos_renyi.M, R, 1.0);
 
+		double* ptrB = B.data();
+		double* ptrC = C.data();
+
 		struct matrix_descr descr;
 		descr.type = SPARSE_MATRIX_TYPE_GENERAL;
 
 		my_timer_t t = start_clock();
 		int num_trials = 0;
 
-		do {
-			num_trials++;
-			mkl_sparse_d_mm (
-					SPARSE_OPERATION_NON_TRANSPOSE,	
-					1.0, 
-					A, 
-					descr,	
-					SPARSE_LAYOUT_ROW_MAJOR,	
-					B.data(), 
-					R, 
-					R,  // ldb
-					1.0, 
-					C.data(), 
-					R); // ldc
-		} while(stop_clock_get_elapsed(t) < min_time);
+		//#pragma omp parallel 
+		//{
+			//#pragma omp single 
+			//{
+				do {
+					num_trials++;
+					/*mkl_sparse_d_mm (
+							SPARSE_OPERATION_NON_TRANSPOSE,	
+							1.0, 
+							A, 
+							descr,	
+							SPARSE_LAYOUT_ROW_MAJOR,	
+							B.data(), 
+							R, 
+							R,  // ldb
+							1.0, 
+							C.data(), 
+							R); // ldc*/
+
+					#pragma omp parallel for
+					for(int t = 0; t < num_coords; t++) {
+						double* Brow = ptrB + rows[t];
+						double* Crow = ptrC + cols[t];
+						double value = 0.0;
+						#pragma ivdep
+						for(int k = 0; k < R; k++) {
+							value += Brow[k] * Crow[k]; 
+						}
+						values[t] = value;
+					}	
+
+
+				} while(stop_clock_get_elapsed(t) < min_time);
+			//}
+		//}
 
 		double elapsed = stop_clock_get_elapsed(t);
 		double throughput = erdos_renyi.coords.size() * 2 * R * num_trials / elapsed;

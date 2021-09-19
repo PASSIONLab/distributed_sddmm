@@ -221,13 +221,8 @@ public:
         exit(1); 
     }
 
-    virtual VectorXd like_ST_values(double value) {
-        cout << "Error, only 1.5D algorithms that shift dense matrices support this method!" << endl; 
-        exit(1); 
-    }
-
     /*
-     * If any input replication is needed, this function performs it. 
+     * If the input buffers need to be shifted / preprocessed 
      */
     virtual void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *localS) = 0;
 
