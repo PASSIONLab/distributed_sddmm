@@ -422,6 +422,7 @@ public:
         }
 	}
 
+	// TODO: Enable setting values to a constant. 
 	void setCoordValues(VectorXd &values) {
 		assert(values.size() == coords.size());
 
@@ -431,11 +432,21 @@ public:
 	}	
 
 	void setCSRValues(VectorXd &values) {
-		int currentBlock = 0;
-		for(int i = 0; i < values.size(); i++) {
-			coords[i].value = values[i];
+		if(blockStarts.size() == 0) {
+			for(int i = 0; i < values.size(); i++) {
+				csr_blocks[0].getActive()->values[i] = values[i];
+			}
 		}
-	}	
+		else {
+			int currentBlock = 0;
+			for(int i = 0; i < values.size(); i++) {
+				while(i >= blockStarts[i+1]) {
+					currentBlock++;
+				}
+				csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]] = values[i];
+			}
+		}
+	}
 
 	VectorXd getCoordValues() {
 		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
@@ -445,6 +456,23 @@ public:
 		}
 
 		return values;
+	}
+
+	VectorXd getCSRValues() {
+		if(blockStarts.size() == 0) {
+			for(int i = 0; i < values.size(); i++) {
+				csr_blocks[0].getActive()->values[i] = values[i];
+			}
+		}
+		else {
+			int currentBlock = 0;
+			for(int i = 0; i < values.size(); i++) {
+				while(i >= blockStarts[i+1]) {
+					currentBlock++;
+				}
+				csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]] = values[i];
+			}
+		}
 	}
 
 	void setValuesConstant(double cval) {
