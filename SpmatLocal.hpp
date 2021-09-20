@@ -65,7 +65,7 @@ public:
 	int num_coords; 
 
 	int active;
-	TripleArrayHandle buffer[2];
+	CSRHandle buffer[2];
 
 	CSRLocal(MKL_INT rows, MKL_INT cols, MKL_INT max_nnz, spcoord_t* coords, int num_coords, bool transpose) {
 		this->rows = rows;
@@ -108,10 +108,10 @@ public:
 					SPARSE_INDEX_BASE_ZERO,
 					rows,
 					cols,
-					buffer[t].rowStart,
-					buffer[t].rowStart + 1,
-					buffer[t].col_idx,
-					buffer[t].values	
+					buffer[t].rowStart.data(),
+					buffer[t].rowStart.data() + 1,
+					buffer[t].col_idx.data(),
+					buffer[t].values.data()	
 					);
 		}
 	}
@@ -127,9 +127,9 @@ public:
 		MPI_Request vRequestReceive, cRequestReceive, rRequestReceive;
 		MPI_Status stat;
 
-		MPI_ISend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
-		MPI_ISend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
-		MPI_ISend(send->rowStart.data(), rows, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+		MPI_Isend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
+		MPI_Isend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
+		MPI_Isend(send->rowStart.data(), rows, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
 
 		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
 		MPI_Irecv(recv->col_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 1, comm, &cRequestReceive);
@@ -193,7 +193,7 @@ public:
 			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), coords.size(), transpose);
 		}
 		else {
-			for(int i = 0; i < blockStart.size(); i++) {
+			for(int i = 0; i < blockStarts.size(); i++) {
 				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
 				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
 			}
@@ -459,20 +459,24 @@ public:
 	}
 
 	VectorXd getCSRValues() {
+		VectorXd values;
 		if(blockStarts.size() == 0) {
+			values = VectorXd::Constant(csr_blocks[0].num_coords, 0.0);
 			for(int i = 0; i < values.size(); i++) {
-				csr_blocks[0].getActive()->values[i] = values[i];
+				values[i] = csr_blocks[0].getActive()->values[i]; 
 			}
 		}
 		else {
+			values = VectorXd::Constant(coords.size(), 0.0);
 			int currentBlock = 0;
 			for(int i = 0; i < values.size(); i++) {
 				while(i >= blockStarts[i+1]) {
 					currentBlock++;
 				}
-				csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]] = values[i];
+				values[i] = csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]]; 
 			}
 		}
+		return values;
 	}
 
 	void setValuesConstant(double cval) {
