@@ -98,10 +98,16 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 			cols, 
 			values);
 
-	//A = A_coo;
 	mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
 
-	MKL_INT* rowStart = new MKL_INT[erdos_renyi.M + 1];
+	// Just testing the handle creation
+	sparse_index_base_t indexing;
+	MKL_INT rows_export, cols_export; 
+	MKL_INT* rows_start, *rows_end, *col_indx;
+	double* values_export; 
+
+	mkl_sparse_d_export_csr(A, &indexing, &rows_export, &cols_export, &rows_start,
+		&rows_end, &col_indx, &values_export);
 
 	for(int i = 0; i < rValues.size(); i++) {
 		int R = rValues[i];
@@ -121,24 +127,40 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 				do {
 					num_trials++;	
 
-					/*mkl_sparse_d_create_csr(
-							&A_manual_convert,
-							SPARSE_INDEX_BASE_ZERO,
-							erdos_renyi.M,
-							erdos_renyi.N,
-							rowStart,
-							rowStart+1,
-							cols,
-							values
-					);*/
+					//if(benchmark_sddmm) {
+					//	sddmm(ptrB, ptrC, values, rows, cols, num_coords, R);
+					//}
+					//else {
 
-					if(benchmark_sddmm) {
-						sddmm(ptrB, ptrC, values, rows, cols, num_coords, R);
-					}
-					else {
-						spmm(ptrB, ptrC, A, num_coords, R);
-					}
+					//}
 
+					spmm(ptrB, ptrC, A, num_coords, R);
+
+
+					char transa = 'N';
+					double alpha = 1.0;
+					double beta = 0.0;
+
+					MKL_INT R_mkl;
+					R_mkl = R;
+
+					char matdescra[4] = {'G', 'O', 'N', 'F'};
+
+					/*mkl_dcsrmm(&transa, 
+							&rows_export,
+							&R_mkl, 
+							&cols_export, 
+							&alpha, 
+							matdescra, 
+							values_export, 
+							col_indx, 
+							rows_start, 
+							rows_end, 
+							ptrB, 
+							&R_mkl, 
+							&beta, 
+							ptrC, 
+							&R_mkl);*/
 
 				} while(stop_clock_get_elapsed(t) < min_time);
 			//}

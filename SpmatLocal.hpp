@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iterator>
 #include <algorithm>
+#include <mkl_spblas.h>
 #include "common.h"
 #include "CombBLAS/CombBLAS.h"
 
@@ -50,10 +51,35 @@ public:
 	vector<double> rowStart;
 	bool submatrixTransposed;
 
-	void convertFromSortedCoordinates(int rows, int cols, spcoord_t* coords, int num_coords) {
-		rowStart.resize(rows + 1);
-		cols.resize(num_coords);
+	void convertFromCoordinates(int num_rows, int num_cols, int num_coords, spcoord_t* coords, bool transpose) {
+		MKL_INT* rows_temp = new MKL_INT[num_coords];
+		MKL_INT* cols_temp = new MKL_INT[num_coords];
+		double* values_temp = new double[num_coords];
 
+		for(int i = 0; i < num_coords; i++) {
+			rows_temp[i] = coords[i].r;
+			cols_temp[i] = coords[i].c;
+			values_temp[i] = 1.0; 
+		}
+
+		sparse_matrix_t coo_temp;
+
+		mkl_sparse_d_create_coo (
+				&coo_temp, 
+				SPARSE_INDEX_BASE_ZERO,	
+				num_rows, 
+				num_cols, 
+				num_coords, 
+				rows, 
+				cols, 
+				values);
+
+		if(transpose) {
+			mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
+		}
+		else {
+			mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
+		}
 	}
 };*/
 
