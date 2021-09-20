@@ -71,7 +71,7 @@ void spmm(double* ptrB, double* ptrC, sparse_matrix_t &A, int num_coords, int R)
 }
 
 void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time, bool benchmark_sddmm) {
-	SpmatLocal erdos_renyi;
+	SpmatLocal erdos_renyi, er_prime;
 	erdos_renyi.loadTuples(false, logM, nnz_per_row, "");	
 	std::sort(erdos_renyi.coords.begin(), erdos_renyi.coords.end(), sortbycolumns);
 
@@ -86,8 +86,22 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 		cols[i] = erdos_renyi.coords[i].c;
 		values[i] = 1.0; 
 	}
+	
+	er_prime.loadTuples(false, logM, nnz_per_row / 2, "");
 
-	sparse_matrix_t A_coo, A, A_manual_convert;
+	int num_coords_prime = er_prime.coords.size();
+
+	MKL_INT* rows_prime = new MKL_INT[num_coords_prime];
+	MKL_INT* cols_prime = new MKL_INT[num_coords_prime];
+	double* values_prime = new double[num_coords_prime];
+
+	for(int i = 0; i < num_coords_prime; i++) {
+		rows_prime[i] = er_prime.coords[i].r;
+		cols_prime[i] = er_prime.coords[i].c;
+		values[i] = 1.0; 
+	}
+
+	sparse_matrix_t A_coo, A, A_coo_prime, A_prime;
 	mkl_sparse_d_create_coo (
 			&A_coo, 
 			SPARSE_INDEX_BASE_ZERO,	
@@ -98,16 +112,36 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 			cols, 
 			values);
 
+	mkl_sparse_d_create_coo (
+			&A_coo_prime, 
+			SPARSE_INDEX_BASE_ZERO,	
+			er_prime.M, 
+			er_prime.N, 
+			num_coords_prime, 
+			rows_prime, 
+			cols_prime, 
+			values_prime);
+
 	mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
+	mkl_sparse_convert_csr(A_coo_prime, SPARSE_OPERATION_NON_TRANSPOSE, &A_prime);
 
 	// Just testing the handle creation
 	sparse_index_base_t indexing;
-	MKL_INT rows_export, cols_export; 
-	MKL_INT* rows_start, *rows_end, *col_indx;
-	double* values_export; 
+	MKL_INT rows_export, cols_export, re_prime, ce_prime; 
+	MKL_INT* rows_start, *rows_end, *col_indx, *r_start_prime, *r_end_prime, *c_indx_prime;
+	double* values_export, *values_export_prime; 
 
 	mkl_sparse_d_export_csr(A, &indexing, &rows_export, &cols_export, &rows_start,
 		&rows_end, &col_indx, &values_export);
+
+	mkl_sparse_d_export_csr(A_prime, &indexing, &re_prime, &ce_prime, &r_start_prime,
+		&r_end_prime, &c_indx_prime, &values_export_prime);
+
+	memcpy(rows_start, r_start_prime, sizeof(MKL_INT) * rows_export);
+	memcpy(rows_end, r_end_prime, sizeof(MKL_INT) * rows_export);
+	memcpy(col_indx, c_indx_prime, sizeof(MKL_INT) * num_coords_prime);
+	memcpy(values_export, values_export_prime, sizeof(double) * num_coords_prime);
+
 
 	for(int i = 0; i < rValues.size(); i++) {
 		int R = rValues[i];
@@ -167,7 +201,7 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 		//}
 
 		double elapsed = stop_clock_get_elapsed(t);
-		double throughput = erdos_renyi.coords.size() * 2 * R * num_trials / elapsed;
+		double throughput = er_prime.coords.size() * 2 * R * num_trials / elapsed;
 		throughput /= 1.0e9;
 
 		cout << erdos_renyi.M << "\t" 
