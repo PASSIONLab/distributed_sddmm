@@ -44,6 +44,19 @@ public:
 	}
 };
 
+/*class CSR_Local {
+public:
+	vector<double> cols;
+	vector<double> rowStart;
+	bool submatrixTransposed;
+
+	void convertFromSortedCoordinates(int rows, int cols, spcoord_t* coords, int num_coords) {
+		rowStart.resize(rows + 1);
+		cols.resize(num_coords);
+
+	}
+};*/
+
 class SpmatLocal {
 public:
 	// This is redundant, but it makes coding more convenient.
