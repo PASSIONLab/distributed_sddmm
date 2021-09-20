@@ -15,6 +15,8 @@ using namespace Eigen;
 using namespace combblas;
 using namespace std;
 
+#define TAG_MULTIPLIER 10000
+
 /**
  * Some notes about ParallelReadMM given a 2D grid:
  * - It re-indexes the local sparse matrices 
@@ -113,14 +115,37 @@ public:
 	}
 
 	/*
-	 * Note: Input tag should be no greater than 2000
+	 * Note: Input tag should be no greater than 10,000
 	 */
-	void shiftSparseMatrix(int src, int dst, int nnz_to_receive, int tag) {
+	void shiftSparseMatrix(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
 		CSRHandle* send = buffer + active;
 		CSRHandle* recv = buffer + 1 - active;
 
-		MPI_ISend(send->values)
-	}	
+		MPI_Request vRequestSend, cRequestSend, rRequestSend;
+		MPI_Request vRequestReceive, cRequestReceive, rRequestReceive;
+		MPI_Status stat;
+
+		MPI_ISend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
+		MPI_ISend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
+		MPI_ISend(send->rowStart.data(), rows, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+
+		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
+		MPI_Irecv(recv->col_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 1, comm, &cRequestReceive);
+		MPI_Irecv(recv->rowStart.data(), rows, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
+
+		MPI_Wait(&vRequestSend, &stat);
+		MPI_Wait(&cRequestSend, &stat);
+		MPI_Wait(&rRequestSend, &stat);
+		MPI_Wait(&vRequestReceive, &stat);
+		MPI_Wait(&cRequestReceive, &stat);
+		MPI_Wait(&rRequestReceive, &stat);
+
+		active = 1 - active;
+	}
+
+	CSRHandle* getActive() {
+		return buffer + active;
+	}
 };
 
 
