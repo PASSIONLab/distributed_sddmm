@@ -7,6 +7,7 @@
 #include <iterator>
 #include <algorithm>
 #include <mkl_spblas.h>
+#include <mpi.h>
 #include "common.h"
 #include "CombBLAS/CombBLAS.h"
 
@@ -45,43 +46,83 @@ public:
 	}
 };
 
-/*class CSR_Local {
+class CSRHandle {
 public:
-	vector<double> cols;
-	vector<double> rowStart;
-	bool submatrixTransposed;
+	vector<double> values;
+	vector<MKL_INT> col_idx;
+	vector<MKL_INT> rowStart;
+	sparse_matrix_t mkl_handle;
+};
 
-	void convertFromCoordinates(int num_rows, int num_cols, int num_coords, spcoord_t* coords, bool transpose) {
-		MKL_INT* rows_temp = new MKL_INT[num_coords];
-		MKL_INT* cols_temp = new MKL_INT[num_coords];
-		double* values_temp = new double[num_coords];
+class CSRLocal {
+public:
+	MKL_INT rows, cols;
 
-		for(int i = 0; i < num_coords; i++) {
-			rows_temp[i] = coords[i].r;
-			cols_temp[i] = coords[i].c;
-			values_temp[i] = 1.0; 
-		}
+	bool transpose;
+	int max_nnz;
+	int num_coords; 
 
-		sparse_matrix_t coo_temp;
+	int active;
+	TripleArrayHandle buffer[2];
 
-		mkl_sparse_d_create_coo (
-				&coo_temp, 
-				SPARSE_INDEX_BASE_ZERO,	
-				num_rows, 
-				num_cols, 
-				num_coords, 
-				rows, 
-				cols, 
-				values);
+	CSRLocal(MKL_INT rows, MKL_INT cols, MKL_INT max_nnz, spcoord_t* coords, int num_coords, bool transpose) {
+		this->rows = rows;
+		this->cols = cols;
+		this->transpose = transpose;
+		this->num_coords = num_coords;
 
 		if(transpose) {
-			mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
+			for(int i = 0; i < num_coords; i++) {
+				int temp = coords[i].r;
+				coords[i].r = coords[i].c;
+				coords[i].c = temp;
+			}
 		}
-		else {
-			mkl_sparse_convert_csr(A_coo, SPARSE_OPERATION_NON_TRANSPOSE, &A);
+
+		std::sort(coords, coords + num_coords, row_major); 
+		active = 0;
+
+		for(int t = 0; t < 2; t++) {
+			buffer[t].values.resize(max_nnz);
+			buffer[t].col_idx.resize(max_nnz);
+			buffer[t].rowStart.resize(rows + 1);
+
+			int row = 1;
+			buffer[t].rowStart[0] = 0;
+			buffer[t].rowStart[rows + 1] = num_coords;
+			for(int i = 0; i < num_coords; i++) {
+				while(coords[i].r >= row) {
+					buffer[t].rowStart[row] = i;
+					row++;
+				}
+
+				buffer[t].values[i] = coords[i].value;
+				buffer[t].col_idx[i] = coords[i].c;
+			}
+
+			mkl_sparse_d_create_csr(&(buffer[t].mkl_handle), 
+					SPARSE_INDEX_BASE_ZERO,
+					rows,
+					cols,
+					buffer[t].rowStart,
+					buffer[t].rowStart + 1,
+					buffer[t].col_idx,
+					buffer[t].values	
+					);
 		}
 	}
-};*/
+
+	/*
+	 * Note: Input tag should be no greater than 2000
+	 */
+	void shiftSparseMatrix(int src, int dst, int nnz_to_receive, int tag) {
+		CSRHandle* send = buffer + active;
+		CSRHandle* recv = buffer + 1 - active;
+
+		MPI_ISend(send->values)
+	}	
+};
+
 
 class SpmatLocal {
 public:
@@ -231,8 +272,7 @@ public:
 				SPCOORD, dist->world 
 				);
 
-		std::sort((result->coords).begin(), (result->coords).end(), sortbycolumns);
-
+		std::sort((result->coords).begin(), (result->coords).end(), column_major);
 		delete[] sendbuf;
 
 		return result;

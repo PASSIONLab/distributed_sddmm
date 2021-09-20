@@ -46,12 +46,22 @@ void initialize_mpi_datatypes() {
     MPI_Type_commit(&SPCOORD);
 }	
 
-bool sortbycolumns(spcoord_t &a, spcoord_t &b) {
+bool column_major(spcoord_t &a, spcoord_t &b) {
     if(a.c == b.c) {
         return a.r < b.r;
     }
     else {
         return a.c < b.c;
+    }
+}
+
+
+bool row_major(spcoord_t &a, spcoord_t &b) {
+    if(a.r == b.r) {
+        return a.c < b.c;
+    }
+    else {
+        return a.r < b.r;
     }
 }
 
