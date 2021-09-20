@@ -73,6 +73,8 @@ public:
 		this->transpose = transpose;
 		this->num_coords = num_coords;
 
+		// TODO: Possible problem when num_coords == 0?
+
 		if(transpose) {
 			for(int i = 0; i < num_coords; i++) {
 				int temp = coords[i].r;
@@ -171,12 +173,32 @@ public:
 
     int owned_coords_start, owned_coords_end, nnz_buffer_size;
 	bool coordinate_ownership_initialized;
+	bool csr_initialized;
 
     vector<uint64_t> blockStarts;
+	vector<CSRLocal> csr_blocks;
 
 	SpmatLocal() {
 		initialized = false;
 		coordinate_ownership_initialized = false;
+		csr_initialized = false;
+	}
+
+	/*
+	 * We do not support shifting multiple blocks of nonzeros owned by processors, only
+	 * a single block. 
+	 */
+	void initializeCSRBlocks(int blockRows, int blockCols, int max_nnz, bool transpose) {
+		if(blockStarts.size() == 0) {
+			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), coords.size(), transpose);
+		}
+		else {
+			for(int i = 0; i < blockStart.size(); i++) {
+				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
+				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
+			}
+		}
+		csr_initialized = true;
 	}
 
 	void own_all_coordinates() {
@@ -203,7 +225,7 @@ public:
         nnz_buffer_size = share;
 
 		coordinate_ownership_initialized = true;
-	} 
+	}
 
 	void unpack_tuples( SpTuples<int64_t,int> &tups, 
 			vector<spcoord_t> &unpacked) {
@@ -400,14 +422,22 @@ public:
         }
 	}
 
-	void setValues(VectorXd &values) {
+	void setCoordValues(VectorXd &values) {
 		assert(values.size() == coords.size());
+
 		for(int i = 0; i < values.size(); i++) {
 			coords[i].value = values[i];
 		}
 	}	
 
-	VectorXd getValues() {
+	void setCSRValues(VectorXd &values) {
+		int currentBlock = 0;
+		for(int i = 0; i < values.size(); i++) {
+			coords[i].value = values[i];
+		}
+	}	
+
+	VectorXd getCoordValues() {
 		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
 
 		for(int i = 0; i < coords.size(); i++) {
