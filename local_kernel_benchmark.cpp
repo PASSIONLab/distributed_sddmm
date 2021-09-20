@@ -73,7 +73,7 @@ void spmm(double* ptrB, double* ptrC, sparse_matrix_t &A, int num_coords, int R)
 void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time, bool benchmark_sddmm) {
 	SpmatLocal erdos_renyi, er_prime;
 	erdos_renyi.loadTuples(false, logM, nnz_per_row, "");	
-	std::sort(erdos_renyi.coords.begin(), erdos_renyi.coords.end(), sortbycolumns);
+	std::sort(erdos_renyi.coords.begin(), erdos_renyi.coords.end(), column_major);
 
 	int num_coords = erdos_renyi.coords.size();
 

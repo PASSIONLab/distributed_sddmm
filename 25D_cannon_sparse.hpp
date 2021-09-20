@@ -102,10 +102,10 @@ public:
          * bottom face of the cuboid and then broadcasting.  
          */
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
-        Floor2D transposeDist(N, M, sqrtpc, c, grid);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        ST.reset(S_input->redistribute_nonzeros(&transposeDist, true, false));
+        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, true, false));
+
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);
 
@@ -123,6 +123,13 @@ public:
             ST->coords[i].r %= localBrows;
             ST->coords[i].c %= localArows;
         }
+
+        // Commit to CSR format, then locally transpose ST
+        S->monolithBlockColumn();
+        ST->monolithBlockColumn();
+
+	    S->initializeCSRBlocks(localArows, localBrows, S->coords.size(), false);
+	    ST->initializeCSRBlocks(localBrows, localArows, ST->coords.size(), true);
 
         check_initialized(); 
     }
@@ -142,20 +149,14 @@ public:
                             VectorXd *sddmm_result_ptr, 
                             KernelMode mode
                             ) {
-
-        DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
 
         if(mode == k_spmmA || mode == k_sddmm) {
             assert(SValues.size() == S->coords.size());
-            Arole = &localA;
-            Brole = &localB;
             choice = S.get();
         } 
         else if(mode == k_spmmB) {
             assert(SValues.size() == ST->coords.size());
-            Arole = &localB; 
-            Brole = &localA;
             choice = ST.get(); 
         }
 
@@ -173,19 +174,18 @@ public:
                 MPI_DOUBLE,
                 grid->fiber_world
                 ); 
-            choice->setValues(accumulation_buffer);
+            choice->setCSRValues(accumulation_buffer);
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
         }
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
             nnz_processed += kernel->triple_function(
-                mode == k_spmmB ? k_spmmA : mode,
+                mode, 
                 *choice,
-                *Arole,
-                *Brole,
-                0,
-                choice->coords.size());
+                localA,
+                localB,
+                0);
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
@@ -199,7 +199,7 @@ public:
         }
 
         if(mode == k_sddmm) {
-            accumulation_buffer = choice->getValues();
+            accumulation_buffer = choice->getCoordValues();
             auto t = start_clock();
 
             vector<int> temp(c, choice->nnz_buffer_size);

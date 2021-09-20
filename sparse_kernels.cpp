@@ -3,7 +3,7 @@
 #include <immintrin.h>
 #include <omp.h>
 #include <iostream>
-
+#include <mkl_spblas.h>
 #include "sparse_kernels.h"
 #include "SpmatLocal.hpp"
 #include "common.h"
@@ -46,13 +46,13 @@ inline void row_fmadd(double* A, double* B, double coeff, size_t r) {
     }
 }
 
-// TODO: Add assertions making sure all of the sizes match 
+// Just for consistency, we're going to code this with a CSR
+// representation 
 size_t StandardKernel::sddmm_local(
     SpmatLocal &S, 
     DenseMatrix &A,
     DenseMatrix &B,
-    uint64_t start,
-    uint64_t end) {
+    int block) {
 
     size_t processed = 0;
 
@@ -60,9 +60,10 @@ size_t StandardKernel::sddmm_local(
     double* Bptr = B.data();
     int r = A.cols();
 
-    //#pragma omp parallel for reduction(+:processed)
-    for(int i = start; i < end; i++) {
-        //processed++;
+    CSRHandle* local = S.csr_blocks[block].getActive();
+
+    #pragma omp parallel for
+    for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
         double* Arow = Aptr + r * S.coords[i].r;
         double* Brow = Bptr + r * S.coords[i].c; 
         S.coords[i].value += vectorized_dot_product(Arow, Brow, r); 
@@ -75,32 +76,59 @@ size_t StandardKernel::spmm_local(
     DenseMatrix &A,
     DenseMatrix &B,
     int mode,
-    uint64_t start,
-    uint64_t end) {
+    int block) {
 
     size_t processed = 0;
 
+	struct matrix_descr descr;
+	descr.type = SPARSE_MATRIX_TYPE_GENERAL;
+
+    if(mode == Amat && S.csr_blocks[block].transpose) {
+        cout << "Error, local matrix is transposed, can't perform SpmmA" << endl;
+        exit(1);
+    }
+
+    else if(mode == Bmat && ! S.csr_blocks[block].transpose) {
+        cout << "Error, local matrix is not transposed, can't perform SpmmB" << endl;
+        exit(1);
+    }
+
     double* Aptr = A.data();
     double* Bptr = B.data();
-    int r = A.cols();
 
-    //#pragma omp parallel for reduction(+:processed)
-    for(int i = start; i < end; i++) {
-        //processed++;
+    MKL_INT R = A.cols();
 
-        if(mode == 0) {
-            double* Arow = Aptr + r * S.coords[i].r;
-            double* Brow = Bptr + r * S.coords[i].c; 
-            row_fmadd(Arow, Brow, 1.0, r); 
-        }
-        else if(mode == 1) {
-            double* Arow = Aptr + r * S.coords[i].r;
-            double* Brow = Bptr + r * S.coords[i].c; 
-            row_fmadd(Brow, Arow, 1.0, r); 
-        }
-        else {
-            assert(false);
-        }
+    if(mode == Amat) {
+        mkl_sparse_d_mm (
+                SPARSE_OPERATION_NON_TRANSPOSE,	
+                1.0, 
+                S.csr_blocks[block].getActive()->mkl_handle,
+                descr,	
+                SPARSE_LAYOUT_ROW_MAJOR,	
+                Bptr, 
+                R, 
+                R,  // ldb
+                1.0, 
+                Aptr, 
+                R); // ldc	
     }
+    else if(mode == Bmat) {
+        mkl_sparse_d_mm (
+                SPARSE_OPERATION_NON_TRANSPOSE,	
+                1.0, 
+                S.csr_blocks[block].getActive()->mkl_handle,
+                descr,	
+                SPARSE_LAYOUT_ROW_MAJOR,	
+                Aptr, 
+                R, 
+                R,  // ldb
+                1.0, 
+                Bptr, 
+                R); // ldc	
+    }
+    else {
+        assert(false);
+    }
+
     return processed;
 }

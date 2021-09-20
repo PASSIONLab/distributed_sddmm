@@ -20,8 +20,7 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        uint64_t start,
-        uint64_t end) = 0;
+        int block) = 0;
 
     /*
     * S is m x n
@@ -36,16 +35,14 @@ public:
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
-        uint64_t start,
-        uint64_t end) = 0;
+        int block) = 0;
 
     size_t triple_function(
             KernelMode mode,
             SpmatLocal &S,
             DenseMatrix &localA,
             DenseMatrix &localB,
-            uint64_t start,
-            uint64_t end) {
+            int block) {
         
         size_t nnz_processed = 0;
         if(mode == k_sddmm) {
@@ -53,8 +50,7 @@ public:
                 S,
                 localA,
                 localB,
-                start,
-                end);
+                block);
         }
         else if(mode == k_spmmA) { 
             nnz_processed += spmm_local(
@@ -62,8 +58,7 @@ public:
                 localA,
                 localB,
                 Amat,
-                start,
-                end);
+                block);
         }
         else if(mode == k_spmmB) {
             nnz_processed += spmm_local(
@@ -71,8 +66,7 @@ public:
                 localA,
                 localB,
                 Bmat,
-                start,
-                end);
+                block);
         }
         return nnz_processed;
     }
@@ -87,38 +81,14 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        uint64_t start,
-        uint64_t end);
+        int block);
 
     size_t spmm_local(
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
         int mode,
-        uint64_t start,
-        uint64_t end);
+        int block);
 };
-
-/*
- * Allows a single SpMM operation to do both an SpMM and an SDDMM
- * in one shot. 
- */
-/*class FusedStandardKernel : public KernelImplementation {
-public:
-    size_t sddmm_local(
-        SpmatLocal &S,
-        DenseMatrix &A,
-        DenseMatrix &B, 
-        uint64_t start,
-        uint64_t end);
-
-    size_t spmm_local(
-        SpmatLocal &S,
-        DenseMatrix &A,
-        DenseMatrix &B,
-        int mode,
-        uint64_t start,
-        uint64_t end);
-};*/
 
 #endif

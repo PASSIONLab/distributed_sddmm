@@ -60,9 +60,9 @@ class CSRLocal {
 public:
 	MKL_INT rows, cols;
 
-	bool transpose;
-	int max_nnz;
-	int num_coords; 
+	int max_nnz, num_coords;	
+
+	bool transpose;	
 
 	int active;
 	CSRHandle buffer[2];
@@ -93,7 +93,7 @@ public:
 
 			int row = 1;
 			buffer[t].rowStart[0] = 0;
-			buffer[t].rowStart[rows + 1] = num_coords;
+			buffer[t].rowStart[rows] = num_coords;
 			for(int i = 0; i < num_coords; i++) {
 				while(coords[i].r >= row) {
 					buffer[t].rowStart[row] = i;
@@ -119,7 +119,7 @@ public:
 	/*
 	 * Note: Input tag should be no greater than 10,000
 	 */
-	void shiftSparseMatrix(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
+	void shiftCSR(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
 		CSRHandle* send = buffer + active;
 		CSRHandle* recv = buffer + 1 - active;
 
@@ -142,6 +142,7 @@ public:
 		MPI_Wait(&cRequestReceive, &stat);
 		MPI_Wait(&rRequestReceive, &stat);
 
+		num_coords = recv->rowStart[rows];
 		active = 1 - active;
 	}
 
@@ -422,6 +423,12 @@ public:
         }
 	}
 
+	void monolithBlockColumn() {
+		blockStarts.clear();
+		blockStarts.push_back(0);
+		blockStarts.push_back(coords.size());
+	}
+
 	// TODO: Enable setting values to a constant. 
 	void setCoordValues(VectorXd &values) {
 		assert(values.size() == coords.size());
@@ -432,19 +439,14 @@ public:
 	}	
 
 	void setCSRValues(VectorXd &values) {
-		if(blockStarts.size() == 0) {
-			for(int i = 0; i < values.size(); i++) {
-				csr_blocks[0].getActive()->values[i] = values[i];
+		int currentBlock = 0;
+		CSRHandle* active = csr_blocks[currentBlock].getActive();
+		for(int i = 0; i < values.size(); i++) {
+			while(i >= blockStarts[i+1]) {
+				currentBlock++;
+				active = csr_blocks[currentBlock].getActive();
 			}
-		}
-		else {
-			int currentBlock = 0;
-			for(int i = 0; i < values.size(); i++) {
-				while(i >= blockStarts[i+1]) {
-					currentBlock++;
-				}
-				csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]] = values[i];
-			}
+			active->values[i - blockStarts[currentBlock]] = values[i];
 		}
 	}
 
@@ -459,23 +461,16 @@ public:
 	}
 
 	VectorXd getCSRValues() {
-		VectorXd values;
-		if(blockStarts.size() == 0) {
-			values = VectorXd::Constant(csr_blocks[0].num_coords, 0.0);
-			for(int i = 0; i < values.size(); i++) {
-				values[i] = csr_blocks[0].getActive()->values[i]; 
+		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
+		int currentBlock = 0;
+		CSRHandle* active = csr_blocks[currentBlock].getActive();
+		for(int i = 0; i < values.size(); i++) {
+			while(i >= blockStarts[i+1]) {
+				currentBlock++;
+				active = csr_blocks[currentBlock].getActive();
 			}
-		}
-		else {
-			values = VectorXd::Constant(coords.size(), 0.0);
-			int currentBlock = 0;
-			for(int i = 0; i < values.size(); i++) {
-				while(i >= blockStarts[i+1]) {
-					currentBlock++;
-				}
-				values[i] = csr_blocks[currentBlock].getActive()->values[i - blockStarts[currentBlock]]; 
-			}
-		}
+			values[i] = active->values[i - blockStarts[currentBlock]]; 
+		}	
 		return values;
 	}
 
@@ -484,5 +479,37 @@ public:
 			coords[i].value = cval;
 		}
 	}
+
+	/*
+	 * TODO: We REALLY need to optimize this function...
+	 */
+    void shiftCoordinates(MPI_Comm world, int send_dst, int nnz_to_receive) {
+        int nnz_to_send;
+        nnz_to_send = coords.size();
+
+        MPI_Status stat;
+
+        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
+                send_dst, 0,
+                &nnz_to_receive, 1, MPI_INT,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        vector<spcoord_t> coords_recv;
+        coords_recv.resize(nnz_to_receive);
+
+        MPI_Sendrecv(coords.data(), nnz_to_send, SPCOORD,
+                send_dst, 0,
+                coords_recv.data(), nnz_to_receive, SPCOORD,
+                MPI_ANY_SOURCE, 0,
+                world, &stat);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        coords = coords_recv; 
+    }
+
 };
 
