@@ -70,7 +70,19 @@ using namespace std;
     }
 }*/
 
-void verify_operation(Distributed_Sparse* d_ops) {
+class ZeroProcess : public NonzeroDistribution {
+public:
+    ZeroProcess(int M, int N) { 
+        rows_in_block = M; 
+        cols_in_block = N;
+    }
+
+	int blockOwner(int row_block, int col_block) {
+        return 0; 
+    }
+};
+
+void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -87,6 +99,7 @@ void verify_operation(Distributed_Sparse* d_ops) {
     //d_ops->print_nonzero_distribution(A, B);
 
     VectorXd result = d_ops->like_S_values(0.0);
+
     d_ops->initial_synchronize(&A, &B, nullptr);
 
     d_ops->sddmm(A, B, S, result);
@@ -112,8 +125,21 @@ void verify_operation(Distributed_Sparse* d_ops) {
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
     }
 
-    d_ops->grid->gather_and_pretty_print("SpMMA Sample:", (int) A(0));
+    // The most reliable strategy: Every processor does the computation
+    // locally and compare the dense matrix results (ideally, the SDDMM
+    // is folded in and should also be correct). 
 
+    /*ZeroProcess dist(S.M, S.N);
+	SpmatLocal* gathered = redistribute_nonzeros(&dist, false, false) {
+
+    DenseMatrix sp_dense = new DenseMatrix::Constant(S.M, S.N, 0.0);
+
+    for(int i = 0; i < gathered->coords.size(); i++) {
+        sp_dense(coords[i].r, coords[i].c) = 1.0;
+    }
+
+    delete gathered;
+    */
 }
 
 /*void test_sparse_transpose() {
@@ -181,7 +207,7 @@ int main(int argc, char** argv) {
 
     //d_ops->print_nonzero_distribution(); 
 
-    verify_operation(d_ops);
+    verify_operation(S, d_ops);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 

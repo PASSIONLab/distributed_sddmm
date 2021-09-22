@@ -190,15 +190,10 @@ public:
 	 * a single block. 
 	 */
 	void initializeCSRBlocks(int blockRows, int blockCols, int max_nnz, bool transpose) {
-		if(blockStarts.size() == 0) {
-			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), coords.size(), transpose);
-		}
-		else {
-			for(int i = 0; i < blockStarts.size(); i++) {
-				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
-				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
-			}
-		}
+		for(int i = 0; i < blockStarts.size() - 1; i++) {
+			int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
+			csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
+		}		
 		csr_initialized = true;
 	}
 
@@ -442,7 +437,7 @@ public:
 		int currentBlock = 0;
 		CSRHandle* active = csr_blocks[currentBlock].getActive();
 		for(int i = 0; i < values.size(); i++) {
-			while(i >= blockStarts[i+1]) {
+			while(i >= blockStarts[currentBlock+1]) {
 				currentBlock++;
 				active = csr_blocks[currentBlock].getActive();
 			}

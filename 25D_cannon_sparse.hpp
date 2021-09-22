@@ -131,7 +131,7 @@ public:
 	    S->initializeCSRBlocks(localArows, localBrows, S->coords.size(), false);
 	    ST->initializeCSRBlocks(localBrows, localArows, ST->coords.size(), true);
 
-        check_initialized(); 
+        check_initialized();  
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
@@ -173,8 +173,10 @@ public:
                 choice->nnz_buffer_size,
                 MPI_DOUBLE,
                 grid->fiber_world
-                ); 
+                );
+
             choice->setCSRValues(accumulation_buffer);
+
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
         }
 
