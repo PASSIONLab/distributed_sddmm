@@ -62,7 +62,7 @@ size_t StandardKernel::sddmm_local(
 
     CSRHandle* local = S.csr_blocks[block].getActive();
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
         double* Arow = Aptr + r * S.coords[i].r;
         double* Brow = Bptr + r * S.coords[i].c; 

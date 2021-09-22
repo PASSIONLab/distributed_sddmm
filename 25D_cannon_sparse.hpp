@@ -152,11 +152,11 @@ public:
         SpmatLocal* choice;
 
         if(mode == k_spmmA || mode == k_sddmm) {
-            assert(SValues.size() == S->coords.size());
+            assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
         } 
         else if(mode == k_spmmB) {
-            assert(SValues.size() == ST->coords.size());
+            assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get(); 
         }
 
