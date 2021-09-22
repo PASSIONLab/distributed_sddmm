@@ -40,4 +40,11 @@ extern MPI_Datatype SPCOORD;
 
 void initialize_mpi_datatypes();
 
+/*
+ * Creates an array of roughly equal segments. Returns an array
+ * of length num_segments + 1.
+ */
+void divideIntoSegments(int total, int num_segments, vector<int> &segment_starts, vector<int> &segment_sizes);
+
+
 #endif

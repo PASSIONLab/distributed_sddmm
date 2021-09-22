@@ -1,9 +1,9 @@
 #include <iostream>
+#include <algorithm>
 #include <mkl_spblas.h>
 #include <Eigen/Dense>
 #include <mpi.h>
 #include <omp.h>
-
 #include "SpmatLocal.hpp"
 #include "common.h"
 
@@ -49,6 +49,42 @@ void sddmm(double* ptrB, double* ptrC, double* values, MKL_INT* rows, MKL_INT* c
 			value += Brow[k] * Crow[k];	
 		}
 		values[t] = value;
+	}
+}
+
+void sddmm(double* ptrB, 
+		double* ptrC, 
+		double* values, 
+		MKL_INT* rowStart, 
+		MKL_INT* col_idx, 
+		MKL_INT num_coords, 
+		int R, 
+		int num_rows) {
+	#pragma omp parallel
+	{
+		int num_threads = omp_get_num_threads();
+		int current_thread = omp_get_thread_num();
+
+		MKL_INT share = divideAndRoundUp(num_coords, num_threads);
+
+		MKL_INT* lb = std::lower_bound(rowStart, rowStart + num_rows, share + num_rows);
+		MKL_INT row = *lb;
+
+		for(MKL_INT i = share * current_thread; i < std::min(share * (current_thread + 1), num_coords); i++) {
+			while(rowStart[row + 1] <= i) {
+				row++;
+			}
+
+			double* Brow = ptrB + row;
+			double* Crow = ptrC + col_idx[i];
+			double value = 0.0;
+			#pragma ivdep
+			for(int k = 0; k < R; k++) {
+				value += Brow[k] * Crow[k];	
+			}
+			values[i] = value;
+		}
+
 	}
 }
 
@@ -168,8 +204,19 @@ void benchmark(int logM, int nnz_per_row, vector<int> &rValues, double min_time,
 
 					//}
 
-					spmm(ptrB, ptrC, A, num_coords, R);
+					//spmm(ptrB, ptrC, A, num_coords, R);
 
+
+					//sddmm(ptrB, ptrC, values, rows, cols, num_coords, R);
+
+					sddmm(ptrB, 
+							ptrC, 
+							values_export, 
+							rows_start, 
+							rows_end, 
+							num_coords, 
+							R, 
+							rows_export);
 
 					char transa = 'N';
 					double alpha = 1.0;

@@ -165,19 +165,25 @@ public:
 
         if(mode != k_sddmm) {
             auto t = start_clock();
-            MPI_Allgather(
+            MPI_Allgatherv(
                 SValues.data(),
                 SValues.size(),
                 MPI_DOUBLE,
                 accumulation_buffer.data(),
-                choice->nnz_buffer_size,
+                choice->layer_coords_sizes.data(),
+                choice->layer_coords_start.data(),
                 MPI_DOUBLE,
                 grid->fiber_world
                 );
 
-            choice->setCSRValues(accumulation_buffer);
-
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
+        }
+
+        if(mode == k_sddmm) { 
+            choice->setCoordValues(accumulation_buffer);
+        }
+        else {
+            choice->setCSRValues(accumulation_buffer);
         }
 
         for(int i = 0; i < sqrtpc; i++) {
@@ -204,10 +210,9 @@ public:
             accumulation_buffer = choice->getCoordValues();
             auto t = start_clock();
 
-            vector<int> temp(c, choice->nnz_buffer_size);
             MPI_Reduce_scatter(accumulation_buffer.data(),
                 sddmm_result_ptr->data(),
-                temp.data(),
+                choice->layer_coords_sizes.data(), 
                 MPI_DOUBLE,
                 MPI_SUM,
                 grid->fiber_world

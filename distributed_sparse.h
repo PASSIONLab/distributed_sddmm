@@ -158,11 +158,11 @@ public:
     }
 
     VectorXd like_S_values(double value) {
-        return VectorXd::Constant(S->nnz_buffer_size, value); 
+        return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
     }
 
     VectorXd like_ST_values(double value) {
-        return VectorXd::Constant(ST->nnz_buffer_size, value); 
+        return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
     }
 
     DenseMatrix like_A_matrix(double value) {

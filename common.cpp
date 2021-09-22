@@ -65,3 +65,20 @@ bool row_major(spcoord_t &a, spcoord_t &b) {
     }
 }
 
+void divideIntoSegments(int total, int num_segments, 
+        vector<int> &segment_starts, 
+        vector<int> &segment_sizes) {
+
+    int share_size = divideAndRoundUp(total, num_segments);
+    segment_starts.clear();
+
+    for(int i = 0; i < num_segments; i++) {
+        segment_starts.push_back(std::min(share_size * i, total));
+    }
+    segment_starts.push_back(total);
+
+    for(int i = 0; i < num_segments; i++) {
+        segment_sizes.push_back(segment_starts[i+1] - segment_starts[i]);
+    }
+
+}

@@ -172,7 +172,9 @@ public:
     // A contiguous interval of coordinates that this processor is responsible for in its input;
     // need to duplicate this for the transpose. 
 
-    int owned_coords_start, owned_coords_end, nnz_buffer_size;
+    int owned_coords_start, owned_coords_end;
+	vector<int> layer_coords_start, layer_coords_sizes;
+
 	bool coordinate_ownership_initialized;
 	bool csr_initialized;
 
@@ -200,25 +202,19 @@ public:
 	void own_all_coordinates() {
 		owned_coords_start = 0;
 		owned_coords_end = coords.size();
-		nnz_buffer_size = coords.size();
+
+		layer_coords_start.push_back(0);	
+		layer_coords_start.push_back(coords.size());	
+		layer_coords_sizes.push_back(coords.size());
 
 		coordinate_ownership_initialized = true;
 	}
 
 	void shard_across_layers(int num_layers, int current_layer) {
-        vector<int> ccount_in_layer;
-        int share = divideAndRoundUp(coords.size(), num_layers);
-        for(int i = 0; i < coords.size(); i += share) {
-            if(share < coords.size() - i) {
-                ccount_in_layer.push_back(share);
-            }
-            else {
-                ccount_in_layer.push_back(coords.size() - i);
-            }
-        }
-        owned_coords_start = share * current_layer;
-        owned_coords_end = owned_coords_start + ccount_in_layer[current_layer];
-        nnz_buffer_size = share;
+		divideIntoSegments(coords.size(), num_layers, layer_coords_start, layer_coords_sizes);
+
+		owned_coords_start = layer_coords_start[current_layer]; 
+		owned_coords_end = layer_coords_start[current_layer + 1]; 
 
 		coordinate_ownership_initialized = true;
 	}
