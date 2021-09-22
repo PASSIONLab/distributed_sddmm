@@ -476,15 +476,16 @@ public:
 	 */
 
     void shiftCoordinates(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
-
         vector<spcoord_t> coords_recv;
         coords_recv.resize(nnz_to_receive);
 
-        MPI_Sendrecv(coords.data(), nnz_to_send, SPCOORD,
-                send_dst, tag,
+		MPI_Status stat;
+
+        MPI_Sendrecv(coords.data(), coords.size(), SPCOORD,
+                dst, tag,
                 coords_recv.data(), nnz_to_receive, SPCOORD,
-                MPI_ANY_SOURCE, tag,
-                world, &stat);
+                src, tag,
+                comm, &stat);
 
 		// TODO: Should we optimize this copy? 
         coords = coords_recv; 

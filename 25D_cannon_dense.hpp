@@ -92,17 +92,10 @@ public:
                  "Computation Time" 
                 };
 
-        grid.reset(new CommGrid3D(MPI_COMM_WORLD, c, sqrtpc, sqrtpc));
-        rankInRow = grid->GetCommGridLayer()->GetRankInProcRow();
-        rankInCol = grid->GetCommGridLayer()->GetRankInProcCol();
-        rankInFiber = grid->GetRankInFiber();
+        grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
 
-        row_axis   = grid->GetCommGridLayer()->GetRowWorld();
-        col_axis   = grid->GetCommGridLayer()->GetColWorld();
-        fiber_axis = grid->GetFiberWorld();
-
-        A_R_split_world = row_axis;
-        B_R_split_world = row_axis;
+        A_R_split_world = grid->rowfiber_slice; 
+        B_R_split_world = grid->rowfiber_slice; 
 
         localAcols = R / sqrtpc;
         localBcols = R / sqrtpc; 
