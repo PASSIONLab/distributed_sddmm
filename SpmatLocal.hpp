@@ -474,31 +474,19 @@ public:
 	/*
 	 * TODO: We REALLY need to optimize this function...
 	 */
-    void shiftCoordinates(MPI_Comm world, int send_dst, int nnz_to_receive) {
-        int nnz_to_send;
-        nnz_to_send = coords.size();
 
-        MPI_Status stat;
-
-        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
-                send_dst, 0,
-                &nnz_to_receive, 1, MPI_INT,
-                MPI_ANY_SOURCE, 0,
-                world, &stat);
-
-        MPI_Barrier(MPI_COMM_WORLD);
+    void shiftCoordinates(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
 
         vector<spcoord_t> coords_recv;
         coords_recv.resize(nnz_to_receive);
 
         MPI_Sendrecv(coords.data(), nnz_to_send, SPCOORD,
-                send_dst, 0,
+                send_dst, tag,
                 coords_recv.data(), nnz_to_receive, SPCOORD,
-                MPI_ANY_SOURCE, 0,
+                MPI_ANY_SOURCE, tag,
                 world, &stat);
 
-        MPI_Barrier(MPI_COMM_WORLD);
-
+		// TODO: Should we optimize this copy? 
         coords = coords_recv; 
     }
 
