@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <mkl_spblas.h>
 #include <mpi.h>
+#include <string.h>
 #include "common.h"
 #include "CombBLAS/CombBLAS.h"
 
@@ -67,53 +68,85 @@ public:
 	int active;
 	CSRHandle buffer[2];
 
+	/*
+	 * TODO: Need to check this function for memory leaks! 
+	 */
 	CSRLocal(MKL_INT rows, MKL_INT cols, MKL_INT max_nnz, spcoord_t* coords, int num_coords, bool transpose) {
-		this->rows = rows;
-		this->cols = cols;
 		this->transpose = transpose;
 		this->num_coords = num_coords;
 
-		// TODO: Possible problem when num_coords == 0?
+		// This setup is really clunky, but I don't have time to fix it. 
+		vector<MKL_INT> rArray(num_coords, 0.0);
+		vector<MKL_INT> cArray(num_coords, 0.0);
+		vector<double> vArray(num_coords, 0.0);
 
-		if(transpose) {
-			for(int i = 0; i < num_coords; i++) {
-				int temp = coords[i].r;
-				coords[i].r = coords[i].c;
-				coords[i].c = temp;
-			}
+		// TODO: Should really parallelize more of the computation with OpenMP
+		for(int i = 0; i < num_coords; i++) {
+			rArray[i] = coords[i].r;
+			cArray[i] = coords[i].c;
+			vArray[i] = coords[i].value;
 		}
 
-		std::sort(coords, coords + num_coords, row_major); 
+		sparse_operation_t op;
+		if(transpose) {
+			op = SPARSE_OPERATION_TRANSPOSE;
+		}
+		else {
+			op = SPARSE_OPERATION_NON_TRANSPOSE;
+		}
+
+		sparse_matrix_t tempCOO, tempCSR;
+		mkl_sparse_d_create_coo(&tempCOO, SPARSE_INDEX_BASE_ZERO, rows, cols, num_coords, rArray.data(), cArray.data(), vArray.data());
+		mkl_sparse_convert_csr(tempCOO, op, &tempCSR);
+
+		sparse_index_base_t indexing;
+		MKL_INT *rows_start, *rows_end, *col_idx;
+		double *values;
+
+		mkl_sparse_d_export_csr(tempCSR, 
+				&indexing, 
+				&(this->rows), 
+				&(this->cols),
+				&rows_start,
+				&rows_end,
+				&col_idx,
+				&values
+				);
+
+		int rv = 0;
+		for(int i = 0; i < num_coords; i++) {
+			while(rv < this->rows && i >= rows_start[rv + 1]) {
+				rv++;
+			}
+			coords[i].r = rv;
+			coords[i].c = col_idx[i];
+			coords[i].value = values[i];
+		}
+
 		active = 0;
 
 		for(int t = 0; t < 2; t++) {
 			buffer[t].values.resize(max_nnz);
 			buffer[t].col_idx.resize(max_nnz);
-			buffer[t].rowStart.resize(rows + 1);
+			buffer[t].rowStart.resize(this->rows + 1);
 
-			int row = 1;
-			buffer[t].rowStart[0] = 0;
-			buffer[t].rowStart[rows] = num_coords;
-			for(int i = 0; i < num_coords; i++) {
-				while(coords[i].r >= row) {
-					buffer[t].rowStart[row] = i;
-					row++;
-				}
+			memcpy(buffer[t].values.data(), values, sizeof(double) * num_coords);
+			memcpy(buffer[t].col_idx.data(), col_idx, sizeof(MKL_INT) * num_coords);
+			memcpy(buffer[t].rowStart.data(), rows_start, sizeof(MKL_INT) * this->rows);
 
-				buffer[t].values[i] = coords[i].value;
-				buffer[t].col_idx[i] = coords[i].c;
-			}
+			buffer[t].rowStart[this->rows] = num_coords;
 
 			mkl_sparse_d_create_csr(&(buffer[t].mkl_handle), 
 					SPARSE_INDEX_BASE_ZERO,
-					rows,
-					cols,
+					this->rows,
+					this->cols,
 					buffer[t].rowStart.data(),
 					buffer[t].rowStart.data() + 1,
 					buffer[t].col_idx.data(),
 					buffer[t].values.data()	
 					);
 		}
+		mkl_sparse_destroy(tempCSR);
 	}
 
 	/*

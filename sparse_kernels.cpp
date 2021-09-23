@@ -61,7 +61,9 @@ size_t StandardKernel::sddmm_local(
     int r = A.cols();
 
     CSRHandle* local = S.csr_blocks[block].getActive();
-
+    
+    // TODO: Need to re-enable OMP parallelization! 
+    
     //#pragma omp parallel for
     for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
         double* Arow = Aptr + r * S.coords[i].r;
@@ -97,6 +99,27 @@ size_t StandardKernel::spmm_local(
     double* Bptr = B.data();
 
     MKL_INT R = A.cols();
+
+    /*if(mode == Amat) {
+        for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
+            double* Arow = Aptr + R * S.coords[i].r;
+            double* Brow = Bptr + R * S.coords[i].c; 
+            
+            for(int t = 0; t < R; t++) {
+                Arow[t] += Brow[t] * S.coords[i].value;
+            }
+        }
+    }
+    else {
+        for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
+            double* Arow = Aptr + R * S.coords[i].r;
+            double* Brow = Bptr + R * S.coords[i].c;
+
+            for(int t = 0; t < R; t++) {
+                Brow[t] += Arow[t] * S.coords[i].value;
+            }
+        }
+    }*/
 
     if(mode == Amat) {
         mkl_sparse_d_mm (

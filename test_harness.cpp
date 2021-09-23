@@ -104,6 +104,9 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->sddmm(A, B, S, result);
 
+    double A_fingerprint = A.squaredNorm();
+    MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
     double sddmm_fingerprint = result.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
@@ -120,6 +123,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     //d_ops->print_nonzero_distribution(A, B); 
 
     if(proc_rank == 0) {
+        cout << "A Fingerprint: " << A_fingerprint << endl;
         cout << "SDDMM Fingerprint: " << sddmm_fingerprint << endl;
         cout << "SpMMA Fingerprint: " << spmmA_fingerprint << endl;
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
@@ -204,6 +208,8 @@ int main(int argc, char** argv) {
             atoi(argv[3]),
             &local_ops
         );
+
+    //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
     verify_operation(S, d_ops);
 

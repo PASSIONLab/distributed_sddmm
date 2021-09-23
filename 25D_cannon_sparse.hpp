@@ -104,7 +104,7 @@ public:
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, true, false));
+        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
 
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);
@@ -118,10 +118,10 @@ public:
             S->coords[i].r %= localArows;
             S->coords[i].c %= localBrows;
         }
- 
+
         for(int i = 0; i < ST->coords.size(); i++) {
-            ST->coords[i].r %= localBrows;
-            ST->coords[i].c %= localArows;
+            ST->coords[i].r %= localArows;
+            ST->coords[i].c %= localBrows;
         }
 
         // Commit to CSR format, then locally transpose ST
@@ -129,7 +129,7 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows, localBrows, S->coords.size(), false);
-	    ST->initializeCSRBlocks(localBrows, localArows, ST->coords.size(), true);
+	    ST->initializeCSRBlocks(localArows, localBrows, ST->coords.size(), true);
 
         check_initialized();  
     }
@@ -179,12 +179,13 @@ public:
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
         }
 
-        if(mode == k_sddmm) { 
+        // TODO: Need to re-enable this!!
+        //if(mode == k_sddmm) { 
             choice->setCoordValues(accumulation_buffer);
-        }
-        else {
+        //}
+        //else {
             choice->setCSRValues(accumulation_buffer);
-        }
+        //}
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
