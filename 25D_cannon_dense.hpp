@@ -54,8 +54,6 @@ public:
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
 
-        proc_grid_dimensions = {sqrtpc, sqrtpc, c};
-
         if(proc_rank == 0) {
             if(sqrtpc * sqrtpc * c != p) {
                 cout << "Error, for 2.5D algorithm, p / c must be a perfect square!" << endl;
@@ -102,10 +100,10 @@ public:
         int my_nnz = S->coords.size();
         int my_nnz_tpose = ST->coords.size();
         MPI_Allgather(&my_nnz, 1, MPI_INT, nnz_in_row_axis.data(), 
-                1, MPI_INT, row_axis);
+                1, MPI_INT, grid->row_world);
 
         MPI_Allgather(&my_nnz_tpose, 1, MPI_INT, nnz_in_row_axis_tpose.data(), 
-                1, MPI_INT, row_axis);
+                1, MPI_INT, grid->row_world);
 
         // Define submatrix boundaries 
         aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);
@@ -145,12 +143,12 @@ public:
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
         if(localB != nullptr) {
-            shiftDenseMatrix(*localB, col_axis, 
-                    pMod(rankInCol - rankInRow, sqrtpc));
+            shiftDenseMatrix(*localB, grid->col_world, 
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
         }
         if(localA != nullptr) {
-            shiftDenseMatrix(*localA, col_axis, 
-                    pMod(rankInCol - rankInRow, sqrtpc));
+            shiftDenseMatrix(*localA, grid->col_world, 
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
         }
     }
 
@@ -185,7 +183,7 @@ public:
             choice->setValuesConstant(0.0);
         }
         else {
-            choice->setCSRValues(Svalues);
+            choice->setCSRValues(SValues);
         }
 
         auto t = start_clock();
@@ -195,8 +193,10 @@ public:
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
-            nnz_processed += kernel->triple_function(
-                mode,
+
+            // TODO: THIS NEEDS TO BE FIXED
+            kernel->triple_function(
+                mode == k_sddmm ? k_sddmm : k_spmmB,
                 *choice,
                 accumulation_buffer,
                 *Brole,
@@ -214,10 +214,10 @@ public:
                 int dst = pMod(grid->rankInRow + 1, sqrtpc); 
 
                 if(mode = k_sddmm) {
-                    choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[pmod(sparse_shift - i - 1, sqrtpc)], 0);
+                    choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 0);
                 }
                 else {
-                    choice->csr_blocks[0].shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[pmod(sparse_shift - i - 1, sqrtpc)], 0);
+                    choice->csr_blocks[0].shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 0);
                 }
 
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
@@ -225,7 +225,7 @@ public:
         }
 
         if(mode == k_sddmm) {
-            *sddmm_result_ptr = SValues.cwiseProduct(choice->getValues());
+            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
         }
     }
 };

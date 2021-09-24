@@ -3,8 +3,8 @@
 
 //#include "15D_mdense_shift_striped.hpp"
 //#include "2D_cannon.hpp"
-//#include "25D_cannon_dense.hpp"
-#include "25D_cannon_sparse.hpp"
+#include "25D_cannon_dense.hpp"
+//#include "25D_cannon_sparse.hpp"
 
 #include "SpmatLocal.hpp"
 #include "FlexibleGrid.hpp"
@@ -100,7 +100,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     VectorXd result = d_ops->like_S_values(0.0);
 
-    d_ops->initial_synchronize(&A, &B, nullptr);
+    d_ops->initial_synchronize(&A, nullptr, nullptr);
 
     d_ops->sddmm(A, B, S, result);
 
@@ -115,6 +115,8 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+
+    d_ops->initial_synchronize(nullptr, &B, nullptr);
     d_ops->spmmB(A, B, ST);
 
     double spmmB_fingerprint = B.squaredNorm(); 
@@ -201,8 +203,17 @@ int main(int argc, char** argv) {
     */
 
 
-    Sparse25D_Cannon_Sparse* d_ops
+    /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
+            &S,
+            atoi(argv[2]),
+            atoi(argv[3]),
+            &local_ops
+        );
+    */
+
+    Sparse25D_Cannon_Dense* d_ops
+        = new Sparse25D_Cannon_Dense(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
