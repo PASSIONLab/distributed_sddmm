@@ -48,7 +48,7 @@ public:
 class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
     int c; // Replication factor for the 1.5D Algorithm 
-    int fusionAproach;
+    int fusionApproach;
 
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
         : Distributed_Sparse(k, R) 
@@ -81,8 +81,8 @@ public:
 
         this->M = S_input->M;
         this->N = S_input->N;
-        ShardedBlockCyclicColumn standard_dist(M, N, p, c);
-        ShardedBlockCyclicColumn transpose_dist(N, M, p, c);
+        ShardedBlockCyclicColumn standard_dist(M, N, p, c, grid);
+        ShardedBlockCyclicColumn transpose_dist(N, M, p, c, grid);
 
         // Copies the nonzeros of the sparse matrix locally (so we can do whatever
         // we want with them; this does incur a memory overhead)
@@ -119,8 +119,8 @@ public:
             local_tpose = true;
         }
 
-        S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, local_tpose);
-        ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, local_tpose);
+        S->initializeCSRBlocks(localArows * c, localBrows, -1, local_tpose);
+        ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
 
         check_initialized();
     }
@@ -156,8 +156,6 @@ public:
             assert(false);
         }
 
-        int nnz_processed = 0;
-
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
 		DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
@@ -173,22 +171,20 @@ public:
 
             auto t = start_clock();
 
-            // TODO: Here, need a conditional for auto-fusion or not 
-            nnz_processed += kernel->sddmm_local(
+            kernel->triple_function(
+                k_sddmm,
                 *choice,
-                Svalues,
                 broadcast_buffer,
                 *Brole,
-                sddmm_buffer,
                 block_id);
- 
-            nnz_processed += kernel->spmm_local(
+
+            kernel->triple_function(
+                k_spmmA,
                 *choice,
-                sddmm_buffer,
                 accumulation_buffer,
                 *Brole,
-                Amat,
-                block_id); 
+                block_id);
+
             stop_clock_and_add(t, "Computation Time");
 
             t = start_clock();
@@ -208,10 +204,6 @@ public:
                 result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
-
-        int total_processed;
-        MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
-                MPI_SUM, 0, MPI_COMM_WORLD);
     }
 
     /*
@@ -243,20 +235,17 @@ public:
 
             auto t = start_clock();
 
-            nnz_processed += kernel->triple_function(
+            kernel->triple_function(
                 mode,
                 *S,
-                SValues,
                 accumulation_buffer,
                 localB,
-                sddmm_result_ptr,
-                S->blockStarts[block_id],
-                S->blockStarts[block_id + 1]);
+                block_id);
 
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
-            shiftDenseMatrix(localB, layer_axis, pMod(rankInLayer + 1, p / c));
+            shiftDenseMatrix(localB, grid->col_world, pMod(grid->rankInCol + 1, p / c));
             stop_clock_and_add(t, "Cyclic Shift Time");
 
             MPI_Barrier(MPI_COMM_WORLD);
