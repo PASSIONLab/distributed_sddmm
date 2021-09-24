@@ -289,9 +289,7 @@ public:
                 send_dst, 0,
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
-                world, &stat);        
-
-        MPI_Barrier(MPI_COMM_WORLD);
+                world, &stat); 
 
         mat = recvBuffer;
     }

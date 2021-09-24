@@ -28,18 +28,20 @@ public:
     int sqrtpc;
     int c;
 
-    Block_Cyclic25D(int M, int N, int sqrtpc, int c) {
+    shared_ptr<FlexibleGrid> grid;
+
+    Block_Cyclic25D(int M, int N, int sqrtpc, int c, shared_ptr<FlexibleGrid> &grid) {
         world = MPI_COMM_WORLD;
         this->sqrtpc = sqrtpc;
         this->c = c;
+        this->grid = grid;
 
         rows_in_block = divideAndRoundUp(M, sqrtpc * c) * c;
         cols_in_block = divideAndRoundUp(N, sqrtpc * c);
     }
 
 	int blockOwner(int row_block, int col_block) {
-        return (col_block % c) * sqrtpc * sqrtpc + row_block * sqrtpc +
-            col_block / c;
+        return grid->get_global_rank(row_block, col_block / c, col_block % c);
     }
 };
 
@@ -93,7 +95,7 @@ public:
         localArows = divideAndRoundUp(this->M, sqrtpc * c);
         localBrows = divideAndRoundUp(this->N, sqrtpc * c);
 
-        Block_Cyclic25D nonzero_dist(M, N, sqrtpc, c);
+        Block_Cyclic25D nonzero_dist(M, N, sqrtpc, c, grid);
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
         ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, true));
 
@@ -148,12 +150,13 @@ public:
     }
 
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        if(localB != nullptr) {
-            shiftDenseMatrix(*localB, grid->col_world, 
-                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
-        }
         if(localA != nullptr) {
             shiftDenseMatrix(*localA, grid->col_world, 
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
+        }
+
+        if(localB != nullptr) {
+            shiftDenseMatrix(*localB, grid->col_world, 
                     pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
         }
     }
@@ -227,6 +230,8 @@ public:
                 else {
                     choice->csr_blocks[0].shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
+
+                MPI_Barrier(MPI_COMM_WORLD);
 
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
