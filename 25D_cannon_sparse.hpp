@@ -179,13 +179,12 @@ public:
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
         }
 
-        // TODO: Need to re-enable this!!
-        //if(mode == k_sddmm) { 
+        if(mode == k_sddmm) { 
             choice->setCoordValues(accumulation_buffer);
-        //}
-        //else {
+        }
+        else {
             choice->setCSRValues(accumulation_buffer);
-        //}
+        }
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
