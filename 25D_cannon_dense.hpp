@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <utility>
@@ -97,6 +98,8 @@ public:
         ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, true));
 
         nnz_in_row_axis.resize(sqrtpc);
+        nnz_in_row_axis_tpose.resize(sqrtpc);
+
         int my_nnz = S->coords.size();
         int my_nnz_tpose = ST->coords.size();
         MPI_Allgather(&my_nnz, 1, MPI_INT, nnz_in_row_axis.data(), 
@@ -104,6 +107,9 @@ public:
 
         MPI_Allgather(&my_nnz_tpose, 1, MPI_INT, nnz_in_row_axis_tpose.data(), 
                 1, MPI_INT, grid->row_world);
+
+        int max_nnz = *(std::max_element(nnz_in_row_axis.begin(), nnz_in_row_axis.end()));
+        int max_nnz_tpose = *(std::max_element(nnz_in_row_axis_tpose.begin(), nnz_in_row_axis_tpose.end()));
 
         // Define submatrix boundaries 
         aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);
@@ -115,7 +121,7 @@ public:
         int src = pMod(grid->rankInRow + grid->rankInCol, sqrtpc);
         int dst = pMod(grid->rankInRow - grid->rankInCol, sqrtpc);
 
-        sparse_shift = pMod(grid->rankInRow + grid->rankInCol, sqrtpc);
+        sparse_shift = src;
         S->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[src], 0);
         ST->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0);
 
@@ -135,8 +141,8 @@ public:
         S->monolithBlockColumn();
         ST->monolithBlockColumn();
 
-	    S->initializeCSRBlocks(localArows * c, localBrows, S->coords.size(), true);
-	    ST->initializeCSRBlocks(localBrows * c, localArows, ST->coords.size(), true);
+	    S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, true);
+	    ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, true);
 
         check_initialized(); 
     }
@@ -152,12 +158,12 @@ public:
         }
     }
 
-    void algorithm(         DenseMatrix &localA, 
-                            DenseMatrix &localB, 
-                            VectorXd &SValues, 
-                            VectorXd *sddmm_result_ptr, 
-                            KernelMode mode
-                            ) {
+    void algorithm(     DenseMatrix &localA, 
+                        DenseMatrix &localB, 
+                        VectorXd &SValues, 
+                        VectorXd *sddmm_result_ptr, 
+                        KernelMode mode
+                        ) {
 
         SpmatLocal* choice;
 
@@ -188,19 +194,21 @@ public:
 
         auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);
+                        accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);        
         stop_clock_and_add(t, "Dense Fiber Communication Time");
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
 
             // TODO: THIS NEEDS TO BE FIXED
+
             kernel->triple_function(
                 mode == k_sddmm ? k_sddmm : k_spmmB,
                 *choice,
                 accumulation_buffer,
                 *Brole,
-                0); 
+                0);
+
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
@@ -213,11 +221,11 @@ public:
                 int src = pMod(grid->rankInRow - 1, sqrtpc);
                 int dst = pMod(grid->rankInRow + 1, sqrtpc); 
 
-                if(mode = k_sddmm) {
-                    choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 0);
+                if(mode==k_sddmm) {
+                    choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
                 else {
-                    choice->csr_blocks[0].shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 0);
+                    choice->csr_blocks[0].shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
 
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
@@ -226,7 +234,7 @@ public:
 
         if(mode == k_sddmm) {
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
-        }
+        } 
     }
 };
 

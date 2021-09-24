@@ -66,7 +66,7 @@ public:
 	bool transpose;	
 
 	int active;
-	CSRHandle buffer[2];
+	CSRHandle* buffer;
 
 	/*
 	 * TODO: Need to check this function for memory leaks! 
@@ -74,6 +74,8 @@ public:
 	CSRLocal(MKL_INT rows, MKL_INT cols, MKL_INT max_nnz, spcoord_t* coords, int num_coords, bool transpose) {
 		this->transpose = transpose;
 		this->num_coords = num_coords;
+
+		buffer = new CSRHandle[2];
 
 		// This setup is really clunky, but I don't have time to fix it. 
 		vector<MKL_INT> rArray(num_coords, 0.0);
@@ -128,6 +130,7 @@ public:
 		for(int t = 0; t < 2; t++) {
 			buffer[t].values.resize(max_nnz);
 			buffer[t].col_idx.resize(max_nnz);
+
 			buffer[t].rowStart.resize(this->rows + 1);
 
 			memcpy(buffer[t].values.data(), values, sizeof(double) * num_coords);
@@ -149,6 +152,10 @@ public:
 		mkl_sparse_destroy(tempCSR);
 	}
 
+	~CSRLocal() {
+		delete[] buffer;
+	}
+
 	/*
 	 * Note: Input tag should be no greater than 10,000
 	 */
@@ -156,23 +163,39 @@ public:
 		CSRHandle* send = buffer + active;
 		CSRHandle* recv = buffer + 1 - active;
 
+		int proc_rank;
+		MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
+
+
+		MPI_Status stat;
+		int nnz_to_send = num_coords;
+		int recv_verify;
+        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
+                dst, 0,
+                &recv_verify, 1, MPI_INT,
+                src, 0,
+                comm, &stat);
+
+		assert(recv_verify == nnz_to_receive);
+
 		MPI_Request vRequestSend, cRequestSend, rRequestSend;
 		MPI_Request vRequestReceive, cRequestReceive, rRequestReceive;
-		MPI_Status stat;
 
 		MPI_Isend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
 		MPI_Isend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
-		MPI_Isend(send->rowStart.data(), rows, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+		MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
 
 		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
 		MPI_Irecv(recv->col_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 1, comm, &cRequestReceive);
-		MPI_Irecv(recv->rowStart.data(), rows, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
+		MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
 
 		MPI_Wait(&vRequestSend, &stat);
-		MPI_Wait(&cRequestSend, &stat);
-		MPI_Wait(&rRequestSend, &stat);
 		MPI_Wait(&vRequestReceive, &stat);
+
+		MPI_Wait(&cRequestSend, &stat);
 		MPI_Wait(&cRequestReceive, &stat);
+
+		MPI_Wait(&rRequestSend, &stat);
 		MPI_Wait(&rRequestReceive, &stat);
 
 		num_coords = recv->rowStart[rows];
@@ -225,10 +248,17 @@ public:
 	 * a single block. 
 	 */
 	void initializeCSRBlocks(int blockRows, int blockCols, int max_nnz, bool transpose) {
-		for(int i = 0; i < blockStarts.size() - 1; i++) {
-			int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
-			csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
-		}		
+		if(blockStarts.size() > 2) {
+			for(int i = 0; i < blockStarts.size() - 1; i++) {
+				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
+				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
+			}		
+		}
+		else {
+			int num_coords = blockStarts[1] - blockStarts[0]; 	
+			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), num_coords, transpose);	
+		}
+
 		csr_initialized = true;
 	}
 

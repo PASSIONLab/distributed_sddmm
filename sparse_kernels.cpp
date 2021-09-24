@@ -54,20 +54,29 @@ size_t StandardKernel::sddmm_local(
     DenseMatrix &B,
     int block) {
 
+    assert(A.cols() == B.cols());
+
     size_t processed = 0;
 
-    double* Aptr = A.data();
-    double* Bptr = B.data();
+    double *Aptr, *Bptr;
+    if(S.csr_blocks[block].transpose) {
+        Aptr = B.data();
+        Bptr = A.data();
+    }
+    else {
+        Aptr = A.data();
+        Bptr = B.data();
+    }
+    
     int r = A.cols();
-
-    CSRHandle* local = S.csr_blocks[block].getActive();
     
     // TODO: Need to re-enable OMP parallelization! 
-    
+
     //#pragma omp parallel for
     for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
         double* Arow = Aptr + r * S.coords[i].r;
-        double* Brow = Bptr + r * S.coords[i].c; 
+        double* Brow = Bptr + r * S.coords[i].c;
+
         S.coords[i].value += vectorized_dot_product(Arow, Brow, r); 
     }
     return processed;
