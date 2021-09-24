@@ -22,11 +22,13 @@ using namespace Eigen;
 class ShardedBlockCyclicColumn: public NonzeroDistribution {
 public:
     int p, c;
+    shared_ptr<FlexibleGrid> grid;
 
-    ShardedBlockCyclicColumn(int M, int N, int p, int c) { 
+    ShardedBlockCyclicColumn(int M, int N, int p, int c, shared_ptr<FlexibleGrid> &grid) { 
         world = MPI_COMM_WORLD;
         this->p = p;
         this->c = c;
+        this->grid = grid;
         rows_in_block = divideAndRoundUp(M, p) * c; 
         cols_in_block = divideAndRoundUp(N, p); 
     }
@@ -34,7 +36,8 @@ public:
 	int blockOwner(int row_block, int col_block) {
         int rowRank = row_block;
         int layerRank = col_block % c;
-        return p / c * layerRank + rowRank;
+
+        return grid->get_global_rank(layerRank, rowRank, 0);
     }
 };
 
@@ -45,50 +48,12 @@ public:
 class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
     int c; // Replication factor for the 1.5D Algorithm 
+    int fusionAproach;
 
-    shared_ptr<CommGrid> grid;
-
-    int rankInFiber, rankInLayer;
-    MPI_Comm fiber_axis, layer_axis; 
-
-    bool auto_fusion;
-
-    // This is only used for the fused algorithm
-    unique_ptr<SpmatLocal> ST;
-
-    /*
-     * This is a debugging function.
-     */
-    void print_nonzero_distribution() {
-        for(int i = 0; i < p; i++) {
-            if(proc_rank == i) {
-                cout << "Process " << i << ":" << endl;
-                cout << "Rank in Fiber: " << rankInFiber << endl;
-                cout << "Rank in Layer: " << rankInLayer << endl;
-
-                for(int j = 0; j < S->coords.size(); j++) {
-                    cout << S->coords[j].string_rep() << endl;
-                }
-                cout << "==================" << endl;
-            }
-            MPI_Barrier(MPI_COMM_WORLD);
-        }
-    }
-
-    void dummyInitialize(DenseMatrix &loc) {
-        int size = loc.size();
-        int offset = (rankInLayer * c + rankInFiber) * size;
-        for(int i = 0; i < loc.rows(); i++) {
-            for(int j = 0; j < loc.cols(); j++) {
-                loc(i, j) = offset + i * loc.cols() + j;
-            }
-        }
-    }
-
-    Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, bool fused, KernelImplementation* k) 
+    Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
         : Distributed_Sparse(k, R) 
     {
-        this->fused = fused;
+        this->fusionApproach = fusionApproach;
         this->c = c;
 
         if(p % c != 0) {
@@ -99,8 +64,7 @@ public:
         }
 
         algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift";
-        proc_grid_names = {"# Block Rows per Layer", "Layers"};
-        proc_grid_dimensions = {p/c, c};
+        proc_grid_names = {"Layers", "# of Block Rows per Layer"};
 
         perf_counter_keys = 
                 {"Dense Broadcast Time",
@@ -108,15 +72,7 @@ public:
                 "Computation Time" 
                 };
 
-        /*
-         * WARNING: DO NOT TRANSPOSE THE GRID WITHOUT ALSO CHANGING THE
-         * DATA DISTRIBUTION INDEXING!!! 
-         */
-        grid.reset(new CommGrid(MPI_COMM_WORLD, c, p / c));
-        rankInFiber = grid->GetRankInProcCol();
-        rankInLayer = grid->GetRankInProcRow();
-        layer_axis = grid->GetRowWorld();
-        fiber_axis = grid->GetColWorld();
+        grid.reset(new FlexibleGrid(c, p / c, 1, 3));
 
         localAcols = R;
         localBcols = R; 
@@ -131,26 +87,40 @@ public:
         // Copies the nonzeros of the sparse matrix locally (so we can do whatever
         // we want with them; this does incur a memory overhead)
         S.reset(S_input->redistribute_nonzeros(&standard_dist, false, false));
-
-        if(fused) {
-            ST.reset(S->redistribute_nonzeros(&transpose_dist, true, false));
-        }
+        ST.reset(S->redistribute_nonzeros(&transpose_dist, true, false));
 
         localArows = divideAndRoundUp(this->M, p);
         localBrows = divideAndRoundUp(this->N, p);
 
-        // Postprocessing nonzeros for easy feeding to local kernels 
+        // Define submatrix boundaries 
+        aSubmatrices.emplace_back(localArows * (grid->i + c * grid->j), 0, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * (grid->i + c * grid->j), 0, localBrows, localBcols);
+
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
         }
         S->divideIntoBlockCols(localBrows, p, true); 
+ 
+        for(int i = 0; i < ST->coords.size(); i++) {
+            ST->coords[i].r %= localBrows * c;
+        } 
+        ST->divideIntoBlockCols(localArows, p, true); 
 
-        if(fused) {
-            for(int i = 0; i < ST->coords.size(); i++) {
-                ST->coords[i].r %= localBrows * c;
-            } 
-            ST->divideIntoBlockCols(localArows, p, true);
+        S->own_all_coordinates();
+        ST->own_all_coordinates();
+
+        assert(fusionApproach == 1 || fusionApproach == 2);
+
+        bool local_tpose;
+        if(fusionApproach == 1) {
+            local_tpose = false;
         }
+        else {
+            local_tpose = true;
+        }
+
+        S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, local_tpose);
+        ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, local_tpose);
 
         check_initialized();
     }
@@ -159,20 +129,9 @@ public:
         // Empty method, no initialization needed 
     }
 
-    VectorXd like_ST_values(double value) {
-        return VectorXd::Constant(ST->coords.size(), value); 
-    }
-
     /*
-     * This function does an auto-fusion of the SDDMM / SpMM kernels using
-     * a temporary buffer (needs to be supplied, since this function does)
-     * auto-fusion.
+     * This is fusion strategy 1.
      *
-     * One matrix plays the role of the ``A matrix", which is broadcast to
-     * the accumulation buffer,
-     * and the other plays the role of the B matrix, which is cyclic shifted. 
-     * The result is reduce-scattered in the same data distribution as
-     * the A-matrix role. 
      */
     void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
         assert(this->fused); 
@@ -206,11 +165,11 @@ public:
 
         auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, fiber_axis);
+                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
 
         for(int i = 0; i < p / c; i++) {
-            int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
+            int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
             auto t = start_clock();
 
@@ -221,21 +180,19 @@ public:
                 broadcast_buffer,
                 *Brole,
                 sddmm_buffer,
-                choice->blockStarts[block_id],
-                choice->blockStarts[block_id + 1]); 
-             
+                block_id);
+ 
             nnz_processed += kernel->spmm_local(
                 *choice,
                 sddmm_buffer,
                 accumulation_buffer,
                 *Brole,
                 Amat,
-                choice->blockStarts[block_id],
-                choice->blockStarts[block_id + 1]); 
+                block_id); 
             stop_clock_and_add(t, "Computation Time");
 
             t = start_clock();
-            shiftDenseMatrix(*Brole, layer_axis, pMod(rankInLayer + 1, p / c));
+            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c));
             stop_clock_and_add(t, "Cyclic Shift Time");
 
             MPI_Barrier(MPI_COMM_WORLD);
@@ -249,7 +206,7 @@ public:
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
-                    MPI_DOUBLE, MPI_SUM, fiber_axis);
+                    MPI_DOUBLE, MPI_SUM, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
 
         int total_processed;
@@ -267,8 +224,6 @@ public:
                             VectorXd *sddmm_result_ptr, 
                             KernelMode mode
                             ) { 
-        int nnz_processed = 0;
-
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localA.rows() * c, R, 0.0); 
@@ -276,12 +231,12 @@ public:
         if(mode == k_spmmB || mode == k_sddmm) {
             auto t = start_clock();
             MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, fiber_axis);
+                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->row_world);
             stop_clock_and_add(t, "Dense Broadcast Time");
         }
 
         for(int i = 0; i < p / c; i++) {
-            int block_id = pMod((rankInLayer - i) * c + rankInFiber, p);
+            int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
             assert(S->blockStarts[block_id] <= S->coords.size());
             assert(S->blockStarts[block_id + 1] <= S->coords.size());
@@ -317,16 +272,8 @@ public:
 
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     localA.data(), recvCounts.data(),
-                       MPI_DOUBLE, MPI_SUM, fiber_axis);
+                       MPI_DOUBLE, MPI_SUM, grid->row_world);
             stop_clock_and_add(t, "Dense Broadcast Time");
-        }
-
-        int total_processed;
-        MPI_Reduce(&nnz_processed, &total_processed, 1, MPI_INT,
-                MPI_SUM, 0, MPI_COMM_WORLD);
-
-        if(proc_rank == 0 && verbose) {
-            cout << "Total Nonzeros Processed: " << total_processed << endl;
         }
     }
 };

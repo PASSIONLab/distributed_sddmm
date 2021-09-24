@@ -1,9 +1,8 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
 
-//#include "15D_mdense_shift_striped.hpp"
-//#include "2D_cannon.hpp"
-#include "25D_cannon_dense.hpp"
+#include "15D_mdense_shift_striped.hpp"
+//#include "25D_cannon_dense.hpp"
 //#include "25D_cannon_sparse.hpp"
 
 #include "SpmatLocal.hpp"
@@ -101,7 +100,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->initial_synchronize(&A, nullptr, nullptr);
-    d_ops->sddmm(A, B, S, result);
+    d_ops->sddmm(A, B, ST, result);
 
     double A_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -109,13 +108,13 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     double sddmm_fingerprint = result.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    d_ops->spmmA(A, B, S);
+    d_ops->spmmA(A, B, ST);
 
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     d_ops->initial_synchronize(nullptr, &B, nullptr);
-    d_ops->spmmB(A, B, ST);
+    d_ops->spmmB(A, B, S);
 
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -208,8 +207,7 @@ int main(int argc, char** argv) {
             atoi(argv[3]),
             &local_ops
         );
-    */
-
+   
     Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,
@@ -217,6 +215,14 @@ int main(int argc, char** argv) {
             atoi(argv[3]),
             &local_ops
         );
+    */
+
+    Sparse15D_MDense_Shift_Striped* d_ops =
+            new Sparse15D_MDense_Shift_Striped(&S, 
+                atoi(argv[2]), 
+                atoi(argv[3]), 
+                1, 
+                &local_ops); 
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
