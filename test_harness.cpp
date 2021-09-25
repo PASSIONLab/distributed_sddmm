@@ -89,8 +89,8 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     DenseMatrix A = d_ops->like_A_matrix(0.0);    
     DenseMatrix B = d_ops->like_B_matrix(0.0);
 
-    VectorXd S = d_ops->like_S_values(1.0);
-    VectorXd ST = d_ops->like_ST_values(1.0);
+    VectorXd S = d_ops->S->getCoordValues();
+    VectorXd ST = d_ops->ST->getCoordValues();
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
@@ -112,6 +112,9 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    d_ops->dummyInitialize(A, Amat);
+    d_ops->dummyInitialize(B, Bmat);
 
     d_ops->initial_synchronize(nullptr, &B, nullptr);
     d_ops->spmmB(A, B, S);
