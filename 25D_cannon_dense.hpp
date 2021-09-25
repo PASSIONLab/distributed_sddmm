@@ -176,7 +176,7 @@ public:
 		DenseMatrix accumulation_buffer;
         vector<int> nnz_in_axis; 
 
-        if(mode == k_spmmA || mode == k_sddmm) {
+        if(mode == k_spmmA) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get();
             Arole = &localB;
@@ -184,7 +184,7 @@ public:
 		    accumulation_buffer = DenseMatrix::Constant(localBrows * c, localBcols, 0.0); 
             nnz_in_axis = nnz_in_row_axis_tpose;
         } 
-        else if(mode == k_spmmB) {
+        else if(mode == k_spmmB || mode == k_sddmm) {
             assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
             Arole = &localA;
@@ -244,7 +244,7 @@ public:
 
         if(mode == k_sddmm) {
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
-        } 
+        }
     }
 };
 
