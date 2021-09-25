@@ -248,7 +248,7 @@ public:
 	 * a single block. 
 	 */
 	void initializeCSRBlocks(int blockRows, int blockCols, int max_nnz, bool transpose) {
-		if(blockStarts.size() > 2) {
+		if(max_nnz == -1) {
 			for(int i = 0; i < blockStarts.size() - 1; i++) {
 				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
 				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	

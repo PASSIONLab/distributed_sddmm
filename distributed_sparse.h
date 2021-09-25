@@ -281,7 +281,7 @@ public:
      * Convenience functions. 
      */
 
-    void shiftDenseMatrix(DenseMatrix &mat, MPI_Comm world, int send_dst) {
+    void shiftDenseMatrix(DenseMatrix &mat, MPI_Comm world, int send_dst, int tag) {
         MPI_Status stat;
         DenseMatrix recvBuffer(mat.rows(), mat.cols());
 
@@ -290,6 +290,8 @@ public:
                 recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
                 MPI_ANY_SOURCE, 0,
                 world, &stat); 
+
+        MPI_Barrier(MPI_COMM_WORLD);
 
         mat = recvBuffer;
     }

@@ -1,9 +1,9 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
 
-#include "15D_mdense_shift_striped.hpp"
-//#include "25D_cannon_dense.hpp"
-//#include "25D_cannon_sparse.hpp"
+//#include "15D_mdense_shift_striped.hpp"
+#include "25D_cannon_dense.hpp"
+#include "25D_cannon_sparse.hpp"
 
 #include "SpmatLocal.hpp"
 #include "FlexibleGrid.hpp"
@@ -97,7 +97,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     //d_ops->print_nonzero_distribution(A, B);
 
-    VectorXd result = d_ops->like_S_values(0.0);
+    VectorXd result = d_ops->like_ST_values(0.0);
 
     d_ops->initial_synchronize(&A, nullptr, nullptr);
     d_ops->sddmm(A, B, ST, result);
@@ -184,21 +184,25 @@ int main(int argc, char** argv) {
     string fname(argv[1]);
 
     StandardKernel local_ops;
+
     SpmatLocal S;
+    //S.loadTuples(false, 18, 30, fname);
     S.loadTuples(true, -1, -1, fname);
  
-    /*Sparse15D_MDense_Shift_Striped* d_ops 
-        = new Sparse15D_MDense_Shift_Striped(
-                atoi(argv[1]), 
+    Sparse25D_Cannon_Dense* d_ops
+        = new Sparse25D_Cannon_Dense(
+            &S,
+            atoi(argv[2]),
+            atoi(argv[3]),
+            &local_ops
+        );
+
+    /*Sparse15D_MDense_Shift_Striped* d_ops =
+            new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                atoi(argv[4]), 
-                &local_ops, 
-                true,  // Whether we should support fusing SDDMM / SpMM
-                true   // Whether we should auto-fuse the provided operation, or rely on
-                );     // the backend local operation to do it for us  
-    */
-
+                2, 
+                &local_ops);*/
 
     /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
@@ -207,22 +211,7 @@ int main(int argc, char** argv) {
             atoi(argv[3]),
             &local_ops
         );
-   
-    Sparse25D_Cannon_Dense* d_ops
-        = new Sparse25D_Cannon_Dense(
-            &S,
-            atoi(argv[2]),
-            atoi(argv[3]),
-            &local_ops
-        );
     */
-
-    Sparse15D_MDense_Shift_Striped* d_ops =
-            new Sparse15D_MDense_Shift_Striped(&S, 
-                atoi(argv[2]), 
-                atoi(argv[3]), 
-                1, 
-                &local_ops); 
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
@@ -235,14 +224,38 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
 
-    /*
-    Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
-    d_ops->reset_performance_timers();
-    x->run_cg(5);
-    d_ops->print_performance_statistics(); 
-    */
+    /*for(int R = 32; R < 256; R += 32) {
+        Sparse25D_Cannon_Sparse* d_ops
+            = new Sparse25D_Cannon_Sparse(
+                &S,
+                R,
+                atoi(argv[3]),
+                &local_ops
+            );
 
-    //delete d_ops;
+        /*Sparse25D_Cannon_Dense* d_ops
+            = new Sparse25D_Cannon_Dense(
+                &S,
+                R, 
+                atoi(argv[3]),
+                &local_ops
+            );*/
+
+    /*
+        if(d_ops->proc_rank == 0) {
+            cout << "Created d_ops..." << endl;
+        }
+
+        Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+        d_ops->reset_performance_timers();
+        x->run_cg(5);
+        d_ops->print_performance_statistics(); 
+
+        delete x;
+        delete d_ops;
+
+    }
+    */
 
     MPI_Finalize();
 }

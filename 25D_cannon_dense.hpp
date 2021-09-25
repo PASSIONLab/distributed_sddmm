@@ -154,12 +154,12 @@ public:
     void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
         if(localA != nullptr) {
             shiftDenseMatrix(*localA, grid->col_world, 
-                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 1);
         }
 
         if(localB != nullptr) {
             shiftDenseMatrix(*localB, grid->col_world, 
-                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc));
+                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
         }
     }
 
@@ -222,7 +222,7 @@ public:
             if(sqrtpc > 1) {
                 t = start_clock();
                 shiftDenseMatrix(*Brole, grid->col_world, 
-                        pMod(grid->rankInCol + 1, sqrtpc));
+                        pMod(grid->rankInCol + 1, sqrtpc), 1);
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
 
                 t = start_clock();

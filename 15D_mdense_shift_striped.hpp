@@ -134,7 +134,6 @@ public:
      *
      */
     void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
-        assert(this->fused); 
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
 
@@ -215,16 +214,38 @@ public:
                             VectorXd &SValues, 
                             VectorXd *sddmm_result_ptr, 
                             KernelMode mode
-                            ) { 
+                            ) {
+
+        DenseMatrix *Arole, *Brole;
+        SpmatLocal* choice;
+        if(mode == k_spmmA || mode == k_sddmm) {
+            Arole = &localB;
+            Brole = &localA;
+            choice = ST.get();
+        } 
+        else if(mode == k_spmmB) {
+            Arole = &localA;
+            Brole = &localB;
+            choice = S.get(); 
+        }
+        else {
+            assert(false);
+        }
+
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(localA.rows() * c, R, 0.0); 
+		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
 
-        if(mode == k_spmmB || mode == k_sddmm) {
-            auto t = start_clock();
-            MPI_Allgather(localA.data(), localA.size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), localA.size(), MPI_DOUBLE, grid->row_world);
-            stop_clock_and_add(t, "Dense Broadcast Time");
+        auto t = start_clock();
+        MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                        accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
+
+
+        if(mode == k_sddmm) { 
+            choice->setCoordValues(SValues);
+        }
+        else {
+            choice->setCSRValues(SValues);
         }
 
         for(int i = 0; i < p / c; i++) {
@@ -236,8 +257,8 @@ public:
             auto t = start_clock();
 
             kernel->triple_function(
-                mode,
-                *S,
+                mode == k_spmmA ? k_spmmB : mode,
+                *choice,
                 accumulation_buffer,
                 localB,
                 block_id);
@@ -264,5 +285,8 @@ public:
                        MPI_DOUBLE, MPI_SUM, grid->row_world);
             stop_clock_and_add(t, "Dense Broadcast Time");
         }
+        if(mode == k_sddmm) {
+            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
+        } 
     }
 };
