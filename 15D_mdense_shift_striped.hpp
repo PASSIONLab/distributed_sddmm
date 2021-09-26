@@ -120,7 +120,7 @@ public:
         }
 
         S->initializeCSRBlocks(localArows * c, localBrows, -1, local_tpose);
-        //ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
+        ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
 
         check_initialized();
     }
@@ -240,6 +240,7 @@ public:
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                         accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
 
+        cout << "Algorithm got here!" << endl;
 
         if(mode == k_sddmm) {
             choice->setValuesConstant(0.0);
