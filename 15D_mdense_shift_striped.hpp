@@ -248,8 +248,7 @@ public:
         else {
             choice->setCSRValues(SValues);
         }
-
-        /*
+ 
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
@@ -271,8 +270,7 @@ public:
             shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
             stop_clock_and_add(t, "Cyclic Shift Time");
             MPI_Barrier(MPI_COMM_WORLD);
-        }
-        */
+        }        
 
         /*if(mode == k_spmmA) {
             auto t = start_clock(); 
