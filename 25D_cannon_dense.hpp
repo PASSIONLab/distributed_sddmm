@@ -146,7 +146,7 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, true);
-	    ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, true);
+	    //ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, true);
 
         check_initialized(); 
     }

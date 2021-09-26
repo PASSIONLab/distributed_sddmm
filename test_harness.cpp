@@ -95,12 +95,14 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
 
-    //d_ops->print_nonzero_distribution(A, B);
+    d_ops->print_nonzero_distribution(A, B);
 
     VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->initial_synchronize(&A, nullptr, nullptr);
     d_ops->sddmm(A, B, S, result);
+
+    cout << result << endl;
 
     double A_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);

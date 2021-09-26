@@ -24,6 +24,7 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
 
     double sum = 0;
     for(int j = 0; j < r; j++) {
+        cout << A[j] << " " << B[j] << endl;
         sum += A[j] * B[j];
     }
     return sum;
@@ -102,6 +103,10 @@ size_t StandardKernel::spmm_local(
     else if(mode == Bmat && ! S.csr_blocks[block].transpose) {
         cout << "Error, local matrix is not transposed, can't perform SpmmB" << endl;
         exit(1);
+    }
+
+    if(S.csr_blocks[block].num_coords == 0) {
+        return processed;
     }
 
     double* Aptr = A.data();

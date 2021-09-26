@@ -74,6 +74,8 @@ public:
 	CSRLocal(MKL_INT rows, MKL_INT cols, MKL_INT max_nnz, spcoord_t* coords, int num_coords, bool transpose) {
 		this->transpose = transpose;
 		this->num_coords = num_coords;
+		this->rows = rows;
+		this->cols = cols;
 
 		buffer = new CSRHandle[2];
 
@@ -81,6 +83,14 @@ public:
 		vector<MKL_INT> rArray(num_coords, 0.0);
 		vector<MKL_INT> cArray(num_coords, 0.0);
 		vector<double> vArray(num_coords, 0.0);
+
+		// Put a dummy value in if the number of coordinates is 0, so that everything doesn't
+		// blow up
+		if(num_coords == 0) {
+			rArray.push_back(0);
+			cArray.push_back(0);
+			vArray.push_back(0.0);
+		}
 
 		// TODO: Should really parallelize more of the computation with OpenMP
 		for(int i = 0; i < num_coords; i++) {
@@ -98,7 +108,8 @@ public:
 		}
 
 		sparse_matrix_t tempCOO, tempCSR;
-		mkl_sparse_d_create_coo(&tempCOO, SPARSE_INDEX_BASE_ZERO, rows, cols, num_coords, rArray.data(), cArray.data(), vArray.data());
+
+		mkl_sparse_d_create_coo(&tempCOO, SPARSE_INDEX_BASE_ZERO, rows, cols, max(num_coords, 1), rArray.data(), cArray.data(), vArray.data());
 		mkl_sparse_convert_csr(tempCOO, op, &tempCSR);
 
 		sparse_index_base_t indexing;
@@ -127,17 +138,18 @@ public:
 
 		active = 0;
 
-		for(int t = 0; t < 2; t++) {
-			buffer[t].values.resize(max_nnz);
-			buffer[t].col_idx.resize(max_nnz);
+		assert(num_coords <= max_nnz);
 
+		for(int t = 0; t < 2; t++) {
+			buffer[t].values.resize(max_nnz == 0 ? 1 : max_nnz);
+			buffer[t].col_idx.resize(max_nnz == 0 ? 1 : max_nnz);
 			buffer[t].rowStart.resize(this->rows + 1);
 
-			memcpy(buffer[t].values.data(), values, sizeof(double) * num_coords);
-			memcpy(buffer[t].col_idx.data(), col_idx, sizeof(MKL_INT) * num_coords);
+			memcpy(buffer[t].values.data(), values, sizeof(double) * max(num_coords, 1));
+			memcpy(buffer[t].col_idx.data(), col_idx, sizeof(MKL_INT) * max(num_coords, 1));
 			memcpy(buffer[t].rowStart.data(), rows_start, sizeof(MKL_INT) * this->rows);
 
-			buffer[t].rowStart[this->rows] = num_coords;
+			buffer[t].rowStart[this->rows] = max(num_coords, 1);
 
 			mkl_sparse_d_create_csr(&(buffer[t].mkl_handle), 
 					SPARSE_INDEX_BASE_ZERO,
@@ -148,6 +160,11 @@ public:
 					buffer[t].col_idx.data(),
 					buffer[t].values.data()	
 					);
+
+			// This madness is just trying to get around the inspector routine
+			if(num_coords == 0) {
+				buffer[t].rowStart[this->rows] = 0; 
+			}
 		}
 		mkl_sparse_destroy(tempCSR);
 	}
@@ -255,8 +272,8 @@ public:
 			}		
 		}
 		else {
-			int num_coords = blockStarts[1] - blockStarts[0]; 	
-			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), num_coords, transpose);	
+			int num_coords = blockStarts[1] - blockStarts[0];
+			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), num_coords, transpose);
 		}
 
 		csr_initialized = true;
