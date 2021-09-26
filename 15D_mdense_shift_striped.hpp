@@ -93,8 +93,10 @@ public:
         localBrows = divideAndRoundUp(this->N, p);
 
         // Define submatrix boundaries 
-        aSubmatrices.emplace_back(localArows * (grid->i + c * grid->j), 0, localArows, localAcols);
-        bSubmatrices.emplace_back(localBrows * (grid->i + c * grid->j), 0, localBrows, localBcols);
+
+        // TODO: I'm pretty sure that this is broken...
+        aSubmatrices.emplace_back(localArows * (c * grid->i + grid->j), 0, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * (c * grid->i + grid->j), 0, localBrows, localBcols);
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
@@ -169,7 +171,6 @@ public:
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
             auto t = start_clock();
-
             kernel->triple_function(
                 k_sddmm,
                 *choice,
