@@ -568,8 +568,13 @@ public:
                 comm, &stat);
 
 		// TODO: Should we optimize this copy? 
-        coords = coords_recv; 
-    }
+        coords = coords_recv;
 
+		if(csr_blocks.size() > 0) {
+			csr_blocks[0].num_coords = nnz_to_receive;
+			blockStarts[1] = nnz_to_receive;
+		}
+
+    }
 };
 

@@ -24,7 +24,6 @@ inline double vectorized_dot_product(double* A, double* B, size_t r) {
 
     double sum = 0;
     for(int j = 0; j < r; j++) {
-        cout << A[j] << " " << B[j] << endl;
         sum += A[j] * B[j];
     }
     return sum;
@@ -70,8 +69,6 @@ size_t StandardKernel::sddmm_local(
     }
     
     int r = A.cols();
-    
-    // TODO: Need to re-enable OMP parallelization! 
 
     #pragma omp parallel for
     for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {

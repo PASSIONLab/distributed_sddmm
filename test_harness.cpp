@@ -91,18 +91,14 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     VectorXd S = d_ops->S->getCoordValues();
     VectorXd ST = d_ops->ST->getCoordValues();
+    VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
+    d_ops->initial_synchronize(nullptr, &B, nullptr);
 
     //d_ops->print_nonzero_distribution(A, B);
-
-    VectorXd result = d_ops->like_S_values(0.0);
-
-    d_ops->initial_synchronize(&A, nullptr, nullptr);
     d_ops->sddmm(A, B, S, result);
-
-    cout << result << endl;
 
     double A_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -110,7 +106,10 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     double sddmm_fingerprint = result.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    d_ops->spmmA(A, B, ST);
+    d_ops->dummyInitialize(A, Amat);
+    d_ops->dummyInitialize(B, Bmat);
+    d_ops->initial_synchronize(&A, nullptr, nullptr);
+    //d_ops->spmmA(A, B, ST);
 
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -119,7 +118,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(B, Bmat);
 
     d_ops->initial_synchronize(nullptr, &B, nullptr);
-    d_ops->spmmB(A, B, S);
+    //d_ops->spmmB(A, B, S);
 
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
