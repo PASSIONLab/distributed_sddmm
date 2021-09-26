@@ -59,7 +59,7 @@ size_t StandardKernel::sddmm_local(
     size_t processed = 0;
 
     double *Aptr, *Bptr;
-    if(S.csr_blocks[block].transpose) {
+    if(S.csr_blocks[block]->transpose) {
         Aptr = B.data();
         Bptr = A.data();
     }
@@ -92,17 +92,17 @@ size_t StandardKernel::spmm_local(
 	struct matrix_descr descr;
 	descr.type = SPARSE_MATRIX_TYPE_GENERAL;
 
-    if(mode == Amat && S.csr_blocks[block].transpose) {
+    if(mode == Amat && S.csr_blocks[block]->transpose) {
         cout << "Error, local matrix is transposed, can't perform SpmmA" << endl;
         exit(1);
     }
 
-    else if(mode == Bmat && ! S.csr_blocks[block].transpose) {
+    else if(mode == Bmat && ! S.csr_blocks[block]->transpose) {
         cout << "Error, local matrix is not transposed, can't perform SpmmB" << endl;
         exit(1);
     }
 
-    if(S.csr_blocks[block].num_coords == 0) {
+    if(S.csr_blocks[block]->num_coords == 0) {
         return processed;
     }
 
@@ -136,7 +136,7 @@ size_t StandardKernel::spmm_local(
         mkl_sparse_d_mm (
                 SPARSE_OPERATION_NON_TRANSPOSE,	
                 1.0, 
-                S.csr_blocks[block].getActive()->mkl_handle,
+                S.csr_blocks[block]->getActive()->mkl_handle,
                 descr,	
                 SPARSE_LAYOUT_ROW_MAJOR,	
                 Bptr, 
@@ -150,7 +150,7 @@ size_t StandardKernel::spmm_local(
         mkl_sparse_d_mm (
                 SPARSE_OPERATION_NON_TRANSPOSE,	
                 1.0, 
-                S.csr_blocks[block].getActive()->mkl_handle,
+                S.csr_blocks[block]->getActive()->mkl_handle,
                 descr,	
                 SPARSE_LAYOUT_ROW_MAJOR,	
                 Aptr, 

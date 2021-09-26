@@ -233,7 +233,7 @@ public:
                     choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
                 else {
-                    choice->csr_blocks[0].shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
+                    choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
 
                 MPI_Barrier(MPI_COMM_WORLD);

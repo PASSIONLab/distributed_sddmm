@@ -77,7 +77,8 @@ public:
 		this->rows = rows;
 		this->cols = cols;
 
-		buffer = new CSRHandle[2];
+
+		this->buffer = new CSRHandle[2];
 
 		// This setup is really clunky, but I don't have time to fix it. 
 		vector<MKL_INT> rArray(num_coords, 0.0);
@@ -91,6 +92,7 @@ public:
 			cArray.push_back(0);
 			vArray.push_back(0.0);
 		}
+
 
 		// TODO: Should really parallelize more of the computation with OpenMP
 		for(int i = 0; i < num_coords; i++) {
@@ -166,6 +168,7 @@ public:
 				buffer[t].rowStart[this->rows] = 0; 
 			}
 		}
+
 		mkl_sparse_destroy(tempCSR);
 	}
 
@@ -252,12 +255,18 @@ public:
 	bool csr_initialized;
 
     vector<uint64_t> blockStarts;
-	vector<CSRLocal> csr_blocks;
+	vector<CSRLocal*> csr_blocks;
 
 	SpmatLocal() {
 		initialized = false;
 		coordinate_ownership_initialized = false;
 		csr_initialized = false;
+	}
+
+	~SpmatLocal() {
+		for(int i = 0; i < csr_blocks.size(); i++) {
+			delete csr_blocks[i];
+		}
 	}
 
 	/*
@@ -267,13 +276,17 @@ public:
 	void initializeCSRBlocks(int blockRows, int blockCols, int max_nnz, bool transpose) {
 		if(max_nnz == -1) {
 			for(int i = 0; i < blockStarts.size() - 1; i++) {
-				int num_coords = blockStarts[i + 1] - blockStarts[i]; 	
-				csr_blocks.emplace_back(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
-			}		
+				int num_coords = blockStarts[i + 1] - blockStarts[i];
+
+				CSRLocal* block 
+						= new CSRLocal(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
+				csr_blocks.push_back(block);
+			}	
 		}
 		else {
 			int num_coords = blockStarts[1] - blockStarts[0];
-			csr_blocks.emplace_back(blockRows, blockCols, max_nnz, coords.data(), num_coords, transpose);
+			CSRLocal* block = new CSRLocal(blockRows, blockCols, max_nnz, coords.data() + num_coords, num_coords, transpose);	
+			csr_blocks.push_back(block);
 		}
 
 		csr_initialized = true;
@@ -511,11 +524,11 @@ public:
 
 	void setCSRValues(VectorXd &values) {
 		int currentBlock = 0;
-		CSRHandle* active = csr_blocks[currentBlock].getActive();
+		CSRHandle* active = csr_blocks[currentBlock]->getActive();
 		for(int i = 0; i < values.size(); i++) {
 			while(i >= blockStarts[currentBlock+1]) {
 				currentBlock++;
-				active = csr_blocks[currentBlock].getActive();
+				active = csr_blocks[currentBlock]->getActive();
 			}
 			active->values[i - blockStarts[currentBlock]] = values[i];
 		}
@@ -534,11 +547,11 @@ public:
 	VectorXd getCSRValues() {
 		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
 		int currentBlock = 0;
-		CSRHandle* active = csr_blocks[currentBlock].getActive();
+		CSRHandle* active = csr_blocks[currentBlock]->getActive();
 		for(int i = 0; i < values.size(); i++) {
 			while(i >= blockStarts[i+1]) {
 				currentBlock++;
-				active = csr_blocks[currentBlock].getActive();
+				active = csr_blocks[currentBlock]->getActive();
 			}
 			values[i] = active->values[i - blockStarts[currentBlock]]; 
 		}	
@@ -571,7 +584,7 @@ public:
         coords = coords_recv;
 
 		if(csr_blocks.size() > 0) {
-			csr_blocks[0].num_coords = nnz_to_receive;
+			csr_blocks[0]->num_coords = nnz_to_receive;
 			blockStarts[1] = nnz_to_receive;
 		}
 
