@@ -1,7 +1,7 @@
 //#include "15D_mdense_bcast.hpp"
 //#include "15D_mdense_shift.hpp"
 
-//#include "15D_mdense_shift_striped.hpp"
+#include "15D_mdense_shift_striped.hpp"
 #include "25D_cannon_dense.hpp"
 #include "25D_cannon_sparse.hpp"
 
@@ -193,20 +193,20 @@ int main(int argc, char** argv) {
     //S.loadTuples(false, 18, 30, fname);
     S.loadTuples(true, -1, -1, fname);
  
-    Sparse25D_Cannon_Dense* d_ops
+    /*Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
+        );*/
 
-    /*Sparse15D_MDense_Shift_Striped* d_ops =
+    Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 2, 
-                &local_ops);*/
+                &local_ops);
 
     /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(

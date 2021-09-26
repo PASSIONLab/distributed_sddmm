@@ -187,7 +187,7 @@ public:
             stop_clock_and_add(t, "Computation Time");
 
             t = start_clock();
-            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c));
+            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
             stop_clock_and_add(t, "Cyclic Shift Time");
 
             MPI_Barrier(MPI_COMM_WORLD);
@@ -266,7 +266,7 @@ public:
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
-            shiftDenseMatrix(localB, grid->col_world, pMod(grid->rankInCol + 1, p / c));
+            shiftDenseMatrix(localB, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
             stop_clock_and_add(t, "Cyclic Shift Time");
 
             MPI_Barrier(MPI_COMM_WORLD);
