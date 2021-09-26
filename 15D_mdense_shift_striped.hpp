@@ -37,7 +37,7 @@ public:
         int rowRank = row_block;
         int layerRank = col_block % c;
 
-        return grid->get_global_rank(layerRank, rowRank, 0);
+        return grid->get_global_rank(rowRank, layerRank, 0);
     }
 };
 
@@ -72,7 +72,7 @@ public:
                 "Computation Time" 
                 };
 
-        grid.reset(new FlexibleGrid(c, p / c, 1, 3));
+        grid.reset(new FlexibleGrid(p/c, c, 1, 3));
 
         localAcols = R;
         localBcols = R; 
@@ -232,6 +232,7 @@ public:
             assert(false);
         }
 
+
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to local portions of the
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
@@ -239,8 +240,7 @@ public:
         auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                         accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-
-        cout << "Algorithm got here!" << endl;
+        stop_clock_and_add(t, "Dense Broadcast Time");   
 
         if(mode == k_sddmm) {
             choice->setValuesConstant(0.0);
@@ -249,6 +249,7 @@ public:
             choice->setCSRValues(SValues);
         }
 
+        /*
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
@@ -269,9 +270,9 @@ public:
             t = start_clock();
             shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
             stop_clock_and_add(t, "Cyclic Shift Time");
-
             MPI_Barrier(MPI_COMM_WORLD);
         }
+        */
 
         /*if(mode == k_spmmA) {
             auto t = start_clock(); 
@@ -286,8 +287,10 @@ public:
                        MPI_DOUBLE, MPI_SUM, grid->row_world);
             stop_clock_and_add(t, "Dense Broadcast Time");
         }*/
+
+
         if(mode == k_sddmm) {
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
-        } 
+        }
     }
 };
