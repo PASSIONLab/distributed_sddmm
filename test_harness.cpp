@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
     SpmatLocal S;
     //S.loadTuples(false, 18, 30, fname);
     S.loadTuples(true, -1, -1, fname);
- 
+
     /*Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,

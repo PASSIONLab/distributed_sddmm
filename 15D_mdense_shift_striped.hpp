@@ -218,12 +218,12 @@ public:
 
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
-        if(mode == k_spmmA || mode == k_sddmm) {
+        if(mode == k_spmmA) {
             Arole = &localB;
             Brole = &localA;
             choice = ST.get();
         } 
-        else if(mode == k_spmmB) {
+        else if(mode == k_spmmB || mode == k_sddmm) {
             Arole = &localA;
             Brole = &localB;
             choice = S.get(); 
@@ -241,8 +241,8 @@ public:
                         accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
 
 
-        if(mode == k_sddmm) { 
-            choice->setCoordValues(SValues);
+        if(mode == k_sddmm) {
+            choice->setValuesConstant(0.0);
         }
         else {
             choice->setCSRValues(SValues);
@@ -260,19 +260,19 @@ public:
                 mode == k_spmmA ? k_spmmB : mode,
                 *choice,
                 accumulation_buffer,
-                localB,
+                *Brole,
                 block_id);
 
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
-            shiftDenseMatrix(localB, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
             stop_clock_and_add(t, "Cyclic Shift Time");
 
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
-        if(mode == k_spmmA) {
+        /*if(mode == k_spmmA) {
             auto t = start_clock(); 
 
             vector<int> recvCounts;
@@ -284,7 +284,7 @@ public:
                     localA.data(), recvCounts.data(),
                        MPI_DOUBLE, MPI_SUM, grid->row_world);
             stop_clock_and_add(t, "Dense Broadcast Time");
-        }
+        }*/
         if(mode == k_sddmm) {
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
         } 
