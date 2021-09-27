@@ -187,7 +187,7 @@ public:
         DenseMatrix *Arole, *Brole;
         vector<int> nnz_in_axis; 
 
-        if(mode == k_spmmA || k_sddmmA) {
+        if(mode == k_spmmA || mode == k_sddmmA) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get();
             Arole = &localB;

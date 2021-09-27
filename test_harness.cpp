@@ -178,20 +178,20 @@ int main(int argc, char** argv) {
     //S.loadTuples(false, 18, 30, fname);
     S.loadTuples(true, -1, -1, fname);
 
-    /*Sparse25D_Cannon_Dense* d_ops
+    Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );*/
+        );
 
-    Sparse15D_MDense_Shift_Striped* d_ops =
+    /*Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);
+                &local_ops);*/
 
     /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
@@ -199,8 +199,7 @@ int main(int argc, char** argv) {
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
-    */
+        );*/
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 

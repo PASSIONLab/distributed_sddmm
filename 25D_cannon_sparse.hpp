@@ -147,7 +147,8 @@ public:
                             DenseMatrix &localB, 
                             VectorXd &SValues, 
                             VectorXd *sddmm_result_ptr, 
-                            KernelMode mode
+                            KernelMode mode,
+                            bool initial_replicate
                             ) {
         SpmatLocal* choice;
 
