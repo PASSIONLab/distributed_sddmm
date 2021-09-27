@@ -53,6 +53,8 @@ public:
     vector<int> nnz_in_row_axis, nnz_in_row_axis_tpose;
     int sparse_shift;
 
+    DenseMatrix accumulation_buffer;
+
     Sparse25D_Cannon_Dense(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
@@ -163,60 +165,68 @@ public:
         }
     }
 
+
+    VectorXd like_S_values(double value) { 
+        return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
+    }
+
+    VectorXd like_ST_values(double value) { 
+        return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
+    }
+
     void algorithm(     DenseMatrix &localA, 
                         DenseMatrix &localB, 
                         VectorXd &SValues, 
                         VectorXd *sddmm_result_ptr, 
-                        KernelMode mode
+                        KernelMode mode,
+                        bool initial_replicate
                         ) {
 
         SpmatLocal* choice;
 
         DenseMatrix *Arole, *Brole;
-		DenseMatrix accumulation_buffer;
         vector<int> nnz_in_axis; 
 
-        if(mode == k_spmmA) {
+        if(mode == k_spmmA || k_sddmmA) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get();
             Arole = &localB;
             Brole = &localA; 
-		    accumulation_buffer = DenseMatrix::Constant(localBrows * c, localBcols, 0.0); 
             nnz_in_axis = nnz_in_row_axis_tpose;
         } 
-        else if(mode == k_spmmB || mode == k_sddmm) {
+        else if(mode == k_spmmB || mode == k_sddmmB) {
             assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
             Arole = &localA;
             Brole = &localB; 
-		    accumulation_buffer = DenseMatrix::Constant(localArows * c, localAcols, 0.0);
             nnz_in_axis = nnz_in_row_axis;
         }
 
-        if(mode == k_sddmm) {
+        auto t = start_clock();
+        if(mode == k_sddmmA || mode == k_sddmmB) {
             choice->setValuesConstant(0.0);
         }
         else {
             choice->setCSRValues(SValues);
         }
+        stop_clock_and_add(t, "Computation Time");
 
-        auto t = start_clock();
-        MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);        
-        stop_clock_and_add(t, "Dense Fiber Communication Time");
+        if(initial_replicate) {
+            t = start_clock();
+		    accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, Arole->cols(), 0.0);
+            MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                            accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);        
+            stop_clock_and_add(t, "Dense Fiber Communication Time");
+        }
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
-
-            // TODO: THIS NEEDS TO BE FIXED
-
             kernel->triple_function(
-                mode == k_sddmm ? k_sddmm : k_spmmB,
+                mode == k_spmmA ? k_spmmB : mode,
                 *choice,
                 accumulation_buffer,
                 *Brole,
                 0);
-
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
@@ -229,22 +239,22 @@ public:
                 int src = pMod(grid->rankInRow - 1, sqrtpc);
                 int dst = pMod(grid->rankInRow + 1, sqrtpc); 
 
-                if(mode==k_sddmm) {
+                if(mode==k_sddmmA || mode==k_sddmmB) {
                     choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
                 else {
                     choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
                 }
-
                 MPI_Barrier(MPI_COMM_WORLD);
-
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
         }
 
-        if(mode == k_sddmm) {
+        t = start_clock();
+        if(mode == k_sddmmA || mode == k_sddmmB) {
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
         }
+        stop_clock_and_add(t, "Computation Time");
     }
 };
 

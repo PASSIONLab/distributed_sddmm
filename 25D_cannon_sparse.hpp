@@ -151,11 +151,11 @@ public:
                             ) {
         SpmatLocal* choice;
 
-        if(mode == k_spmmA || mode == k_sddmm) {
+        if(mode == k_spmmA || mode == k_sddmmA) {
             assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
         } 
-        else if(mode == k_spmmB) {
+        else if(mode == k_spmmB || mode == k_sddmmB) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get(); 
         }
@@ -163,7 +163,7 @@ public:
         int nnz_processed = 0;
 		VectorXd accumulation_buffer = VectorXd::Constant(choice->coords.size(), 0.0); 
 
-        if(mode != k_sddmm) {
+        if(mode == k_spmmA || mode == k_spmmB) {
             auto t = start_clock();
             MPI_Allgatherv(
                 SValues.data(),
@@ -179,12 +179,14 @@ public:
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
         }
 
-        if(mode == k_sddmm) { 
+        auto t = start_clock();
+        if(mode == k_sddmmA || mode == k_sddmmB) { 
             choice->setCoordValues(accumulation_buffer);
         }
         else {
             choice->setCSRValues(accumulation_buffer);
         }
+        stop_clock_and_add(t, "Computation Time");
 
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
@@ -202,15 +204,16 @@ public:
                         pMod(grid->rankInRow + 1, sqrtpc), 1);
                 shiftDenseMatrix(localB, grid->col_world, 
                         pMod(grid->rankInCol + 1, sqrtpc), 2);
-
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
         }
 
-        if(mode == k_sddmm) {
-            accumulation_buffer = choice->getCoordValues();
+        if(mode == k_sddmmA || mode == k_sddmmB) {
             auto t = start_clock();
+            accumulation_buffer = choice->getCoordValues();
+            stop_clock_and_add(t, "Computation Time");
 
+            t = start_clock();
             MPI_Reduce_scatter(accumulation_buffer.data(),
                 sddmm_result_ptr->data(),
                 choice->layer_coords_sizes.data(), 
@@ -219,7 +222,10 @@ public:
                 grid->fiber_world
             );
             stop_clock_and_add(t, "Sparse Fiber Communication Time");
+
+            t = start_clock();
             *sddmm_result_ptr = SValues.cwiseProduct(*sddmm_result_ptr);
+            stop_clock_and_add(t, "Computation Time");
         }
     }
 };

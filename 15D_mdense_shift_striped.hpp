@@ -24,6 +24,8 @@ public:
     int p, c;
     shared_ptr<FlexibleGrid> grid;
 
+    DenseMatrix accumulation_buffer;
+
     ShardedBlockCyclicColumn(int M, int N, int p, int c, shared_ptr<FlexibleGrid> &grid) { 
         world = MPI_COMM_WORLD;
         this->p = p;
@@ -49,6 +51,8 @@ class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
     int c; // Replication factor for the 1.5D Algorithm 
     int fusionApproach;
+
+    DenseMatrix accumulation_buffer;
 
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
         : Distributed_Sparse(k, R) 
@@ -131,12 +135,8 @@ public:
         // Empty method, no initialization needed 
     }
 
-    /*
-     * This is fusion strategy 1.
-     *
-     */
-    void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
-        DenseMatrix *Arole, *Brole;
+    void fusedSpMMStrategy2(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
+        /*DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
 
         if(mode == Amat) {
@@ -203,7 +203,26 @@ public:
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
-        stop_clock_and_add(t, "Dense Broadcast Time");
+        stop_clock_and_add(t, "Dense Broadcast Time");*/
+    }
+
+
+    VectorXd like_S_values(double value) {
+        if(fusionApproach == 2) {
+            return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
+        }
+        else {
+            return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
+        }
+    }
+
+    VectorXd like_ST_values(double value) {
+        if(fusionApproach == 2) {
+            return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
+        }
+        else {
+            return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
+        }
     }
 
     /*
@@ -214,17 +233,18 @@ public:
                             DenseMatrix &localB, 
                             VectorXd &SValues, 
                             VectorXd *sddmm_result_ptr, 
-                            KernelMode mode
+                            KernelMode mode,
+                            bool initial_replicate 
                             ) {
 
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
-        if(mode == k_spmmA) {
+        if(mode == k_spmmA || mode == k_sddmmA) {
             Arole = &localB;
             Brole = &localA;
             choice = ST.get();
         } 
-        else if(mode == k_spmmB || mode == k_sddmm) {
+        else if(mode == k_spmmB || mode == k_sddmmB) {
             Arole = &localA;
             Brole = &localB;
             choice = S.get(); 
@@ -233,22 +253,24 @@ public:
             assert(false);
         }
 
-
 		// Temporary buffer that holds the results of the local ops; this buffer
-		// is sharded and then reduced to local portions of the
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+		// is sharded and then reduced to the local portions of the matrix. 
+        if(initial_replicate) {
+            auto t = start_clock();
+            accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+            MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                            accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
+            stop_clock_and_add(t, "Dense Broadcast Time");  
+        }
 
         auto t = start_clock();
-        MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-        stop_clock_and_add(t, "Dense Broadcast Time");   
-
-        if(mode == k_sddmm) {
+        if(mode == k_sddmmA || mode == k_sddmmB) {
             choice->setValuesConstant(0.0);
         }
         else {
             choice->setCSRValues(SValues);
         }
+        stop_clock_and_add(t, "Computation Time"); 
  
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
@@ -257,39 +279,24 @@ public:
             assert(S->blockStarts[block_id + 1] <= S->coords.size());
 
             auto t = start_clock();
-
             kernel->triple_function(
                 mode == k_spmmA ? k_spmmB : mode,
                 *choice,
                 accumulation_buffer,
                 *Brole,
                 block_id);
-
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
             shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
-            stop_clock_and_add(t, "Cyclic Shift Time");
             MPI_Barrier(MPI_COMM_WORLD);
+            stop_clock_and_add(t, "Cyclic Shift Time");
         }        
 
-        /*if(mode == k_spmmA) {
-            auto t = start_clock(); 
-
-            vector<int> recvCounts;
-            for(int i = 0; i < c; i++) {
-                recvCounts.push_back(localArows * R);
-            }
-
-            MPI_Reduce_scatter(accumulation_buffer.data(), 
-                    localA.data(), recvCounts.data(),
-                       MPI_DOUBLE, MPI_SUM, grid->row_world);
-            stop_clock_and_add(t, "Dense Broadcast Time");
-        }*/
-
-
-        if(mode == k_sddmm) {
+        if(mode == k_sddmmA || mode == k_sddmmB) {
+            auto t = start_clock();
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
+            stop_clock_and_add(t, "Computation Time"); 
         }
     }
 };

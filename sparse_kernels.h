@@ -10,7 +10,7 @@
 
 using namespace std;
 
-typedef enum {k_sddmm, k_spmmA, k_spmmB} KernelMode;
+typedef enum {k_sddmmA, k_spmmA, k_spmmB, k_sddmmB} KernelMode;
 
 class KernelImplementation {
 public:
@@ -34,7 +34,7 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        int mode,
+        MatMode mode,
         int block) = 0;
 
     size_t triple_function(
@@ -45,7 +45,7 @@ public:
             int block) {
         
         size_t nnz_processed = 0;
-        if(mode == k_sddmm) {
+        if(mode == k_sddmmA || mode == k_sddmmB) {
             nnz_processed += sddmm_local(
                 S,
                 localA,
@@ -87,7 +87,7 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        int mode,
+        MatMode mode,
         int block);
 };
 

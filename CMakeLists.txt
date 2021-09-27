@@ -23,7 +23,7 @@ link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib $ENV{MKLROOT}/lib/intel64 
     )
 
-add_executable(test_harness test_harness.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
+add_executable(test_harness test_harness.cpp sparse_kernels.cpp common.cpp) 
 add_executable(local_kernel_benchmark local_kernel_benchmark.cpp common.cpp)
 
 foreach(TARGET test_harness local_kernel_benchmark)

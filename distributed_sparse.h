@@ -69,7 +69,6 @@ public:
     //MPI_Comm A_replication_world, B_replication_world;
 
     bool verbose;
-    bool fused;
 
     string debug_msg;
 
@@ -79,8 +78,7 @@ public:
     Distributed_Sparse(KernelImplementation* k, int R) {
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &p);
-        verbose = false;
-        fused = false;
+        verbose = false; 
 
         kernel = k;
         this->R = R;
@@ -157,11 +155,11 @@ public:
         verbose = value;
     }
 
-    VectorXd like_S_values(double value) {
+    virtual VectorXd like_S_values(double value) {
         return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
     }
 
-    VectorXd like_ST_values(double value) {
+    virtual VectorXd like_ST_values(double value) {
         return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
     }
 
@@ -223,11 +221,6 @@ public:
         } 
     }
 
-    virtual void fusedSpMM(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) { 
-        cout << "Error, only 1.5D algorithms that shift dense matrices support fused SDDMM / SpMM!" << endl; 
-        exit(1); 
-    }
-
     /*
      * If the input buffers need to be shifted / preprocessed 
      */
@@ -238,24 +231,49 @@ public:
      */
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        algorithm(localA, localB, SValues, nullptr, k_spmmA);
+        algorithm(localA, localB, SValues, nullptr, k_spmmA, true);
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
-        algorithm(localA, localB, SValues, nullptr, k_spmmB);
+        algorithm(localA, localB, SValues, nullptr, k_spmmB, true);
     }
 
-    void sddmm(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
-        algorithm(localA, localB, SValues, &sddmm_result, k_sddmm);
+    void sddmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        algorithm(localA, localB, SValues, &sddmm_result, k_sddmmA, true);
+    }
+
+    void sddmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues, VectorXd &sddmm_result) { 
+        algorithm(localA, localB, SValues, &sddmm_result, k_sddmmB, true);
+    }
+
+    /*
+     * The user is responsible for any initial and
+     * final shifts under this strategy (fairness in benchmarking) 
+     */
+    virtual void fusedSpMM(DenseMatrix &localA, 
+            DenseMatrix &localB, 
+            VectorXd &Svalues, 
+            VectorXd &sddmm_buffer, 
+            DenseMatrix &result, 
+            MatMode mode) {
+
+        if(mode == Amat) {
+            algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmA, true);
+            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmA, false);
+        }
+        else if(mode == Bmat) {
+            algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmB, true);
+            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmB, false);
+        }
     }
 
     virtual void algorithm( DenseMatrix &localA, 
                             DenseMatrix &localB, 
                             VectorXd &SValues, 
                             VectorXd *sddmm_result_ptr, 
-                            KernelMode mode
+                            KernelMode mode,
+                            bool initial_replicate 
                             ) = 0;
-
 
     void dummyInitialize(DenseMatrix &loc, MatMode mode) {
         // Assume that the dense matrices will always be stored in row major format. 

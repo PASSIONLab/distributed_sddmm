@@ -84,7 +84,7 @@ size_t StandardKernel::spmm_local(
     SpmatLocal &S,
     DenseMatrix &A,
     DenseMatrix &B,
-    int mode,
+    MatMode mode,
     int block) {
 
     size_t processed = 0;
