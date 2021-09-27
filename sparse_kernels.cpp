@@ -75,7 +75,12 @@ size_t StandardKernel::sddmm_local(
         double* Arow = Aptr + r * S.coords[i].r;
         double* Brow = Bptr + r * S.coords[i].c;
 
-        S.coords[i].value += vectorized_dot_product(Arow, Brow, r); 
+        double value = 0.0;
+        #pragma ivdep
+        for(int k = 0; k < r; k++) {
+            value += Arow[k] * Brow[k];	
+        }
+        S.coords[i].value += value;
     }
     return processed;
 }
