@@ -1,9 +1,9 @@
-#pragma once;
+#pragma once
 
 #include "SpmatLocal.hpp"
 #include <string>
 
-#define MINIMUM_BENCH_TIME 5.0
+#define MINIMUM_BENCH_TIME 10.0
 
 void benchmark_algorithm(SpmatLocal* S, 
         string algorithm_name,

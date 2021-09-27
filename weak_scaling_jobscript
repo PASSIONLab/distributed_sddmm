@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH -N 256
+#SBATCH -C knl
+#SBATCH -q regular
+#SBATCH -J weak_scaling
+#SBATCH --mail-user=vivek_bharadwaj@bekreley.edu
+#SBATCH --mail-type=ALL
+#SBATCH -t 00:40:00
+
+#OpenMP settings:
+export OMP_NUM_THREADS=68
+export OMP_PLACES=threads
+export OMP_PROC_BIND=spread
+
+# Weak scaling for 1.5D Fused, Strategy 1
+
+for f in fused unfused
+do
+    srun -N 1 -n 1 ./main 12 21 15d_fusion1 256 1 $f
+
+    srun -N 2 -n 2 ./main 13 21 15d_fusion1 256 1 $f
+
+    srun -N 4 -n 4 ./main 14 21 15d_fusion1 256 1 $f
+    srun -N 4 -n 4 ./main 14 21 15d_fusion1 256 2 $f
+
+    srun -N 8 -n 8 ./main 15 21 15d_fusion1 256 1 $f
+    srun -N 8 -n 8 ./main 15 21 15d_fusion1 256 2 $f
+    srun -N 8 -n 8 ./main 15 21 15d_fusion1 256 4 $f
+
+    for c in 1 2 4 8
+    do
+        srun -N 16 -n 16 ./main 16 21 15d_fusion1 256 $c $f
+    done
+    
+    for c in 1 2 4 8
+    do
+        srun -N 32 -n 32 ./main 17 21 15d_fusion1 256 $c $f
+    done
+
+    for c in 1 2 4 8
+    do
+        srun -N 64 -n 64 ./main 18 21 15d_fusion1 256 $c $f
+    done
+
+    for c in 1 2 4 8
+    do
+        srun -N 128 -n 128 ./main 19 21 15d_fusion1 256 $c $f
+    done
+
+    for c in 1 2 4 8
+    do
+        srun -N 256 -n 256 ./main 20 21 15d_fusion1 256 $c $f
+    done
+
+done

@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     if(fused_string == "fused") {
         fused = true;
     }
-    else if(fused_strng == "unfused") {
+    else if(fused_string == "unfused") {
         fused = false;
     }
     else {
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 
     SpmatLocal S;
     S.loadTuples(false, logM, edgeFactor, dummy);
-    void benchmark_algorithm(&S, 
+    benchmark_algorithm(&S, 
             algorithm_name,
             fused,
             R,

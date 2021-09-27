@@ -12,10 +12,11 @@
 #include "sparse_kernels.h"
 #include "common.h"
 #include "als_conjugate_gradients.h"
+#include <mpi.h>
 
 using namespace std;
 
-void benchmark_algorithm(SpmatLocal* S, 
+void benchmark_algorithm(SpmatLocal* spmat, 
         string algorithm_name,
         bool fused,
         int R,
@@ -26,29 +27,31 @@ void benchmark_algorithm(SpmatLocal* S,
     Distributed_Sparse* d_ops;
 
     if(algorithm_name=="15d_fusion1") {
-        d_ops = new Sparse15D_MDense_Shift_Striped(&S, 
-            R 
+        d_ops = new Sparse15D_MDense_Shift_Striped(
+            spmat, 
+            R, 
             c, 
             1, 
             &local_ops);
     }
     else if(algorithm_name=="15d_fusion2") {
-        d_ops = new Sparse15D_MDense_Shift_Striped(&S, 
-            R 
+        d_ops = new Sparse15D_MDense_Shift_Striped(
+            spmat, 
+            R,
             c, 
             2, 
             &local_ops); 
     }
     else if(algorithm_name=="25d_dense_replicate") {
         d_ops = new Sparse25D_Cannon_Dense(
-            &S,
+            spmat,
             R, 
             c, 
             &local_ops);
     }
     else if(algorithm_name=="25d_sparse_replicate") {
         d_ops = new Sparse25D_Cannon_Sparse(
-            &S,
+            spmat,
             R, 
             c, 
             &local_ops);
@@ -71,37 +74,49 @@ void benchmark_algorithm(SpmatLocal* S,
             d_ops->fusedSpMM(A, 
                     B, 
                     S, 
-                    result, 
+                    sddmm_result, 
                     fused_result, 
                     Amat);
         }
         else {
             d_ops->sddmmA(A, B, S, sddmm_result);
             d_ops->spmmA(A, B, S);
+        } 
+
+    } while(num_trials < 50);
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    if(rank == 0) {
+        double elapsed = stop_clock_get_elapsed(t);
+
+        double ops = 2 * spmat->dist_nnz * 2 * R * num_trials;
+        double throughput = ops / elapsed;
+        throughput /= 1e9;
+
+        cout << "*************************************" << endl;
+
+        if(fused) {
+            cout << "Fused Overall Throughput: " 
+                    << throughput << " GFLOPs" << endl;
         }
+        else {
+            cout << "Unfused Overall Throughput: " 
+                    << throughput << " GFLOPs" << endl; 
+        }
+        cout << "Total Time: " << elapsed << "s" << endl;
+        cout << "# of Trials: " << num_trials << endl;
 
-    } while(stop_clock_get_elapsed(t) < MINIMUM_BENCH_TIME);
-    double elapsed = stop_clock_get_elapsed(t);
-
-    double ops = 2 * S->dist_nnz * 2 * R * num_trials;
-    double throughput = ops / elapsed;
-    throughput /= 1e9;
-
-    cout << "*************************************" << endl;
-
-    if(fused) {
-        cout << "Fused Overall Throughput: " 
-                << throughput << " GFLOPs" << endl;
+        cout << "Breakdown: " << endl;
+ 
     }
-    else {
-        cout << "Unfused Overall Throughput: " 
-                << throughput << " GFLOPs" << endl; 
-    }
-    cout << "Total Time: " << elapsed << "s" << endl;
-    cout << "Breakdown: " << endl;
     d_ops->print_performance_statistics();
 
-    cout << "*************************************" << endl;
+    if(rank == 0) {
+        cout << "*************************************" << endl;
+    }
 
     delete d_ops;
 }
