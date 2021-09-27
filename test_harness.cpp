@@ -98,7 +98,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->initial_synchronize(&A, nullptr, nullptr);
 
     //d_ops->print_nonzero_distribution(A, B);
-    d_ops->sddmmA(A, B, S, result);
+    //d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -109,7 +109,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
     d_ops->initial_synchronize(&A, nullptr, nullptr);
-    d_ops->spmmA(A, B, S);
+    //d_ops->spmmA(A, B, S);
 
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -118,10 +118,19 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(B, Bmat);
 
     d_ops->initial_synchronize(nullptr, &B, nullptr);
-    d_ops->spmmB(A, B, ST);
+    //d_ops->spmmB(A, B, ST);
 
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    DenseMatrix fused_result = d_ops->like_A_matrix(0.0);
+
+    d_ops->fusedSpMM(A, 
+            B, 
+            S, 
+            result, 
+            fused_result, 
+            Amat);
 
     //d_ops->print_nonzero_distribution(A, B); 
 
@@ -186,20 +195,20 @@ int main(int argc, char** argv) {
             &local_ops
         );*/
 
-    /*Sparse15D_MDense_Shift_Striped* d_ops =
+    Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                1, 
-                &local_ops);*/
+                2, 
+                &local_ops);
 
-    Sparse25D_Cannon_Sparse* d_ops
+    /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
+        );*/
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 

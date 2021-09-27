@@ -259,11 +259,11 @@ public:
 
         if(mode == Amat) {
             algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmA, true);
-            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmA, false);
+            algorithm(result, localB, sddmm_buffer, nullptr, k_spmmA, false);
         }
         else if(mode == Bmat) {
             algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmB, true);
-            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmB, false);
+            algorithm(localA, result, sddmm_buffer, nullptr, k_spmmB, false);
         }
     }
 

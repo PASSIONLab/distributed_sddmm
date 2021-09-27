@@ -517,6 +517,7 @@ public:
 	void setCoordValues(VectorXd &values) {
 		assert(values.size() == coords.size());
 
+		#pragma omp parallel for
 		for(int i = 0; i < values.size(); i++) {
 			coords[i].value = values[i];
 		}
@@ -537,6 +538,7 @@ public:
 	VectorXd getCoordValues() {
 		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
 
+		#pragma omp parallel for
 		for(int i = 0; i < coords.size(); i++) {
 			values[i] = coords[i].value;
 		}
@@ -559,15 +561,15 @@ public:
 	}
 
 	void setValuesConstant(double cval) {
+		#pragma omp parallel for
 		for(int i = 0; i < coords.size(); i++) {
 			coords[i].value = cval;
 		}
 	}
 
 	/*
-	 * TODO: We REALLY need to optimize this function...
+	 * TODO: Optimize this function?
 	 */
-
     void shiftCoordinates(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
         vector<spcoord_t> coords_recv;
         coords_recv.resize(nnz_to_receive);

@@ -135,8 +135,27 @@ public:
         // Empty method, no initialization needed 
     }
 
-    void fusedSpMMStrategy2(DenseMatrix &localA, DenseMatrix &localB, VectorXd &Svalues, VectorXd &sddmm_buffer, DenseMatrix &result, MatMode mode) {
-        /*DenseMatrix *Arole, *Brole;
+
+    void fusedSpMM(DenseMatrix &localA, 
+            DenseMatrix &localB, 
+            VectorXd &Svalues, 
+            VectorXd &sddmm_buffer, 
+            DenseMatrix &result, 
+            MatMode mode) {
+
+        if(fusionApproach == 1) {
+            if(mode == Amat) {
+                algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmA, true);
+                algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmA, false);
+            }
+            else if(mode == Bmat) {
+                algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmB, true);
+                algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmB, false);
+            }
+            return;
+        }
+
+        DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
 
         if(mode == Amat) {
@@ -172,12 +191,15 @@ public:
 
             auto t = start_clock();
             kernel->triple_function(
-                k_sddmm,
+                k_sddmmA,
                 *choice,
                 broadcast_buffer,
                 *Brole,
                 block_id);
 
+            // TODO: Slightly broken! We need to optimize the
+            // copy operation between these two kernels
+ 
             kernel->triple_function(
                 k_spmmA,
                 *choice,
@@ -203,9 +225,10 @@ public:
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 result.data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
-        stop_clock_and_add(t, "Dense Broadcast Time");*/
-    }
+        stop_clock_and_add(t, "Dense Broadcast Time");
 
+        // TODO: This currently doesn't copy out the result SDDMM buffer...
+    }
 
     VectorXd like_S_values(double value) {
         if(fusionApproach == 1) {
