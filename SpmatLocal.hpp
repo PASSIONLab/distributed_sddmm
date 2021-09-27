@@ -285,7 +285,7 @@ public:
 		}
 		else {
 			int num_coords = blockStarts[1] - blockStarts[0];
-			CSRLocal* block = new CSRLocal(blockRows, blockCols, max_nnz, coords.data() + num_coords, num_coords, transpose);	
+			CSRLocal* block = new CSRLocal(blockRows, blockCols, max_nnz, coords.data(), num_coords, transpose);	
 			csr_blocks.push_back(block);
 		}
 
