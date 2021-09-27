@@ -118,7 +118,7 @@ public:
         assert(fusionApproach == 1 || fusionApproach == 2);
 
         bool local_tpose;
-        if(fusionApproach == 1) {
+        if(fusionApproach == 2) {
             local_tpose = false;
         }
         else {
@@ -208,7 +208,7 @@ public:
 
 
     VectorXd like_S_values(double value) {
-        if(fusionApproach == 2) {
+        if(fusionApproach == 1) {
             return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
         }
         else {
@@ -217,7 +217,7 @@ public:
     }
 
     VectorXd like_ST_values(double value) {
-        if(fusionApproach == 2) {
+        if(fusionApproach == 1) {
             return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
         }
         else {

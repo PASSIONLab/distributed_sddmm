@@ -89,8 +89,8 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     DenseMatrix A = d_ops->like_A_matrix(0.0);    
     DenseMatrix B = d_ops->like_B_matrix(0.0);
 
-    VectorXd S = d_ops->S->getCoordValues();
-    VectorXd ST = d_ops->ST->getCoordValues();
+    VectorXd S = d_ops->like_S_values(1.0); 
+    VectorXd ST = d_ops->like_ST_values(1.0);
     VectorXd result = d_ops->like_S_values(0.0);
 
     d_ops->dummyInitialize(A, Amat);
@@ -131,22 +131,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
         cout << "SpMMA Fingerprint: " << spmmA_fingerprint << endl;
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
     }
-
-    // The most reliable strategy: Every processor does the computation
-    // locally and compare the dense matrix results (ideally, the SDDMM
-    // is folded in and should also be correct). 
-
-    /*ZeroProcess dist(S.M, S.N);
-	SpmatLocal* gathered = redistribute_nonzeros(&dist, false, false) {
-
-    DenseMatrix sp_dense = new DenseMatrix::Constant(S.M, S.N, 0.0);
-
-    for(int i = 0; i < gathered->coords.size(); i++) {
-        sp_dense(coords[i].r, coords[i].c) = 1.0;
-    }
-
-    delete gathered;
-    */
+ 
 }
 
 /*void test_sparse_transpose() {
@@ -205,7 +190,7 @@ int main(int argc, char** argv) {
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                2, 
+                1, 
                 &local_ops);
 
     /*Sparse25D_Cannon_Sparse* d_ops
