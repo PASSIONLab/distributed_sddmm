@@ -14,61 +14,6 @@
 
 using namespace std;
 
-/*void test_fusion(Sparse15D_MDense_Shift_Striped* d_ops) {
-    int proc_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
-
-    if(proc_rank == 0) {
-        cout << "Testing fused SDDMM / SpMM Correctness" << endl;
-    }
-
-    DenseMatrix A = d_ops->like_A_matrix(0.0);    
-    DenseMatrix B = d_ops->like_B_matrix(0.0);    
-
-    //deterministic_initialize(A);
-    //deterministic_initialize(B);
-
-    DenseMatrix dummy_resultA = d_ops->like_A_matrix(0.0);    
-    DenseMatrix dummy_resultB = d_ops->like_B_matrix(0.0);    
-
-    VectorXd Svalues = d_ops->like_S_values(1.0);
-    VectorXd STvalues = d_ops->like_ST_values(1.0);
-
-    VectorXd Sbuffer  = d_ops->like_S_values(0.0);
-    VectorXd STbuffer = d_ops->like_ST_values(0.0);
-    VectorXd standard_result = d_ops->like_S_values(0.0);
-
-    d_ops->fusedSpMM(A, B, Svalues, Sbuffer, dummy_resultA, Amat);
-    d_ops->fusedSpMM(A, B, STvalues, STbuffer, dummy_resultB, Bmat);
-    d_ops->sddmm(A, B, Svalues, standard_result); 
-
-    double sqnorm; 
-    sqnorm = Sbuffer.squaredNorm(); 
-    MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-    if(proc_rank == 0) {
-        cout << "S Result Buffer: " << sqnorm << endl;
-    }
-
-    sqnorm = STbuffer.squaredNorm(); 
-    MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-    if(proc_rank == 0) {
-        cout << "ST Result Buffer: " << sqnorm << endl;
-    } 
-
-    sqnorm = standard_result.squaredNorm(); 
-    MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-    if(proc_rank == 0) {
-        cout << "Standard Result Buffer: " << sqnorm << endl;
-    }
-
-    if(proc_rank == 0) {
-        cout << "Fusion testing complete!" << endl;
-    }
-}*/
-
 class ZeroProcess : public NonzeroDistribution {
 public:
     ZeroProcess(int M, int N) { 
