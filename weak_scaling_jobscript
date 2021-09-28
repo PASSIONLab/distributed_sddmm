@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -N 256
+#SBATCH -N 16
 #SBATCH -C knl
 #SBATCH -q regular
 #SBATCH -J weak_scaling
@@ -32,24 +32,24 @@ do
         srun -N 16 -n 16 ./main 16 21 15d_fusion1 256 $c $f
     done
     
-    for c in 1 2 4 8
-    do
-        srun -N 32 -n 32 ./main 17 21 15d_fusion1 256 $c $f
-    done
+    #for c in 1 2 4 8
+    #do
+    #    srun -N 32 -n 32 ./main 17 21 15d_fusion1 256 $c $f
+    #done
 
-    for c in 1 2 4 8
-    do
-        srun -N 64 -n 64 ./main 18 21 15d_fusion1 256 $c $f
-    done
+    #for c in 1 2 4 8
+    #do
+    #    srun -N 64 -n 64 ./main 18 21 15d_fusion1 256 $c $f
+    #done
 
-    for c in 1 2 4 8
-    do
-        srun -N 128 -n 128 ./main 19 21 15d_fusion1 256 $c $f
-    done
+    #for c in 1 2 4 8
+    #do
+    #    srun -N 128 -n 128 ./main 19 21 15d_fusion1 256 $c $f
+    #done
 
-    for c in 1 2 4 8
-    do
-        srun -N 256 -n 256 ./main 20 21 15d_fusion1 256 $c $f
-    done
+    #for c in 1 2 4 8
+    #do
+    #    srun -N 256 -n 256 ./main 20 21 15d_fusion1 256 $c $f
+    #done
 
 done

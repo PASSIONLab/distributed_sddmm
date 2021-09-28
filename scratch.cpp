@@ -10,7 +10,6 @@ public:
     }
 };
 
-
 void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     int proc_rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);

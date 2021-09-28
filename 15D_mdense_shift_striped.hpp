@@ -76,7 +76,7 @@ public:
                 "Computation Time" 
                 };
 
-        grid.reset(new FlexibleGrid(p/c, c, 1, 3));
+        grid.reset(new FlexibleGrid(p/c, c, 1, 1));
 
         localAcols = R;
         localBcols = R; 

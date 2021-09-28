@@ -4,3 +4,4 @@ data
 metis
 eigen
 result_files/*
+output_files/*
