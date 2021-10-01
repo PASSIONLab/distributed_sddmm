@@ -208,23 +208,23 @@ public:
 
 		assert(recv_verify == nnz_to_receive);
 
-		MPI_Request vRequestSend, cRequestSend, rRequestSend;
-		MPI_Request vRequestReceive, cRequestReceive, rRequestReceive;
+		MPI_Request vRequestSend, cRequestSend, ridxRequestSend, rRequestSend;
+		MPI_Request vRequestReceive, cRequestReceive, ridxRequestReceive, rRequestReceive;
 
 		MPI_Isend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
 		MPI_Isend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
 		
 		if(mode == csr || mode == both) {
-			MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+			MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &ridxRequestSend);
 		}
 		if(mode == coo || mode == both) {
-			MPI_Isend(send->row_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 3, comm, &cRequestSend);
+			MPI_Isend(send->row_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 3, comm, &rRequestSend);
 		}	
 		if(mode == csr || mode == both) {
-			MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
+			MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &ridxRequestReceive);
 		}
 		if(mode == coo || mode == both) {
-			MPI_Irecv(recv->row_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 3, comm, &cRequestReceive);
+			MPI_Irecv(recv->row_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 3, comm, &rRequestReceive);
 		}
 
 		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
@@ -236,8 +236,14 @@ public:
 		MPI_Wait(&cRequestSend, &stat);
 		MPI_Wait(&cRequestReceive, &stat);
 
-		MPI_Wait(&rRequestSend, &stat);
-		MPI_Wait(&rRequestReceive, &stat);
+		if(mode == csr || mode == both) {
+			MPI_Wait(&ridxRequestSend, &stat);
+			MPI_Wait(&ridxRequestReceive, &stat);
+		}
+		else if (mode == coo || mode == both) {
+			MPI_Wait(&rRequestSend, &stat);
+			MPI_Wait(&rRequestReceive, &stat);
+		}
 
 		num_coords = nnz_to_receive;
 		active = 1 - active;
@@ -535,7 +541,6 @@ public:
 	}
 
 	void setCSRValues(VectorXd &values) {
-
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
 			memcpy(csr_blocks[i]->getActive()->values.data(), 	
 					values.data() + blockStarts[i], 
@@ -544,7 +549,7 @@ public:
 	}
 
 	VectorXd getCSRValues() {
-		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
+		VectorXd values = VectorXd::Constant(blockStarts[blockStarts.size() -1], 0.0);
 
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
 			memcpy(values.data() + blockStarts[i], 

@@ -146,7 +146,9 @@ public:
 
         sparse_shift = src;
         S->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[src], 0, both);
+        S->blockStarts[1] = S->csr_blocks[0]->num_coords;
         ST->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0, both);
+        ST->blockStarts[1] = ST->csr_blocks[0]->num_coords;
 
         check_initialized(); 
     }
@@ -165,11 +167,11 @@ public:
 
 
     VectorXd like_S_values(double value) { 
-        return VectorXd::Constant(ST->owned_coords_end - ST->owned_coords_start, value); 
+        return VectorXd::Constant(ST->blockStarts[1], value); 
     }
 
     VectorXd like_ST_values(double value) { 
-        return VectorXd::Constant(S->owned_coords_end - S->owned_coords_start, value); 
+        return VectorXd::Constant(S->blockStarts[1], value); 
     }
 
     void algorithm(     DenseMatrix &localA, 
@@ -186,14 +188,14 @@ public:
         vector<int> nnz_in_axis; 
 
         if(mode == k_spmmA || mode == k_sddmmA) {
-            assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
+            assert(SValues.size() == ST->blockStarts[1]); 
             choice = ST.get();
             Arole = &localB;
             Brole = &localA; 
             nnz_in_axis = nnz_in_row_axis_tpose;
         } 
         else if(mode == k_spmmB || mode == k_sddmmB) {
-            assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
+            assert(SValues.size() == S->blockStarts[1]); 
             choice = S.get();
             Arole = &localA;
             Brole = &localB; 
@@ -239,9 +241,11 @@ public:
 
                 if(mode==k_sddmmA || mode==k_sddmmB) {
                     choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, coo);
+                    choice->blockStarts[1] = choice->csr_blocks[0]->num_coords;
                 }
                 else {
                     choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, csr);
+                    choice->blockStarts[1] = choice->csr_blocks[0]->num_coords;
                 }
                 MPI_Barrier(MPI_COMM_WORLD);
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
