@@ -318,7 +318,7 @@ public:
 
         if(mode == k_sddmmA || mode == k_sddmmB) {
             auto t = start_clock();
-            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
+            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCSRValues());
             stop_clock_and_add(t, "Computation Time"); 
         }
     }

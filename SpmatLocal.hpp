@@ -54,6 +54,7 @@ public:
 	vector<double> values;
 	vector<MKL_INT> col_idx;
 	vector<MKL_INT> rowStart;
+	vector<MKL_INT> row_idx;
 	sparse_matrix_t mkl_handle;
 };
 
@@ -145,7 +146,13 @@ public:
 		for(int t = 0; t < 2; t++) {
 			buffer[t].values.resize(max_nnz == 0 ? 1 : max_nnz);
 			buffer[t].col_idx.resize(max_nnz == 0 ? 1 : max_nnz);
+			buffer[t].row_idx.resize(max_nnz == 0 ? 1 : max_nnz);
 			buffer[t].rowStart.resize(this->rows + 1);
+
+			// Copy over row indices
+			for(int i = 0; i < num_coords; i++) {
+				buffer[t].row_idx[i] = coords[i].value;
+			}
 
 			memcpy(buffer[t].values.data(), values, sizeof(double) * max(num_coords, 1));
 			memcpy(buffer[t].col_idx.data(), col_idx, sizeof(MKL_INT) * max(num_coords, 1));
@@ -179,7 +186,8 @@ public:
 	/*
 	 * Note: Input tag should be no greater than 10,000
 	 */
-	void shiftCSR(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
+	void shiftCSR(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag, 
+			bool shiftCSR) {
 		CSRHandle* send = buffer + active;
 		CSRHandle* recv = buffer + 1 - active;
 
@@ -203,11 +211,23 @@ public:
 
 		MPI_Isend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
 		MPI_Isend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
-		MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+		
+		if(shiftCSR) {
+			MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
+		}
+		else {
+			MPI_Isend(send->row_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &cRequestSend);
+		}	
+
+		if(shiftCSR) {
+			MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
+		}
+		else {
+			MPI_Irecv(recv->row_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &cRequestReceive);
+		}
 
 		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
 		MPI_Irecv(recv->col_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 1, comm, &cRequestReceive);
-		MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
 
 		MPI_Wait(&vRequestSend, &stat);
 		MPI_Wait(&vRequestReceive, &stat);
@@ -218,7 +238,7 @@ public:
 		MPI_Wait(&rRequestSend, &stat);
 		MPI_Wait(&rRequestReceive, &stat);
 
-		num_coords = recv->rowStart[rows];
+		num_coords = nnz_to_receive 
 		active = 1 - active;
 	}
 
@@ -513,83 +533,34 @@ public:
 		blockStarts.push_back(coords.size());
 	}
 
-	// TODO: Enable setting values to a constant. 
-	void setCoordValues(VectorXd &values) {
-		assert(values.size() == coords.size());
-
-		#pragma omp parallel for
-		for(int i = 0; i < values.size(); i++) {
-			coords[i].value = values[i];
-		}
-	}	
-
 	void setCSRValues(VectorXd &values) {
-		int currentBlock = 0;
-		CSRHandle* active = csr_blocks[currentBlock]->getActive();
-		for(int i = 0; i < values.size(); i++) {
-			while(i >= blockStarts[currentBlock+1]) {
-				currentBlock++;
-				active = csr_blocks[currentBlock]->getActive();
-			}
-			active->values[i - blockStarts[currentBlock]] = values[i];
+
+		for(int i = 0; i < blockStarts.size() - 1; i++) {
+			memcpy(csr_blocks[i].getActive()->values, 	
+					values.data() + blockStarts[i], 
+					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
 		}
-	}
-
-	VectorXd getCoordValues() {
-		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
-
-		#pragma omp parallel for
-		for(int i = 0; i < coords.size(); i++) {
-			values[i] = coords[i].value;
-		}
-
-		return values;
 	}
 
 	VectorXd getCSRValues() {
 		VectorXd values = VectorXd::Constant(coords.size(), 0.0);
-		int currentBlock = 0;
-		CSRHandle* active = csr_blocks[currentBlock]->getActive();
-		for(int i = 0; i < values.size(); i++) {
-			while(i >= blockStarts[i+1]) {
-				currentBlock++;
-				active = csr_blocks[currentBlock]->getActive();
-			}
-			values[i] = active->values[i - blockStarts[currentBlock]]; 
-		}	
+
+		for(int i = 0; i < blockStarts.size() - 1; i++) {
+			memcpy(values.data() + blockStarts[i], 
+					csr_blocks[i].getActive()->values, 
+					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
+		}
+
 		return values;
 	}
 
 	void setValuesConstant(double cval) {
-		#pragma omp parallel for
-		for(int i = 0; i < coords.size(); i++) {
-			coords[i].value = cval;
+		#pragma omp parallel for collapse(2)
+		for(int i = 0; i < blockStarts.size() - 1; i++) {
+			for(int j = 0; j < blockStarts[i+1] - blockStarts[i]; j++) {
+				csr_blocks[i].getActive()->values[j] = cval;
+			}
 		}
 	}
-
-	/*
-	 * TODO: Optimize this function?
-	 */
-    void shiftCoordinates(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag) {
-        vector<spcoord_t> coords_recv;
-        coords_recv.resize(nnz_to_receive);
-
-		MPI_Status stat;
-
-        MPI_Sendrecv(coords.data(), coords.size(), SPCOORD,
-                dst, tag,
-                coords_recv.data(), nnz_to_receive, SPCOORD,
-                src, tag,
-                comm, &stat);
-
-		// TODO: Should we optimize this copy? 
-        coords = coords_recv;
-
-		if(csr_blocks.size() > 0) {
-			csr_blocks[0]->num_coords = nnz_to_receive;
-			blockStarts[1] = nnz_to_receive;
-		}
-
-    }
 };
 

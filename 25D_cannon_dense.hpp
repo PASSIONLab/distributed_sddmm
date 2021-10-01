@@ -121,16 +121,6 @@ public:
         aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);
         bSubmatrices.emplace_back(localBrows * (grid->k + c * grid->i), localBcols * grid->j, localBrows, localBcols);
 
-        // Skew the S-matrix in preparation for repeated Cannon's algorithm.
-        // TODO: Need to deal with the shift!
-
-        int src = pMod(grid->rankInRow + grid->rankInCol, sqrtpc);
-        int dst = pMod(grid->rankInRow - grid->rankInCol, sqrtpc);
-
-        sparse_shift = src;
-        S->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[src], 0);
-        ST->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0);
-
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
             S->coords[i].c %= localBrows;
@@ -149,6 +139,14 @@ public:
 
 	    S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, true);
 	    ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, true);
+
+        // Skew the S-matrix in preparation for repeated Cannon's algorithm.
+        int src = pMod(grid->rankInRow + grid->rankInCol, sqrtpc);
+        int dst = pMod(grid->rankInRow - grid->rankInCol, sqrtpc);
+
+        sparse_shift = src;
+        S->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[src], 0);
+        ST->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0);
 
         check_initialized(); 
     }
@@ -252,7 +250,7 @@ public:
 
         t = start_clock();
         if(mode == k_sddmmA || mode == k_sddmmB) {
-            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCoordValues());
+            *sddmm_result_ptr = SValues.cwiseProduct(choice->getCSRValues());
         }
         stop_clock_and_add(t, "Computation Time");
     }

@@ -67,20 +67,22 @@ size_t StandardKernel::sddmm_local(
         Aptr = A.data();
         Bptr = B.data();
     }
-    
+
+    CSRHandle* active = S.csr_blocks[block].getActive();
+
     int r = A.cols();
 
     #pragma omp parallel for
-    for(int i = S.blockStarts[block]; i < S.blockStarts[block + 1]; i++) {
-        double* Arow = Aptr + r * S.coords[i].r;
-        double* Brow = Bptr + r * S.coords[i].c;
+    for(int i = 0; i < active->num_coords; i++) {
+        double* Arow = Aptr + r * active->row_idx[i];
+        double* Brow = Bptr + r * active->col_idx[i];
 
         double value = 0.0;
         #pragma ivdep
         for(int k = 0; k < r; k++) {
             value += Arow[k] * Brow[k];	
         }
-        S.coords[i].value += value;
+        active->values[i] += value;
     }
     return processed;
 }

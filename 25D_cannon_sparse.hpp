@@ -187,12 +187,7 @@ public:
         }
 
         auto t = start_clock();
-        if(mode == k_sddmmA || mode == k_sddmmB) { 
-            choice->setCoordValues(accumulation_buffer);
-        }
-        else {
-            choice->setCSRValues(accumulation_buffer);
-        }
+        choice->setCSRValues(accumulation_buffer); 
         stop_clock_and_add(t, "Computation Time");
 
         for(int i = 0; i < sqrtpc; i++) {
@@ -217,7 +212,7 @@ public:
 
         if(mode == k_sddmmA || mode == k_sddmmB) {
             auto t = start_clock();
-            accumulation_buffer = choice->getCoordValues();
+            accumulation_buffer = choice->getCSRValues();
             stop_clock_and_add(t, "Computation Time");
 
             t = start_clock();

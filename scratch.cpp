@@ -1,3 +1,12 @@
+#include "15D_mdense_shift_striped.hpp"
+#include "25D_cannon_dense.hpp"
+#include "25D_cannon_sparse.hpp"
+#include "SpmatLocal.hpp"
+#include <string>
+#include "benchmark_dist.h"
+
+using namespace std;
+
 class ZeroProcess : public NonzeroDistribution {
 public:
     ZeroProcess(int M, int N) { 
@@ -62,4 +71,87 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
         cout << "SpMMA Fingerprint: " << spmmA_fingerprint << endl;
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
     } 
+}
+
+int main(int argc, char** argv) {
+    MPI_Init(&argc, &argv);
+    initialize_mpi_datatypes();
+
+    /*{
+        FlexibleGrid grid(4, 3, 2, 3);
+        grid.self_test();
+    }*/
+
+    string fname(argv[1]);
+
+    StandardKernel local_ops;
+
+    SpmatLocal S;
+    //S.loadTuples(false, 18, 30, fname);
+    S.loadTuples(true, -1, -1, fname);
+
+    /*Sparse25D_Cannon_Dense* d_ops
+        = new Sparse25D_Cannon_Dense(
+            &S,
+            atoi(argv[2]),
+            atoi(argv[3]),
+            &local_ops
+        );*/
+
+    /*Sparse15D_MDense_Shift_Striped* d_ops =
+            new Sparse15D_MDense_Shift_Striped(&S, 
+                atoi(argv[2]), 
+                atoi(argv[3]), 
+                1, 
+                &local_ops);*/
+
+    Sparse25D_Cannon_Sparse* d_ops
+        = new Sparse25D_Cannon_Sparse(
+            &S,
+            atoi(argv[2]),
+            atoi(argv[3]),
+            &local_ops
+        );
+
+    //cout << "Initialization complete from " << d_ops->proc_rank << endl;
+
+    verify_operation(S, d_ops);
+
+    //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
+
+    //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
+    //test_fusion(d_ops);
+
+    //test_15D(d_ops);
+
+    /*for(int R = 32; R < 256; R += 32) {
+        Sparse25D_Cannon_Sparse* d_ops
+            = new Sparse25D_Cannon_Sparse(
+                &S,
+                R,
+                atoi(argv[3]),
+                &local_ops
+            );
+        /*Sparse25D_Cannon_Dense* d_ops
+            = new Sparse25D_Cannon_Dense(
+                &S,
+                R, 
+                atoi(argv[3]),
+                &local_ops
+            );*/
+
+    /*
+        if(d_ops->proc_rank == 0) {
+            cout << "Created d_ops..." << endl;
+        }
+        Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
+        d_ops->reset_performance_timers();
+        x->run_cg(5);
+        d_ops->print_performance_statistics(); 
+        delete x;
+        delete d_ops;
+    }
+    */
+
+    MPI_Finalize();
 }
