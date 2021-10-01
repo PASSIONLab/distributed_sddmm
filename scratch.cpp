@@ -33,10 +33,12 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-    d_ops->initial_synchronize(&A, nullptr, nullptr);
+    //d_ops->initial_synchronize(&A, nullptr, nullptr);
+
+    d_ops->initial_synchronize(&A, &B, nullptr);
 
     //d_ops->print_nonzero_distribution(A, B);
-    //d_ops->sddmmA(A, B, S, result);
+    d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &A_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);

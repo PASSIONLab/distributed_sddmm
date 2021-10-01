@@ -82,6 +82,7 @@ size_t StandardKernel::sddmm_local(
         double value = 0.0;
         #pragma ivdep
         for(int k = 0; k < r; k++) {
+            cout << active->row_idx[i] << " " << Arow[k] << " " << Brow[k] << endl;
             value += Arow[k] * Brow[k];	
         }
         active->values[i] += value;

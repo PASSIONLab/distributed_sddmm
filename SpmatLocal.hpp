@@ -153,7 +153,7 @@ public:
 
 			// Copy over row indices
 			for(int i = 0; i < num_coords; i++) {
-				buffer[t].row_idx[i] = coords[i].value;
+				buffer[t].row_idx[i] = coords[i].r;
 			}
 
 			memcpy(buffer[t].values.data(), values, sizeof(double) * max(num_coords, 1));
