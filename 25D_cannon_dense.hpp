@@ -145,8 +145,8 @@ public:
         int dst = pMod(grid->rankInRow - grid->rankInCol, sqrtpc);
 
         sparse_shift = src;
-        S->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis[src], 0);
-        ST->shiftCoordinates(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0);
+        S->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_row_axis[src], 0, both);
+        ST->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_row_axis_tpose[src], 0, both);
 
         check_initialized(); 
     }
@@ -238,10 +238,10 @@ public:
                 int dst = pMod(grid->rankInRow + 1, sqrtpc); 
 
                 if(mode==k_sddmmA || mode==k_sddmmB) {
-                    choice->shiftCoordinates(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
+                    choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, coo);
                 }
                 else {
-                    choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72);
+                    choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, csr);
                 }
                 MPI_Barrier(MPI_COMM_WORLD);
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");

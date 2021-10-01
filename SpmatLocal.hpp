@@ -18,6 +18,8 @@ using namespace std;
 
 #define TAG_MULTIPLIER 10000
 
+typedef enum {csr, coo, both} ShiftMode;
+
 /**
  * Some notes about ParallelReadMM given a 2D grid:
  * - It re-indexes the local sparse matrices 
@@ -187,7 +189,7 @@ public:
 	 * Note: Input tag should be no greater than 10,000
 	 */
 	void shiftCSR(int src, int dst, MPI_Comm comm, int nnz_to_receive, int tag, 
-			bool shiftCSR) {
+			ShiftMode mode) {
 		CSRHandle* send = buffer + active;
 		CSRHandle* recv = buffer + 1 - active;
 
@@ -212,18 +214,17 @@ public:
 		MPI_Isend(send->values.data(), num_coords, MPI_DOUBLE, dst, tag * TAG_MULTIPLIER, comm, &vRequestSend);
 		MPI_Isend(send->col_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 1, comm, &cRequestSend);
 		
-		if(shiftCSR) {
+		if(mode == csr || mode == both) {
 			MPI_Isend(send->rowStart.data(), rows + 1, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &rRequestSend);
 		}
-		else {
-			MPI_Isend(send->row_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 2, comm, &cRequestSend);
+		if(mode == coo || mode == both) {
+			MPI_Isend(send->row_idx.data(), num_coords, MPI_LONG, dst, tag * TAG_MULTIPLIER + 3, comm, &cRequestSend);
 		}	
-
-		if(shiftCSR) {
+		if(mode == csr || mode == both) {
 			MPI_Irecv(recv->rowStart.data(), rows + 1, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &rRequestReceive);
 		}
-		else {
-			MPI_Irecv(recv->row_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 2, comm, &cRequestReceive);
+		if(mode == coo || mode == both) {
+			MPI_Irecv(recv->row_idx.data(), nnz_to_receive, MPI_LONG, src, tag * TAG_MULTIPLIER + 3, comm, &cRequestReceive);
 		}
 
 		MPI_Irecv(recv->values.data(), nnz_to_receive, MPI_DOUBLE, src, tag * TAG_MULTIPLIER, comm, &vRequestReceive);
@@ -238,7 +239,7 @@ public:
 		MPI_Wait(&rRequestSend, &stat);
 		MPI_Wait(&rRequestReceive, &stat);
 
-		num_coords = nnz_to_receive 
+		num_coords = nnz_to_receive;
 		active = 1 - active;
 	}
 
@@ -536,7 +537,7 @@ public:
 	void setCSRValues(VectorXd &values) {
 
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
-			memcpy(csr_blocks[i].getActive()->values, 	
+			memcpy(csr_blocks[i]->getActive()->values.data(), 	
 					values.data() + blockStarts[i], 
 					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
 		}
@@ -547,7 +548,7 @@ public:
 
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
 			memcpy(values.data() + blockStarts[i], 
-					csr_blocks[i].getActive()->values, 
+					csr_blocks[i]->getActive()->values.data(), 
 					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
 		}
 
@@ -555,10 +556,12 @@ public:
 	}
 
 	void setValuesConstant(double cval) {
-		#pragma omp parallel for collapse(2)
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
+
+			// This may be too slow, we maybe should optimize this...
+			#pragma omp parallel for
 			for(int j = 0; j < blockStarts[i+1] - blockStarts[i]; j++) {
-				csr_blocks[i].getActive()->values[j] = cval;
+				csr_blocks[i]->getActive()->values[j] = cval;
 			}
 		}
 	}
