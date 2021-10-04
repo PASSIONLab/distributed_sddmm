@@ -126,34 +126,5 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
 
-    /*for(int R = 32; R < 256; R += 32) {
-        Sparse25D_Cannon_Sparse* d_ops
-            = new Sparse25D_Cannon_Sparse(
-                &S,
-                R,
-                atoi(argv[3]),
-                &local_ops
-            );
-        /*Sparse25D_Cannon_Dense* d_ops
-            = new Sparse25D_Cannon_Dense(
-                &S,
-                R, 
-                atoi(argv[3]),
-                &local_ops
-            );*/
-
-    /*
-        if(d_ops->proc_rank == 0) {
-            cout << "Created d_ops..." << endl;
-        }
-        Distributed_ALS* x = new Distributed_ALS(d_ops, MPI_COMM_WORLD, true);
-        d_ops->reset_performance_timers();
-        x->run_cg(5);
-        d_ops->print_performance_statistics(); 
-        delete x;
-        delete d_ops;
-    }
-    */
-
     MPI_Finalize();
 }

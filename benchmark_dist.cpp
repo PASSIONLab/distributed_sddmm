@@ -83,7 +83,7 @@ void benchmark_algorithm(SpmatLocal* spmat,
             d_ops->spmmA(A, B, S);
         } 
 
-    } while(num_trials < 50);
+    } while(num_trials < 5);
     MPI_Barrier(MPI_COMM_WORLD);
 
     int rank;
