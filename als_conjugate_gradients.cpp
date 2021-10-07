@@ -20,7 +20,7 @@ void allreduceVector(VectorXd &vec, MPI_Comm comm) {
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
     double cg_residual_tol = 1e-8;
-    double nan_avoidance_constant = 1e-5;
+    double nan_avoidance_constant = 1e-8;
 
     MPI_Comm reduction_world;
     if(matrix_to_optimize == Amat) {
@@ -71,7 +71,8 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
             allreduceVector(bdot, reduction_world);
         }
 
-        bdot.array() += nan_avoidance_constant; 
+        bdot.array() += nan_avoidance_constant;
+        rsold.array() += nan_avoidance_constant;
         VectorXd alpha = rsold.cwiseQuotient(bdot);
 
         if(matrix_to_optimize == Amat) {
@@ -213,7 +214,7 @@ void Distributed_ALS::computeQueries(
         MatMode matrix_to_optimize,
         DenseMatrix &result) {
 
-    double lambda = 1e-8;
+    double lambda = 1e-4;
 
     result.setZero();
 

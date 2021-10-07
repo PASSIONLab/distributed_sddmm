@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
     StandardKernel local_ops;
 
     SpmatLocal S;
-    S.loadTuples(false, 10, 30, fname);
+    S.loadTuples(false, 15, 21, fname);
     //S.loadTuples(true, -1, -1, fname);
 
     /*Sparse25D_Cannon_Dense* d_ops
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     //verify_operation(S, d_ops);
 
     Distributed_ALS d_als(d_ops, MPI_COMM_WORLD, true) ;
-    d_als.run_cg(1);
+    d_als.run_cg(5);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 
