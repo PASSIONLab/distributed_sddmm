@@ -62,7 +62,7 @@ public:
     VectorXd ground_truth;
     VectorXd ground_truth_transpose;
 
-    Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artifical_groundtruth);
+    Distributed_ALS(Distributed_Sparse* d_ops, bool artifical_groundtruth);
 
     void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs);

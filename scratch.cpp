@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
 
     //verify_operation(S, d_ops);
 
-    Distributed_ALS d_als(d_ops, MPI_COMM_WORLD, true) ;
+    Distributed_ALS d_als(d_ops, true) ;
     d_als.run_cg(5);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);

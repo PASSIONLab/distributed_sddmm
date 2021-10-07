@@ -110,10 +110,10 @@ void initialize_dense_matrix(DenseMatrix &X, int R) {
     X /= R;
 }
 
-Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artificial_groundtruth) {
+Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_groundtruth) {
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_rank);
 
-    this->residual_reduction_world = residual_reduction_world;
+    this->residual_reduction_world = MPI_COMM_WORLD;
     this->A_R_split_world = d_ops->A_R_split_world;
     this->B_R_split_world = d_ops->B_R_split_world;
 
@@ -177,10 +177,6 @@ void Distributed_ALS::initializeEmbeddings() {
 
     initialize_dense_matrix(A, d_ops->R);
     initialize_dense_matrix(B, d_ops->R);
-    d_ops->dummyInitialize(A, Amat);
-    d_ops->dummyInitialize(B, Bmat);
-    //A /= d_ops->M * d_ops->R;
-    //B /= d_ops->N * d_ops->R;
 
     A *= 1.4;
     B /= 1.3;
@@ -201,9 +197,17 @@ void ALS_CG::run_cg(int n_alternating_steps) {
         cg_optimizer(Amat, 5);
         cg_optimizer(Bmat, 5);
 
-        residual = computeResidual();
+        if(i == n_alternating_steps - 1) {
+            residual = computeResidual();
+        }
+
         if(proc_rank == 0) {
-            cout << "Residual after step " << i << " : " << residual << endl;
+            if(i < n_alternating_steps - 1) {
+                cout << "Completed step " << i << endl;
+            }
+            else {
+                cout << "Residual after step " << i << " : " << residual << endl;
+            }
         }
     }
 }
@@ -214,7 +218,7 @@ void Distributed_ALS::computeQueries(
         MatMode matrix_to_optimize,
         DenseMatrix &result) {
 
-    double lambda = 1e-4;
+    double lambda = 1e-6;
 
     result.setZero();
 
@@ -233,13 +237,5 @@ void Distributed_ALS::computeQueries(
     }
 
     d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
-
-    if(matrix_to_optimize == Amat) {
-        //result += lambda * A;
-    }
-    else if(matrix_to_optimize == Bmat) { 
-        //result += lambda * B;
-    }
-
 }
 
