@@ -20,7 +20,7 @@ void allreduceVector(VectorXd &vec, MPI_Comm comm) {
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
     double cg_residual_tol = 1e-8;
-    double nan_avoidance_constant = 1e-16;
+    double nan_avoidance_constant = 1e-5;
 
     MPI_Comm reduction_world;
     if(matrix_to_optimize == Amat) {
@@ -39,13 +39,13 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         nrows = B.rows(); 
     }
 
-    DenseMatrix rhs(nrows, ncols);
+    DenseMatrix rhs(nrows, ncols); 
     DenseMatrix Mx(nrows, ncols);
     DenseMatrix Mp(nrows, ncols);
 
     rhs.setZero();
 
-    computeRHS(matrix_to_optimize, rhs);
+    computeRHS(matrix_to_optimize, rhs); 
     computeQueries(A, B, matrix_to_optimize, Mx);
 
     DenseMatrix r = rhs - Mx;
@@ -102,10 +102,6 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         p = r + scale_matrix_rows(coeffs, p);
         rsold = rsnew;
     }
-    //if (cg_iter == cg_max_iter) {
-    //    cout << "WARNING: Conjugate gradients did not converge to specified tolerance "
-    //        << "in max iteration count." << endl;
-    //}
 }
 
 void initialize_dense_matrix(DenseMatrix &X, int R) {
@@ -129,8 +125,8 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         initialize_dense_matrix(Agt, d_ops->R);
         initialize_dense_matrix(Bgt, d_ops->R);
 
-        d_ops->dummyInitialize(Agt, Amat);
-        d_ops->dummyInitialize(Bgt, Bmat);
+        //d_ops->dummyInitialize(Agt, Amat);
+        //d_ops->dummyInitialize(Bgt, Bmat);
         Agt /= d_ops->M * d_ops->R;
         Bgt /= d_ops->N * d_ops->R;
 
@@ -139,13 +135,17 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_re
         ground_truth = d_ops->like_S_values(0.0); 
 
         d_ops->initial_synchronize(&Agt, &Bgt, nullptr);
-        d_ops->sddmm(Agt, Bgt, ones, ground_truth); 
+        d_ops->sddmmA(Agt, Bgt, ones, ground_truth); 
+
+        ones = d_ops->like_ST_values(1.0);
+        ground_truth_transpose = d_ops->like_ST_values(0.0); 
+        d_ops->sddmmB(Agt, Bgt, ones, ground_truth_transpose);
     }
     else {
         // TODO: This is broken!! Need a better way to initialize
         // the ground truth 
         //ground_truth = d_ops->input_Svalues; 
-        d_ops->initial_synchronize(nullptr, nullptr, &ground_truth);
+        //d_ops->initial_synchronize(nullptr, nullptr, &ground_truth);
     }
 }
 
@@ -154,7 +154,7 @@ void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
         d_ops->spmmA(rhs, B, ground_truth);
     }
     else if(matrix_to_optimize == Bmat) {
-        d_ops->spmmB(A, rhs, ground_truth);
+        d_ops->spmmB(A, rhs, ground_truth_transpose);
     }
 } 
 
@@ -162,7 +162,7 @@ double Distributed_ALS::computeResidual() {
     VectorXd ones = d_ops->like_S_values(1.0);
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 
 
-    d_ops->sddmm(A, B, ones, sddmm_result);
+    d_ops->sddmmA(A, B, ones, sddmm_result);
 
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
@@ -174,12 +174,12 @@ void Distributed_ALS::initializeEmbeddings() {
     A = d_ops->like_A_matrix(1.0);
     B = d_ops->like_B_matrix(1.0);
 
-    //initialize_dense_matrix(A, d_ops->R);
-    //initialize_dense_matrix(B, d_ops->R);
+    initialize_dense_matrix(A, d_ops->R);
+    initialize_dense_matrix(B, d_ops->R);
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-    A /= d_ops->M * d_ops->R;
-    B /= d_ops->N * d_ops->R;
+    //A /= d_ops->M * d_ops->R;
+    //B /= d_ops->N * d_ops->R;
 
     A *= 1.4;
     B /= 1.3;
@@ -218,52 +218,27 @@ void Distributed_ALS::computeQueries(
     result.setZero();
 
     VectorXd sddmm_result;
-    VectorXd ones = d_ops->like_S_values(1.0);
+    VectorXd ones; 
 
-    if(! d_ops->fused) {
+    if(matrix_to_optimize == Amat) {
+        ones = d_ops->like_S_values(1.0);
         sddmm_result = d_ops->like_S_values(0.0);
-
-        d_ops->sddmm(A, B, ones, sddmm_result);
-
-        if(matrix_to_optimize == Amat) {
-            result = lambda * A;
-            d_ops->spmmA(result, B, sddmm_result);
-            //result += lambda * A;
-        }
-        else if(matrix_to_optimize == Bmat) {
-            result = lambda * B;
-            d_ops->spmmB(A, result, sddmm_result);
-            //result += lambda * B;
-        }
-
-        double sqnorm = sddmm_result.squaredNorm();
-        MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        if(proc_rank == 0) {
-            //cout << "Query fingerprint: " << sqnorm << endl; 
-        }
+        result = lambda * A;
     }
     else {
-        // If the local operation implements a fused kernel,
-        // there is no need to do an SDDMM first
-
-        if(matrix_to_optimize == Amat) {
-            ones = d_ops->like_S_values(1.0);
-            sddmm_result = d_ops->like_S_values(0.0);
-        }
-        else {
-            ones = d_ops->like_ST_values(1.0);
-            sddmm_result = d_ops->like_ST_values(0.0);
-        }
-
-        d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
-
-        if(matrix_to_optimize == Amat) {
-            result += lambda * A;
-        }
-        else if(matrix_to_optimize == Bmat) { 
-            result += lambda * B;
-        }
+        ones = d_ops->like_ST_values(1.0);
+        sddmm_result = d_ops->like_ST_values(0.0);
+        result = lambda * B;
     }
+
+    d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
+
+    if(matrix_to_optimize == Amat) {
+        //result += lambda * A;
+    }
+    else if(matrix_to_optimize == Bmat) { 
+        //result += lambda * B;
+    }
+
 }
 

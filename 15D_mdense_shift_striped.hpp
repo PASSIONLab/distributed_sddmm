@@ -144,14 +144,12 @@ public:
             MatMode mode) {
 
         if(fusionApproach == 1) {
-            if(mode == Amat) {
-                algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmA, true);
-                algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmA, false);
-            }
-            else if(mode == Bmat) {
-                algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmB, true);
-                algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmB, false);
-            }
+            Distributed_Sparse::fusedSpMM(localA, 
+                localB, 
+                Svalues, 
+                sddmm_buffer, 
+                result, 
+                mode);
             return;
         }
 

@@ -25,7 +25,7 @@ link_directories(
 
 add_executable(main main.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp) 
 add_executable(local_kernel_benchmark sparse_kernels.cpp local_kernel_benchmark.cpp common.cpp)
-add_executable(scratch scratch.cpp sparse_kernels.cpp common.cpp)
+add_executable(scratch scratch.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp)
 
 foreach(TARGET main local_kernel_benchmark scratch)
     target_compile_options(${TARGET} PRIVATE -O3 -march=knl -DMKL_ILP64  -m64  -I$ENV{MKLROOT}/include) 

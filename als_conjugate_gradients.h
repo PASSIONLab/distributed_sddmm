@@ -60,7 +60,7 @@ public:
 class Distributed_ALS : public ALS_CG {
 public:
     VectorXd ground_truth;
-    //VectorXd ground_truth_transpose;
+    VectorXd ground_truth_transpose;
 
     Distributed_ALS(Distributed_Sparse* d_ops, MPI_Comm residual_reduction_world, bool artifical_groundtruth);
 
