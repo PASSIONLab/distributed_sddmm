@@ -136,16 +136,16 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_grou
         ground_truth = d_ops->like_S_values(0.0); 
 
         // Initialization is random, but we should still do initial and final shifts 
-        d_ops->initial_shift(Agt, Bgt, k_sddmmA);
+        d_ops->initial_shift(&Agt, &Bgt, k_sddmmA);
         d_ops->sddmmA(Agt, Bgt, ones, ground_truth); 
-        d_ops->de_shift(Agt, Bgt, k_sddmmA);
+        d_ops->de_shift(&Agt, &Bgt, k_sddmmA);
 
         ones = d_ops->like_ST_values(1.0);
         ground_truth_transpose = d_ops->like_ST_values(0.0); 
 
-        d_ops->initial_shift(Agt, Bgt, k_sddmmB);
+        d_ops->initial_shift(&Agt, &Bgt, k_sddmmB);
         d_ops->sddmmB(Agt, Bgt, ones, ground_truth_transpose);
-        d_ops->de_shift(Agt, Bgt, k_sddmmB);
+        d_ops->de_shift(&Agt, &Bgt, k_sddmmB);
 
     }
     else {
@@ -157,15 +157,16 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_grou
 
 void Distributed_ALS::computeRHS(MatMode matrix_to_optimize, DenseMatrix &rhs) {
     if(matrix_to_optimize == Amat) {
-        d_ops->initial_shift(Agt, Bgt, k_spmmA);
+        // Can potentially optimize away the initial shift here! 
+        d_ops->initial_shift(&rhs, &B, k_spmmA); 
         d_ops->spmmA(rhs, B, ground_truth);
-        d_ops->de_shift(Agt, Bgt, k_spmmB);
+        d_ops->de_shift(&rhs, &B, k_spmmA); 
 
     }
     else if(matrix_to_optimize == Bmat) {
-        d_ops->initial_shift(Agt, Bgt, k_spmmB);
+        d_ops->initial_shift(&A, &rhs, k_spmmB); 
         d_ops->spmmB(A, rhs, ground_truth_transpose);
-        d_ops->de_shift(Agt, Bgt, k_spmmB);
+        d_ops->de_shift(&A, &rhs, k_spmmB);
     }
 } 
 
@@ -190,8 +191,6 @@ void Distributed_ALS::initializeEmbeddings() {
 
     A *= 1.4;
     B /= 1.3;
-
-    d_ops->initial_synchronize(&A, &B, nullptr);
 }
 
 void ALS_CG::run_cg(int n_alternating_steps) {
@@ -249,8 +248,14 @@ void Distributed_ALS::computeQueries(
         mode = k_sddmmB;
     }
 
-    d_ops->initial_shift(A, B, mode);
+    d_ops->initial_shift(&A, &B, mode);
     d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
-    d_ops->de_shift(A, B, mode);
+
+    if(matrix_to_optimize == Amat){
+        d_ops->de_shift(&result, &B, mode);
+    }
+    else {
+        d_ops->de_shift(&A, &result, mode);
+    }
 }
 

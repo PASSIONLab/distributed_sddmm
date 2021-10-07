@@ -35,7 +35,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
 
-    d_ops->initial_shift(&A, &B, nullptr, k_sddmmA);
+    d_ops->initial_shift(&A, &B, k_sddmmA);
     d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
@@ -46,7 +46,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-    d_ops->initial_shift(&A, &B, nullptr, k_spmmA);
+    d_ops->initial_shift(&A, &B, k_spmmA);
     d_ops->spmmA(A, B, S);
 
     double spmmA_fingerprint = A.squaredNorm();
@@ -55,7 +55,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
 
-    d_ops->initial_shift(&A, &B, nullptr, k_spmmB);
+    d_ops->initial_shift(&A, &B, k_spmmB);
     d_ops->spmmB(A, B, ST);
 
     double spmmB_fingerprint = B.squaredNorm(); 

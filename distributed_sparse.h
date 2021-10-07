@@ -224,9 +224,9 @@ public:
     /*
      * If the input buffers need to be shifted / transposed 
      */
-    virtual void initial_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode op) = 0;
+    virtual void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode op) = 0;
 
-    virtual void de_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode op) = 0;
+    virtual void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode op) = 0;
 
     /*
      * The five functions below are just convenience functions. 

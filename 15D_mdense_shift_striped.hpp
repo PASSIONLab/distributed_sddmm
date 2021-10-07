@@ -131,15 +131,14 @@ public:
         check_initialized();
     }
  
-    void initial_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+    void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         // Empty on purpose
     }
 
 
-    void de_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+    void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         // Empty on purpose
     }
-
 
     void fusedSpMM(DenseMatrix &localA, 
             DenseMatrix &localB, 

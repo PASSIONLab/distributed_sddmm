@@ -134,7 +134,7 @@ public:
         check_initialized();
     }
 
-    void initial_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+    void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         // TODO: NEED TO FIX THIS!!!
 
         shiftDenseMatrix(*localA, grid->row_world, 
@@ -144,8 +144,8 @@ public:
                 pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
     }
 
-    void de_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
-        // Empty on purpose
+    void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
+        // Empty, but needs to be fixed!! 
     }
 
     void algorithm(     DenseMatrix &localA, 
