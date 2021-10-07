@@ -131,8 +131,13 @@ public:
         check_initialized();
     }
  
-    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        // Empty method, no initialization needed 
+    void initial_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+        // Empty on purpose
+    }
+
+
+    void de_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+        // Empty on purpose
     }
 
 
@@ -319,5 +324,7 @@ public:
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCSRValues());
             stop_clock_and_add(t, "Computation Time"); 
         }
+
+        // TODO: If the fusion mode is 1, need to add a terminal reduction! 
     }
 };

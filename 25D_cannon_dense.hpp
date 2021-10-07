@@ -153,15 +153,27 @@ public:
         check_initialized(); 
     }
 
-    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) {
-        if(localA != nullptr) {
+
+    void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
+        if(mode == k_sddmmA || mode == k_spmmA) {
             shiftDenseMatrix(*localA, grid->col_world, 
                     pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 1);
         }
-
-        if(localB != nullptr) {
+        else if(mode == k_sddmmB || mode == k_spmmB) {
             shiftDenseMatrix(*localB, grid->col_world, 
                     pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+        }
+    }
+
+
+    void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
+        if(mode == k_sddmmA || mode == k_spmmA) {
+            shiftDenseMatrix(localA, grid->col_world, 
+                    pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 1);
+        }
+        else if(mode == k_sddmmB || mode == k_spmmB) {
+            shiftDenseMatrix(localB, grid->col_world, 
+                    pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 2);
         }
     }
 

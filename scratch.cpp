@@ -34,11 +34,8 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-    //d_ops->initial_synchronize(&A, nullptr, nullptr);
 
-    d_ops->initial_synchronize(&A, nullptr, nullptr);
-
-    //d_ops->print_nonzero_distribution(A, B);
+    d_ops->initial_shift(&A, &B, nullptr, k_sddmmA);
     d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
@@ -49,7 +46,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-    d_ops->initial_synchronize(&A, nullptr, nullptr);
+    d_ops->initial_shift(&A, &B, nullptr, k_spmmA);
     d_ops->spmmA(A, B, S);
 
     double spmmA_fingerprint = A.squaredNorm();
@@ -58,15 +55,13 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
 
-    d_ops->initial_synchronize(nullptr, &B, nullptr);
+    d_ops->initial_shift(&A, &B, nullptr, k_spmmB);
     d_ops->spmmB(A, B, ST);
 
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     DenseMatrix fused_result = d_ops->like_A_matrix(0.0);
-
-    //d_ops->print_nonzero_distribution(A, B); 
 
     if(proc_rank == 0) {
         cout << "A Fingerprint: " << A_fingerprint << endl;

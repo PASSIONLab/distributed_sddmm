@@ -134,19 +134,18 @@ public:
         check_initialized();
     }
 
-    void initial_synchronize(DenseMatrix *localA, DenseMatrix *localB, VectorXd *SValues) { 
-        // TODO: This should really be more general and tell the user that something is up 
-        if(sqrtpc > 1) {
-            if(localA != nullptr) {
-                shiftDenseMatrix(*localA, grid->row_world, 
-                        pMod(grid->rankInRow - grid->rankInCol, sqrtpc), 1); 
+    void initial_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+        // TODO: NEED TO FIX THIS!!!
 
-            }
-            if(localB != nullptr) {
-                shiftDenseMatrix(*localB, grid->col_world, 
-                        pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
-            }
-        }
+        shiftDenseMatrix(*localA, grid->row_world, 
+                pMod(grid->rankInRow - grid->rankInCol, sqrtpc), 1); 
+
+        shiftDenseMatrix(*localB, grid->col_world, 
+                pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+    }
+
+    void de_shift(DenseMatrix &localA, DenseMatrix &localB, KernelMode mode) {
+        // Empty on purpose
     }
 
     void algorithm(     DenseMatrix &localA, 
