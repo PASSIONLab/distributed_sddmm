@@ -74,7 +74,7 @@ size_t StandardKernel::sddmm_local(
 
     int r = A.cols();
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int i = 0; i < num_coords; i++) {
         double* Arow = Aptr + r * active->row_idx[i];
         double* Brow = Bptr + r * active->col_idx[i];
@@ -82,7 +82,7 @@ size_t StandardKernel::sddmm_local(
         double value = 0.0;
         #pragma ivdep
         for(int k = 0; k < r; k++) {
-            value += Arow[k] * Brow[k];	
+            value += Arow[k] * Brow[k];
         }
         active->values[i] += value;
     }

@@ -34,7 +34,6 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
-
     d_ops->initial_shift(&A, &B, k_sddmmA);
     d_ops->sddmmA(A, B, S, result);
 
@@ -88,23 +87,24 @@ int main(int argc, char** argv) {
     //S.loadTuples(false, 15, 21, fname);
     S.loadTuples(true, -1, -1, fname);
 
-    /*Sparse25D_Cannon_Dense* d_ops
+    /*
+    Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );*/
+        );
+    */
 
-    /*
-    Sparse15D_MDense_Shift_Striped* d_ops =
+    
+    /*Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);
-    */
-
+                &local_ops);*/
+    
     Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
             &S,
@@ -115,10 +115,10 @@ int main(int argc, char** argv) {
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
-    verify_operation(S, d_ops);
+    //verify_operation(S, d_ops);
 
     Distributed_ALS d_als(d_ops, true) ;
-    //d_als.run_cg(5);
+    d_als.run_cg(5);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
 

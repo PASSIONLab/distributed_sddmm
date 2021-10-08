@@ -303,7 +303,6 @@ public:
     /*
      * Convenience functions. 
      */
-
     void shiftDenseMatrix(DenseMatrix &mat, MPI_Comm world, int send_dst, int tag) {
         MPI_Status stat;
         DenseMatrix recvBuffer(mat.rows(), mat.cols());

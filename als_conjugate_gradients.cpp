@@ -259,10 +259,6 @@ void Distributed_ALS::computeQueries(
         d_ops->fusedSpMM(A, result, ones, sddmm_result, matrix_to_optimize); 
         d_ops->de_shift(&A, &result, mode);
 
-        //if(sddmm_result.size() > 0) {
-        //    cout << "SDDMM Result: " << sddmm_result << endl; 
-        //}
-
         result += lambda * B;
     }
 }

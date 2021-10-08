@@ -94,7 +94,7 @@ public:
         localArows = divideAndRoundUp(this->M, sqrtpc);
         localBrows = divideAndRoundUp(this->N, sqrtpc);
 
-        int shift = pMod(grid->j - grid->i, sqrtpc);
+        int shift = pMod(grid->j + grid->i, sqrtpc); 
 
         // Define submatrix boundaries 
         aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * shift + grid->k * localAcols, localArows, localAcols);
@@ -122,8 +122,8 @@ public:
         }
 
         for(int i = 0; i < ST->coords.size(); i++) {
-            ST->coords[i].r %= localArows;
-            ST->coords[i].c %= localBrows;
+            ST->coords[i].r %= localBrows;
+            ST->coords[i].c %= localArows;
         }
 
         // Commit to CSR format, then locally transpose ST
@@ -131,7 +131,7 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
-	    ST->initializeCSRBlocks(localArows, localBrows, -1, false);
+	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
 
         check_initialized();
     }
@@ -204,7 +204,7 @@ public:
         choice->setCSRValues(accumulation_buffer); 
         stop_clock_and_add(t, "Computation Time");
 
-        KernelMode temp;
+        KernelMode temp = mode;
         if(mode == k_sddmmB) {
             temp = k_sddmmA;
         }
@@ -221,6 +221,7 @@ public:
                 *Arole,
                 *Brole,
                 0);
+
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
