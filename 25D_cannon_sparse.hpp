@@ -94,9 +94,11 @@ public:
         localArows = divideAndRoundUp(this->M, sqrtpc);
         localBrows = divideAndRoundUp(this->N, sqrtpc);
 
+        int shift = pMod(grid->j - grid->i, sqrtpc);
+
         // Define submatrix boundaries 
-        aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * grid->j + grid->k * localAcols, localArows, localAcols);
-        bSubmatrices.emplace_back(localBrows * grid->j, localBcols * c * grid->i + grid->k * localBcols, localBrows, localBcols);
+        aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * shift + grid->k * localAcols, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * grid->i, localBcols * c * shift + grid->k * localBcols, localBrows, localBcols);
 
         /* Distribute the nonzeros, storing them initially on the
          * bottom face of the cuboid and then broadcasting.  
@@ -104,7 +106,7 @@ public:
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
+        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, true, false));
 
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);
@@ -129,23 +131,30 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
-	    ST->initializeCSRBlocks(localArows, localBrows, -1, true);
+	    ST->initializeCSRBlocks(localArows, localBrows, -1, false);
 
         check_initialized();
     }
 
-    void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
-        // TODO: NEED TO FIX THIS!!!
+    void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) { 
+        int tpose_dest = grid->get_global_rank(grid->j, grid->i, grid->k); 
+        if(mode == k_sddmmA || mode == k_spmmA) {
+            shiftDenseMatrix(*localB, MPI_COMM_WORLD, 
+                    tpose_dest, 1);
+        }
+        else if(mode == k_sddmmB || mode == k_spmmB) {
+            shiftDenseMatrix(*localA, MPI_COMM_WORLD, 
+                    tpose_dest, 1);
+        }
 
-        shiftDenseMatrix(*localA, grid->row_world, 
-                pMod(grid->rankInRow - grid->rankInCol, sqrtpc), 1); 
-
-        shiftDenseMatrix(*localB, grid->col_world, 
-                pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+        //shiftDenseMatrix(*localA, grid->row_world, 
+        //        pMod(grid->rankInRow - grid->rankInCol, sqrtpc), 1); 
+        //shiftDenseMatrix(*localB, grid->col_world, 
+        //        pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
     }
 
     void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
-        // Empty, but needs to be fixed!! 
+        initial_shift(localA, localB, mode); 
     }
 
     void algorithm(     DenseMatrix &localA, 
@@ -157,13 +166,19 @@ public:
                         ) {
         SpmatLocal* choice;
 
+        DenseMatrix *Arole, *Brole;
+
         if(mode == k_spmmA || mode == k_sddmmA) {
             assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
+            Arole = &localA;
+            Brole = &localB;
         } 
         else if(mode == k_spmmB || mode == k_sddmmB) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
-            choice = ST.get(); 
+            choice = ST.get();
+            Arole = &localB;
+            Brole = &localA;
         }
 
         int nnz_processed = 0;
@@ -189,21 +204,30 @@ public:
         choice->setCSRValues(accumulation_buffer); 
         stop_clock_and_add(t, "Computation Time");
 
+        KernelMode temp;
+        if(mode == k_sddmmB) {
+            temp = k_sddmmA;
+        }
+        if(mode == k_spmmB){
+            temp = k_spmmA;
+        }
+
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
+
             nnz_processed += kernel->triple_function(
-                mode, 
+                temp, 
                 *choice,
-                localA,
-                localB,
+                *Arole,
+                *Brole,
                 0);
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {
                 t = start_clock();
-                shiftDenseMatrix(localA, grid->row_world, 
+                shiftDenseMatrix(*Arole, grid->row_world, 
                         pMod(grid->rankInRow + 1, sqrtpc), 1);
-                shiftDenseMatrix(localB, grid->col_world, 
+                shiftDenseMatrix(*Brole, grid->col_world, 
                         pMod(grid->rankInCol + 1, sqrtpc), 2);
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
