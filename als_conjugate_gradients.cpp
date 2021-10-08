@@ -126,14 +126,14 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_grou
         initialize_dense_matrix(Agt, d_ops->R);
         initialize_dense_matrix(Bgt, d_ops->R);
 
-        //d_ops->dummyInitialize(Agt, Amat);
-        //d_ops->dummyInitialize(Bgt, Bmat);
+        d_ops->dummyInitialize(Agt, Amat);
+        d_ops->dummyInitialize(Bgt, Bmat);
         Agt /= d_ops->M * d_ops->R;
         Bgt /= d_ops->N * d_ops->R;
 
         // Compute a ground truth using an SDDMM, setting all sparse values to 1 
         VectorXd ones = d_ops->like_S_values(1.0);
-        ground_truth = d_ops->like_S_values(0.0); 
+        ground_truth = d_ops->like_S_values(0.0);
 
         // Initialization is random, but we should still do initial and final shifts 
         d_ops->initial_shift(&Agt, &Bgt, k_sddmmA);
@@ -146,7 +146,6 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_grou
         d_ops->initial_shift(&Agt, &Bgt, k_sddmmB);
         d_ops->sddmmB(Agt, Bgt, ones, ground_truth_transpose);
         d_ops->de_shift(&Agt, &Bgt, k_sddmmB);
-
     }
     else {
         // TODO: This is broken!! Need a better way to initialize
@@ -174,7 +173,9 @@ double Distributed_ALS::computeResidual() {
     VectorXd ones = d_ops->like_S_values(1.0);
     VectorXd sddmm_result = d_ops->like_S_values(0.0); 
 
+    d_ops->initial_shift(&A, &B, k_sddmmA); 
     d_ops->sddmmA(A, B, ones, sddmm_result);
+    d_ops->de_shift(&A, &B, k_sddmmA); 
 
     double sqnorm = (sddmm_result - ground_truth).squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &sqnorm, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
@@ -188,6 +189,9 @@ void Distributed_ALS::initializeEmbeddings() {
 
     initialize_dense_matrix(A, d_ops->R);
     initialize_dense_matrix(B, d_ops->R);
+
+    d_ops->dummyInitialize(A, Amat);
+    d_ops->dummyInitialize(B, Bmat);
 
     A *= 1.4;
     B /= 1.3;
@@ -238,24 +242,29 @@ void Distributed_ALS::computeQueries(
     if(matrix_to_optimize == Amat) {
         ones = d_ops->like_S_values(1.0);
         sddmm_result = d_ops->like_S_values(0.0);
-        result = lambda * A;
         mode = k_sddmmA;
     }
     else {
         ones = d_ops->like_ST_values(1.0);
         sddmm_result = d_ops->like_ST_values(0.0);
-        result = lambda * B;
         mode = k_sddmmB;
     }
 
     d_ops->initial_shift(&A, &B, mode);
-    d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize);
+    d_ops->fusedSpMM(A, B, ones, sddmm_result, result, matrix_to_optimize); 
+    d_ops->de_shift(&A, &B, mode);
+
+    if(sddmm_result.size() > 0) {
+        cout << "SDDMM Result: " << sddmm_result << endl;
+    }
 
     if(matrix_to_optimize == Amat){
         d_ops->de_shift(&result, &B, mode);
+        result += lambda * A;
     }
     else {
         d_ops->de_shift(&A, &result, mode);
+        result += lambda * B;
     }
 }
 

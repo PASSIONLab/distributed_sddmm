@@ -156,24 +156,32 @@ public:
 
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         if(mode == k_sddmmA || mode == k_spmmA) {
-            shiftDenseMatrix(*localA, grid->col_world, 
-                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 1);
+            if(localA != nullptr) {
+                shiftDenseMatrix(*localA, grid->col_world, 
+                        pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 1);
+            }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
-            shiftDenseMatrix(*localB, grid->col_world, 
-                    pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+            if(localB != nullptr) {
+                shiftDenseMatrix(*localB, grid->col_world, 
+                        pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+            }
         }
     }
 
 
     void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         if(mode == k_sddmmA || mode == k_spmmA) {
-            shiftDenseMatrix(*localA, grid->col_world, 
-                    pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 1);
+            if(localA != nullptr) {
+                shiftDenseMatrix(*localA, grid->col_world, 
+                        pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 1);
+            }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
-            shiftDenseMatrix(*localB, grid->col_world, 
-                    pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 2);
+            if(localB != nullptr) {
+                shiftDenseMatrix(*localB, grid->col_world, 
+                        pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 2);
+            }
         }
     }
 
