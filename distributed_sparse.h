@@ -233,10 +233,12 @@ public:
      */
 
     void spmmA(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        localA.setZero();
         algorithm(localA, localB, SValues, nullptr, k_spmmA, true);
     }
 
     void spmmB(DenseMatrix &localA, DenseMatrix &localB, VectorXd &SValues) {
+        localB.setZero();
         algorithm(localA, localB, SValues, nullptr, k_spmmB, true);
     }
 
@@ -250,22 +252,23 @@ public:
 
     /*
      * The user is responsible for any initial and
-     * final shifts under this strategy (fairness in benchmarking) 
+     * final shifts under this strategy (fairness in benchmarking).
      */
     virtual void fusedSpMM(DenseMatrix &localA, 
             DenseMatrix &localB, 
             VectorXd &Svalues, 
             VectorXd &sddmm_buffer, 
-            DenseMatrix &result, 
             MatMode mode) {
 
         if(mode == Amat) {
             algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmA, true);
-            algorithm(result, localB, sddmm_buffer, nullptr, k_spmmA, false);
+            localA.setZero();
+            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmA, false);
         }
         else if(mode == Bmat) {
             algorithm(localA, localB, Svalues, &sddmm_buffer, k_sddmmB, true);
-            algorithm(localA, result, sddmm_buffer, nullptr, k_spmmB, false);
+            localB.setZero();
+            algorithm(localA, localB, sddmm_buffer, nullptr, k_spmmB, false);
         }
     }
 

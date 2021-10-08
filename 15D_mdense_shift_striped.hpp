@@ -143,16 +143,14 @@ public:
     void fusedSpMM(DenseMatrix &localA, 
             DenseMatrix &localB, 
             VectorXd &Svalues, 
-            VectorXd &sddmm_buffer, 
-            DenseMatrix &result, 
+            VectorXd &sddmm_buffer,
             MatMode mode) {
 
         if(fusionApproach == 1) {
             Distributed_Sparse::fusedSpMM(localA, 
                 localB, 
                 Svalues, 
-                sddmm_buffer, 
-                result, 
+                sddmm_buffer,
                 mode);
             return;
         }
@@ -161,14 +159,12 @@ public:
         SpmatLocal* choice;
 
         if(mode == Amat) {
-            assert(localA.rows() == result.rows() && localA.cols() == result.cols());
             assert(Svalues.size() == S->coords.size());
             Arole = &localA;
             Brole = &localB;
             choice = S.get();
         } 
         else if(mode == Bmat) {
-            assert(localB.rows() == result.rows() && localB.cols() == result.cols());
             assert(Svalues.size() == ST->coords.size());
             Arole = &localB;
             Brole = &localA;
@@ -225,7 +221,7 @@ public:
 
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
-                result.data(), recvCounts.data(),
+                Arole->data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
 

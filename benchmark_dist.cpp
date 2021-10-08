@@ -62,7 +62,6 @@ void benchmark_algorithm(SpmatLocal* spmat,
 
     VectorXd S = d_ops->like_S_values(1.0); 
     VectorXd sddmm_result = d_ops->like_S_values(0.0);
-    DenseMatrix fused_result = d_ops->like_A_matrix(0.0); 
 
     d_ops->reset_performance_timers();
     my_timer_t t = start_clock();
@@ -75,7 +74,6 @@ void benchmark_algorithm(SpmatLocal* spmat,
                     B, 
                     S, 
                     sddmm_result, 
-                    fused_result, 
                     Amat);
         }
         else {
