@@ -76,8 +76,8 @@ public:
 
         grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
 
-        A_R_split_world = grid->rowfiber_slice; 
-        B_R_split_world = grid->rowfiber_slice; 
+        A_R_split_world = grid->colfiber_slice; 
+        B_R_split_world = grid->colfiber_slice; 
 
         localAcols = R / (sqrtpc * c);
         localBcols = R / (sqrtpc * c);
@@ -104,9 +104,10 @@ public:
          * bottom face of the cuboid and then broadcasting.  
          */
         Floor2D nonzero_dist(M, N, sqrtpc, c, grid);
+        Floor2D transpose_dist(N, M, sqrtpc, c, grid);
 
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
-        ST.reset(S_input->redistribute_nonzeros(&nonzero_dist, true, false));
+        ST.reset(S_input->redistribute_nonzeros(&transpose_dist, true, false));
 
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);

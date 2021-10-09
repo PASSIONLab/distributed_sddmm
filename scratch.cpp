@@ -35,6 +35,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
     d_ops->initial_shift(&A, &B, k_sddmmA);
+
     d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
@@ -60,8 +61,6 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     double spmmB_fingerprint = B.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    DenseMatrix fused_result = d_ops->like_A_matrix(0.0);
-
     if(proc_rank == 0) {
         cout << "A Fingerprint: " << A_fingerprint << endl;
         cout << "SDDMM Fingerprint: " << sddmm_fingerprint << endl;
@@ -84,7 +83,7 @@ int main(int argc, char** argv) {
     StandardKernel local_ops;
 
     SpmatLocal S;
-    //S.loadTuples(false, 15, 21, fname);
+    //S.loadTuples(false, 4, 4, fname);
     S.loadTuples(true, -1, -1, fname);
 
     /*
@@ -97,32 +96,34 @@ int main(int argc, char** argv) {
         );
     */
 
-    
-    /*Sparse15D_MDense_Shift_Striped* d_ops =
+    Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);*/
-    
-    Sparse25D_Cannon_Sparse* d_ops
+                &local_ops);
+
+
+    /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
+        );*/
+
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
-    //verify_operation(S, d_ops);
+    verify_operation(S, d_ops);
+
+    srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
     Distributed_ALS d_als(d_ops, true) ;
     d_als.run_cg(5);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
-
-    //srand((unsigned int) time(0) + d_ops->proc_rank + 2);
+ 
     //test_fusion(d_ops);
 
     //test_15D(d_ops);

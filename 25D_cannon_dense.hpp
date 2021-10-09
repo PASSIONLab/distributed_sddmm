@@ -242,11 +242,12 @@ public:
         for(int i = 0; i < sqrtpc; i++) {
             auto t = start_clock();
             kernel->triple_function(
-                mode == k_spmmA ? k_spmmB : mode,
+                mode == k_spmmA ? k_spmmB : mode, // Need to account for SDDMMB here!
                 *choice,
                 accumulation_buffer,
                 *Brole,
                 0);
+
             stop_clock_and_add(t, "Computation Time");
 
             if(sqrtpc > 1) {

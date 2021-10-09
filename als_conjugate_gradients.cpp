@@ -126,8 +126,8 @@ Distributed_ALS::Distributed_ALS(Distributed_Sparse* d_ops, bool artificial_grou
         initialize_dense_matrix(Agt, d_ops->R);
         initialize_dense_matrix(Bgt, d_ops->R);
 
-        d_ops->dummyInitialize(Agt, Amat);
-        d_ops->dummyInitialize(Bgt, Bmat);
+        //d_ops->dummyInitialize(Agt, Amat);
+        //d_ops->dummyInitialize(Bgt, Bmat);
         Agt /= d_ops->M * d_ops->R;
         Bgt /= d_ops->N * d_ops->R;
 
@@ -190,8 +190,8 @@ void Distributed_ALS::initializeEmbeddings() {
     initialize_dense_matrix(A, d_ops->R);
     initialize_dense_matrix(B, d_ops->R);
 
-    d_ops->dummyInitialize(A, Amat);
-    d_ops->dummyInitialize(B, Bmat);
+    //d_ops->dummyInitialize(A, Amat);
+    //d_ops->dummyInitialize(B, Bmat);
 
     A *= 1.4;
     B /= 1.3;
