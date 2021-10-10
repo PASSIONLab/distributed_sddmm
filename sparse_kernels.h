@@ -83,7 +83,7 @@ public:
  */
 class StandardKernel : public KernelImplementation {
 public:
-    size_t sddmm_local(
+    virtual size_t sddmm_local(
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,

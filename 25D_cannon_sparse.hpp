@@ -139,12 +139,16 @@ public:
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) { 
         int tpose_dest = grid->get_global_rank(grid->j, grid->i, grid->k); 
         if(mode == k_sddmmA || mode == k_spmmA) {
-            shiftDenseMatrix(*localB, MPI_COMM_WORLD, 
-                    tpose_dest, 1);
+            if(localB != nullptr) {
+                shiftDenseMatrix(*localB, MPI_COMM_WORLD, 
+                        tpose_dest, 1);
+            }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
-            shiftDenseMatrix(*localA, MPI_COMM_WORLD, 
-                    tpose_dest, 1);
+            if(localA != nullptr) {
+                shiftDenseMatrix(*localA, MPI_COMM_WORLD, 
+                        tpose_dest, 1);
+            }
         }
 
         //shiftDenseMatrix(*localA, grid->row_world, 
