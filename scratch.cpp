@@ -116,25 +116,6 @@ int main(int argc, char** argv) {
 
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
-
-    json j2 = {
-        {"pi", 3.141},
-        {"happy", true},
-        {"name", "Niels"},
-        {"nothing", nullptr},
-        {"answer", {
-            {"everything", 42}
-        }},
-        {"list", {1, 0, 2}},
-        {"object", {
-            {"currency", "USD"},
-            {"value", 42.80}
-        }}
-    };
-
-    cout << "Testing: " << endl;
-    cout << j2 << endl;
-
     //verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);

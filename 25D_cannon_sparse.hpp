@@ -220,7 +220,9 @@ public:
                 *choice,
                 *Arole,
                 *Brole,
-                0);
+                0,
+                pMod(grid->i + grid->j + i, sqrtpc) * localAcols
+                );
 
             stop_clock_and_add(t, "Computation Time");
 

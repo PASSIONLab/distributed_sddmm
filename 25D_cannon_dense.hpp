@@ -245,7 +245,9 @@ public:
                 *choice,
                 accumulation_buffer,
                 *Brole,
-                0);
+                0,
+                localAcols * grid->j 
+                );
 
             stop_clock_and_add(t, "Computation Time");
 

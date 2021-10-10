@@ -20,7 +20,9 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        int block) = 0;
+        int block,
+        int offset 
+        ) = 0;
 
     /*
     * S is m x n
@@ -42,7 +44,9 @@ public:
             SpmatLocal &S,
             DenseMatrix &localA,
             DenseMatrix &localB,
-            int block) {
+            int block,
+            int offset 
+            ) {
         
         size_t nnz_processed = 0;
         if(mode == k_sddmmA || mode == k_sddmmB) {
@@ -50,7 +54,9 @@ public:
                 S,
                 localA,
                 localB,
-                block);
+                block,
+                offset 
+                );
         }
         else if(mode == k_spmmA) { 
             nnz_processed += spmm_local(
@@ -81,7 +87,8 @@ public:
         SpmatLocal &S,
         DenseMatrix &A,
         DenseMatrix &B,
-        int block);
+        int block,
+        int offset);
 
     size_t spmm_local(
         SpmatLocal &S,

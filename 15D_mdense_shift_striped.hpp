@@ -192,7 +192,8 @@ public:
                 *choice,
                 broadcast_buffer,
                 *Brole,
-                block_id);
+                block_id,
+                0);
 
             // TODO: Slightly broken! We need to optimize the
             // copy operation between these two kernels
@@ -202,7 +203,8 @@ public:
                 *choice,
                 accumulation_buffer,
                 *Brole,
-                block_id);
+                block_id,
+                0);
 
             stop_clock_and_add(t, "Computation Time");
 
@@ -304,7 +306,8 @@ public:
                 *choice,
                 accumulation_buffer,
                 *Brole,
-                block_id);
+                block_id,
+                0);
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();

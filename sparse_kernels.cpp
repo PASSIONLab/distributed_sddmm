@@ -52,7 +52,9 @@ size_t StandardKernel::sddmm_local(
     SpmatLocal &S, 
     DenseMatrix &A,
     DenseMatrix &B,
-    int block) {
+    int block,
+    int offset
+    ) {
 
     assert(A.cols() == B.cols());
 
