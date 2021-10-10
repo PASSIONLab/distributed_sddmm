@@ -88,6 +88,8 @@ public:
         DenseMatrix A = buffers[i] * layers[i].wMats[j];
         DenseMatrix B = A; 
         d_ops->de_shift(&B, nullptr, k_spmmA);
+
+        // SDDMM phase
         d_ops->algorithm(A, B, Svalues, &sddmm_buffer, k_sddmmA, true);
         A.setZero();
 
@@ -96,8 +98,10 @@ public:
 
         // TODO: Normalize the rows 
 
-
+        // SpMM phase
         d_ops->algorithm(A, B, sddmm_buffer, nullptr, k_spmmA, false);
+
+        // Applies the standard ReLU function 
         buffers[i+1].middleCols(j * A.cols(), A.cols()) = A.array().max(0);
     }
 
