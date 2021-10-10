@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
 
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
-    //verify_operation(S, d_ops);
+    verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
     // Input features, features per head, output features
     layers.emplace_back(256, 256, 1);
     layers.emplace_back(256, 256, 1);
-    GAT gnn(layers, &d_ops);
+    GAT gnn(layers, d_ops);
     gnn.forwardPass();
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);

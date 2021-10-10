@@ -54,7 +54,7 @@ public:
 
     DenseMatrix accumulation_buffer;
 
-    Sparse25D_Cannon_Dense(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
+    Sparse25D_Cannon_Dense(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
 
@@ -152,6 +152,9 @@ public:
             cout << "Error, R must be divisible by sqrt(p) / c!" << endl;
             exit(1);
         }
+
+        aSubmatrices.clear();
+        bSubmatrices.clear();
 
         // Define submatrix boundaries 
         aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);

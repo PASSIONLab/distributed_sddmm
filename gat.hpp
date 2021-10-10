@@ -51,7 +51,8 @@ public:
 
     Distributed_Sparse* d_ops;
     vector<GATLayer> layers;
-    vector<DenseMatrix> buffers; 
+    vector<DenseMatrix> buffers;
+    double leaky_relu_alpha;
 
     GAT(vector<GATLayer> &l_input, Distributed_Sparse* d_ops) {
         assert(l_input.size() > 0);
@@ -71,8 +72,8 @@ public:
 
             d_ops->setRValue(layers[i].features_per_head);
 
-            for(int i = 0; i < layers[i].num_heads; i++) {
-                layers[i].wMats.push_back(DenseMatrix::Constant(buffers[i].cols(), d_ops->localAcols));
+            for(int j = 0; j < layers[i].num_heads; j++) {
+                layers[i].wMats.push_back(DenseMatrix::Constant(buffers[i].cols(), d_ops->localAcols, 0.0));
             }
         }
 
@@ -80,20 +81,24 @@ public:
 
     // Computes the j'th self-attention head of the i'th layer
     void computeSelfAttentionHead(int i, int j) {        
-        d_ops->setRValue(features_per_head);
+        d_ops->setRValue(layers[i].features_per_head);
 
         VectorXd Svalues = d_ops->like_S_values(1.0);
         VectorXd sddmm_buffer = d_ops->like_S_values(1.0);
         DenseMatrix A = buffers[i] * layers[i].wMats[j];
         DenseMatrix B = A; 
-        d_ops->de_shift(B, nullptr, k_spmmA);
-        algorithm(A, B, Svalues, &sddmm_buffer, k_sddmmA, true);
+        d_ops->de_shift(&B, nullptr, k_spmmA);
+        d_ops->algorithm(A, B, Svalues, &sddmm_buffer, k_sddmmA, true);
         A.setZero();
-        // TODO: Normalize the rows, apply leaky ReLU function here! 
-        algorithm(A, B, sddmm_buffer, nullptr, k_spmmA, false);
-        buffers[i+1].middleCols(j * A.cols(), A.cols()) = A;
 
-        // TODO: Sigmoid activation function here!
+        // Applies the Leaky ReLU function with the specified value of alpha 
+        sddmm_buffer = sddmm_buffer.array().max(0) + sddmm_buffer.array().min(0) * leaky_relu_alpha;
+
+        // TODO: Normalize the rows 
+
+
+        d_ops->algorithm(A, B, sddmm_buffer, nullptr, k_spmmA, false);
+        buffers[i+1].middleCols(j * A.cols(), A.cols()) = A.array().max(0);
     }
 
     void forwardPass() {

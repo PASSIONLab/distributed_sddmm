@@ -52,7 +52,7 @@ public:
         MPI_Bcast(spmat->coords.data(), spmat->coords.size(), SPCOORD, 0, grid->fiber_world);
     }
 
-    Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k, R) { 
+    Sparse25D_Cannon_Sparse(SpmatLocal* S_input, int R, int c, KernelImplementation* k) : Distributed_Sparse(k) { 
         this->c = c;
         sqrtpc = (int) sqrt(p / c);
  
@@ -136,6 +136,9 @@ public:
         }
 
         int shift = pMod(grid->j + grid->i, sqrtpc); 
+
+        aSubmatrices.clear();
+        bSubmatrices.clear();
 
         // Define submatrix boundaries 
         aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * shift + grid->k * localAcols, localArows, localAcols);

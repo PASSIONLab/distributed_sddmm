@@ -120,7 +120,6 @@ public:
 
         S->initializeCSRBlocks(localArows * c, localBrows, -1, local_tpose);
         ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
-
         check_initialized();
     }
 
