@@ -78,14 +78,6 @@ public:
         A_R_split_world = grid->colfiber_slice; 
         B_R_split_world = grid->colfiber_slice; 
 
-        localAcols = R / (sqrtpc * c);
-        localBcols = R / (sqrtpc * c);
-
-        if(localAcols * sqrtpc * c != R) {
-            cout << "Error, R must be divisible by sqrt(pc)!" << endl;
-            exit(1);
-        }
-
         r_split = true;
 
         this->M = S_input->M;
@@ -93,11 +85,7 @@ public:
         localArows = divideAndRoundUp(this->M, sqrtpc);
         localBrows = divideAndRoundUp(this->N, sqrtpc);
 
-        int shift = pMod(grid->j + grid->i, sqrtpc); 
-
-        // Define submatrix boundaries 
-        aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * shift + grid->k * localAcols, localArows, localAcols);
-        bSubmatrices.emplace_back(localBrows * grid->i, localBcols * c * shift + grid->k * localBcols, localBrows, localBcols);
+        setRValue(R);
 
         /* Distribute the nonzeros, storing them initially on the
          * bottom face of the cuboid and then broadcasting.  
@@ -134,6 +122,24 @@ public:
 	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
 
         check_initialized();
+    }
+
+    void setRValue(int R) {
+        this->R = R;
+
+        localAcols = R / (sqrtpc * c);
+        localBcols = R / (sqrtpc * c);
+
+        if(localAcols * sqrtpc * c != R) {
+            cout << "Error, R must be divisible by sqrt(pc)!" << endl;
+            exit(1);
+        }
+
+        int shift = pMod(grid->j + grid->i, sqrtpc); 
+
+        // Define submatrix boundaries 
+        aSubmatrices.emplace_back(localArows * grid->i, localAcols * c * shift + grid->k * localAcols, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * grid->i, localBcols * c * shift + grid->k * localBcols, localBrows, localBcols);
     }
 
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) { 

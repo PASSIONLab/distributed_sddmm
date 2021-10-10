@@ -81,20 +81,14 @@ public:
         A_R_split_world = grid->row_world; 
         B_R_split_world = grid->row_world; 
 
-        localAcols = R / sqrtpc;
-        localBcols = R / sqrtpc; 
-
-        if(localAcols * sqrtpc != R) {
-            cout << "Error, R must be divisible by sqrt(p) / c!" << endl;
-            exit(1);
-        }
-
         r_split = true;
 
         this->M = S_input->M;
         this->N = S_input->N;
         localArows = divideAndRoundUp(this->M, sqrtpc * c);
         localBrows = divideAndRoundUp(this->N, sqrtpc * c);
+
+        setRValue(R);
 
         Block_Cyclic25D nonzero_dist(M, N, sqrtpc, c, grid);
         Block_Cyclic25D transpose_dist(N, M, sqrtpc, c, grid);
@@ -115,10 +109,6 @@ public:
 
         int max_nnz = *(std::max_element(nnz_in_row_axis.begin(), nnz_in_row_axis.end()));
         int max_nnz_tpose = *(std::max_element(nnz_in_row_axis_tpose.begin(), nnz_in_row_axis_tpose.end()));
-
-        // Define submatrix boundaries 
-        aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);
-        bSubmatrices.emplace_back(localBrows * (grid->k + c * grid->i), localBcols * grid->j, localBrows, localBcols);
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
@@ -152,6 +142,21 @@ public:
         check_initialized(); 
     }
 
+    void setRValue(int R) {
+        this->R = R;
+
+        localAcols = R / sqrtpc;
+        localBcols = R / sqrtpc; 
+
+        if(localAcols * sqrtpc != R) {
+            cout << "Error, R must be divisible by sqrt(p) / c!" << endl;
+            exit(1);
+        }
+
+        // Define submatrix boundaries 
+        aSubmatrices.emplace_back(localArows * (grid->k + c * grid->i), localAcols * grid->j, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * (grid->k + c * grid->i), localBcols * grid->j, localBrows, localBcols);
+    }
 
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         if(mode == k_sddmmA || mode == k_spmmA) {

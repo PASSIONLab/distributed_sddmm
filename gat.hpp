@@ -62,6 +62,10 @@ public:
         buffers.push_back(d_ops->like_B_matrix(0.0));
 
         for(int i = 0; i < layers.size(); i++) {
+            if(i > 0) {
+                assert(layers[i].input_features 
+                        == layers[i-1].num_heads * layers[i-1].features_per_head);
+            }
             d_ops->setRValue(layers[i].features_per_head * layers[i].num_heads);
             buffers.push_back(d_ops->like_A_matrix(0.0));
 

@@ -6,6 +6,7 @@
 #include "benchmark_dist.h"
 #include "als_conjugate_gradients.h"
 #include "json.hpp"
+#include "gat.hpp"
 
 using json = nlohmann::json;
 using namespace std;
@@ -122,6 +123,14 @@ int main(int argc, char** argv) {
 
     //Distributed_ALS d_als(d_ops, true) ;
     //d_als.run_cg(20);
+
+    vector<GATLayer> layers;
+    
+    // Input features, features per head, output features
+    layers.emplace_back(256, 256, 1);
+    layers.emplace_back(256, 256, 1);
+    GAT gnn(layers, &d_ops);
+    gnn.forwardPass();
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
  

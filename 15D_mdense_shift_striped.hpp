@@ -54,7 +54,7 @@ public:
     DenseMatrix accumulation_buffer;
 
     Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
-        : Distributed_Sparse(k, R) 
+        : Distributed_Sparse(k) 
     {
         this->fusionApproach = fusionApproach;
         this->c = c;
@@ -77,13 +77,11 @@ public:
 
         grid.reset(new FlexibleGrid(p/c, c, 1, 1));
 
-        localAcols = R;
-        localBcols = R; 
-
         r_split = false;
 
         this->M = S_input->M;
         this->N = S_input->N;
+
         ShardedBlockCyclicColumn standard_dist(M, N, p, c, grid);
         ShardedBlockCyclicColumn transpose_dist(N, M, p, c, grid);
 
@@ -95,11 +93,7 @@ public:
         localArows = divideAndRoundUp(this->M, p);
         localBrows = divideAndRoundUp(this->N, p);
 
-        // Define submatrix boundaries 
-
-        // TODO: I'm pretty sure that this is broken...
-        aSubmatrices.emplace_back(localArows * (c * grid->i + grid->j), 0, localArows, localAcols);
-        bSubmatrices.emplace_back(localBrows * (c * grid->i + grid->j), 0, localBrows, localBcols);
+        setRValue(R);
 
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
@@ -128,6 +122,20 @@ public:
         ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
 
         check_initialized();
+    }
+
+    void setRValue(int R) {
+        this->R = R;
+
+        localAcols = R;
+        localBcols = R; 
+
+        aSubmatrices.clear();
+        bSubmatrices.clear();
+
+        // TODO: I'm pretty sure that this is broken...
+        aSubmatrices.emplace_back(localArows * (c * grid->i + grid->j), 0, localArows, localAcols);
+        bSubmatrices.emplace_back(localBrows * (c * grid->i + grid->j), 0, localBrows, localBcols);
     }
  
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
