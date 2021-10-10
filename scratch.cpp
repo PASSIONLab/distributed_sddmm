@@ -5,7 +5,9 @@
 #include <string>
 #include "benchmark_dist.h"
 #include "als_conjugate_gradients.h"
+#include "json.hpp"
 
+using json = nlohmann::json;
 using namespace std;
 
 class ZeroProcess : public NonzeroDistribution {
@@ -115,12 +117,30 @@ int main(int argc, char** argv) {
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
 
-    verify_operation(S, d_ops);
+    json j2 = {
+        {"pi", 3.141},
+        {"happy", true},
+        {"name", "Niels"},
+        {"nothing", nullptr},
+        {"answer", {
+            {"everything", 42}
+        }},
+        {"list", {1, 0, 2}},
+        {"object", {
+            {"currency", "USD"},
+            {"value", 42.80}
+        }}
+    };
+
+    cout << "Testing: " << endl;
+    cout << j2 << endl;
+
+    //verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
-    Distributed_ALS d_als(d_ops, true) ;
-    d_als.run_cg(5);
+    //Distributed_ALS d_als(d_ops, true) ;
+    //d_als.run_cg(20);
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
  

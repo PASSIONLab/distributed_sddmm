@@ -41,7 +41,6 @@ public:
 
 class Sparse25D_Cannon_Sparse : public Distributed_Sparse {
 public:
-    int c;
     int sqrtpc;
 
     void broadcastCoordinatesFromFloor(unique_ptr<SpmatLocal> &spmat) {

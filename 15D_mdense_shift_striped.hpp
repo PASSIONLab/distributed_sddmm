@@ -49,7 +49,6 @@ public:
  */
 class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
 public:
-    int c; // Replication factor for the 1.5D Algorithm 
     int fusionApproach;
 
     DenseMatrix accumulation_buffer;
@@ -68,7 +67,7 @@ public:
         }
 
         algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift";
-        proc_grid_names = {"Layers", "# of Block Rows per Layer"};
+        proc_grid_names = {"# Rows", "# Layers"};
 
         perf_counter_keys = 
                 {"Dense Broadcast Time",

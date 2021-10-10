@@ -11,7 +11,9 @@
 #include "common.h"
 #include "SpmatLocal.hpp"
 #include "FlexibleGrid.hpp"
+#include "json.hpp"
 
+using json = nlohmann::json;
 using namespace std;
 using namespace Eigen;
 
@@ -30,7 +32,7 @@ public:
 class Distributed_Sparse {
 public:
     int proc_rank;     // Global process rank
-    int p;             // Total # of processes
+    int p, c;          // Total # of processes, replication factor 
 
     // General algorithm information
     string algorithm_name;
@@ -91,6 +93,7 @@ public:
         localAcols = -1;
         localBrows = -1;
         localBcols = -1;
+        c = -1;
 
         superclass_constructor_sentinel = 3;
         // TODO: Need to dummy-initialize the MPI constructors. 
@@ -105,7 +108,7 @@ public:
         assert(M != -1 && N != -1 && R != -1);
         assert(localAcols != -1 && localBcols != -1);
         assert(localArows != -1 && localBrows != -1);
-
+        assert(c >= 1);
 
         assert(superclass_constructor_sentinel == 3);
         assert(aSubmatrices.size() > 0);
@@ -124,31 +127,33 @@ public:
 
     }
 
-    void print_algorithm_info() {
-        cout << algorithm_name << endl;
-        cout << "Sparse Matrix Dimensions: " 
-                << this->M << " x " << this->N << endl;
-        cout << "R-Value: " << this->R << endl;
+    json json_algorithm_info() {
+        json jobj = {
+            {"alg_name", algorithm_name},
+            {"m", this->M},
+            {"n", this->N},
+            {"nnz", this->S->dist_nnz},
+            {"r", this->R},
+            {"adjacency_mode", grid->adjacency},
+            {"p", p},
+            {"c", c}
+        };
 
-        cout << "Grid Adjacency Mode: " << grid->adjacency << endl; 
-        cout << "Grid Dimension Interpretations: ";        
+        json dim_interpretations = json::array();
+        json dim_values = json::array();
         for(int i = 0; i < proc_grid_names.size(); i++) {
-            cout << proc_grid_names[i];
-            if (i != proc_grid_names.size() - 1) {
-                cout << " x ";
-            }
-        } 
-        cout << endl;
-
-        cout << "Grid Dimensions : ";
-        for(int i = 0; i < proc_grid_names.size(); i++) {
-            cout << grid->dim_list[i];
-            if (i != proc_grid_names.size() - 1) {
-                cout << " x ";
-            }
+            dim_interpretations.push_back(proc_grid_names[i]);
+            dim_values.push_back(grid->dim_list[i]);
         }
-        cout << endl;
-        cout << "================================" << endl;
+
+        jobj["dim_interpretations"] = dim_interpretations;
+        jobj["dim_values"] = dim_values;
+
+        return jobj;
+    }
+
+    void print_algorithm_info() {
+        cout << json_algorithm_info().dump(4) << endl;
     }
 
     void setVerbose(bool value) {
@@ -204,6 +209,16 @@ public:
             print_algorithm_info();
         }
 
+        cout << json_perf_statistics().dump(4);
+
+        if(proc_rank == 0) {
+            cout << "=================================" << endl;
+        } 
+    }
+
+    json json_perf_statistics() {
+        json j_obj;
+
         for(auto it = perf_counter_keys.begin(); it != perf_counter_keys.end(); it++) {
             double val = total_time[*it]; 
 
@@ -213,12 +228,10 @@ public:
             val /= p;
 
             if(proc_rank == 0) {
-                cout << "Total " << *it << ":\t" << val << "s" << endl;
+                j_obj[*it] = val;
             }
         }
-        if(proc_rank == 0) {
-            cout << "=================================" << endl;
-        } 
+        return j_obj;
     }
 
     /*

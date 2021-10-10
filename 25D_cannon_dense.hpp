@@ -47,7 +47,6 @@ public:
 
 class Sparse25D_Cannon_Dense : public Distributed_Sparse {
 public:
-    int c;
     int sqrtpc;
 
     vector<int> nnz_in_row_axis, nnz_in_row_axis_tpose;

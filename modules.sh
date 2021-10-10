@@ -1,4 +1,4 @@
-module load cmake
+module load cmake/3.21.3
 module load openmpi
 
 module swap PrgEnv-intel PrgEnv-gnu

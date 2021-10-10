@@ -207,8 +207,10 @@ void ALS_CG::run_cg(int n_alternating_steps) {
     }
 
     for(int i = 0; i < n_alternating_steps; i++) {
-        cg_optimizer(Amat, 5);
-        cg_optimizer(Bmat, 5);
+        cg_optimizer(Amat, 10);
+        cg_optimizer(Bmat, 10);
+
+        residual = computeResidual();
 
         if(i == n_alternating_steps - 1) {
             residual = computeResidual();
@@ -231,7 +233,7 @@ void Distributed_ALS::computeQueries(
         MatMode matrix_to_optimize,
         DenseMatrix &result) {
 
-    double lambda = 1e-6;
+    double lambda = 1e-13;
 
     result.setZero();
 

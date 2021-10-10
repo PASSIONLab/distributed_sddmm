@@ -13,6 +13,9 @@
 #include "common.h"
 #include "als_conjugate_gradients.h"
 #include <mpi.h>
+#include "json.hpp"
+
+using json = nlohmann::json;
 
 using namespace std;
 
@@ -87,34 +90,23 @@ void benchmark_algorithm(SpmatLocal* spmat,
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    if(rank == 0) {
-        double elapsed = stop_clock_get_elapsed(t);
+    json j_obj; 
 
-        double ops = 2 * spmat->dist_nnz * 2 * R * num_trials;
-        double throughput = ops / elapsed;
-        throughput /= 1e9;
+    double elapsed = stop_clock_get_elapsed(t);
+    double ops = 2 * spmat->dist_nnz * 2 * R * num_trials;
+    double throughput = ops / elapsed;
+    throughput /= 1e9;
 
-        cout << "*************************************" << endl;
-
-        if(fused) {
-            cout << "Fused Overall Throughput: " 
-                    << throughput << " GFLOPs" << endl;
-        }
-        else {
-            cout << "Unfused Overall Throughput: " 
-                    << throughput << " GFLOPs" << endl; 
-        }
-        cout << "Total Time: " << elapsed << "s" << endl;
-        cout << "# of Trials: " << num_trials << endl;
-
-        cout << "Breakdown: " << endl;
- 
-    }
-    d_ops->print_performance_statistics();
+    j_obj["overall_throughput"] = throughput;
+    j_obj["fused"] = fused;
+    j_obj["num_trials"] = num_trials;
+    j_obj["alg_name"] = algorithm_name;
+    j_obj["alg_info"] = d_ops->json_algorithm_info();
+    j_obj["perf_stats"] = d_ops->json_perf_statistics();
 
     if(rank == 0) {
-        cout << "*************************************" << endl;
-    }
+        cout << j_obj.dump(4) << endl;
+    } 
 
     delete d_ops;
 }
