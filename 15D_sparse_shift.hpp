@@ -50,6 +50,8 @@ public:
     DenseMatrix accumulation_buffer;
     int blockAwidth, blockBwidth;
 
+    vector<int> nnz_in_row_axis, nnz_in_row_axis_tpose;
+
     Sparse15D_Sparse_Shift(SpmatLocal* S_input, int R, int c, KernelImplementation* k) 
         : Distributed_Sparse(k) 
     {
@@ -104,14 +106,25 @@ public:
             ST->coords[i].r %= blockBwidth; 
         }
 
+        int my_nnz = S->coords.size();
+        int my_nnz_tpose = ST->coords.size();
+        MPI_Allgather(&my_nnz, 1, MPI_INT, nnz_in_row_axis.data(), 
+                1, MPI_INT, grid->row_world);
+
+        MPI_Allgather(&my_nnz_tpose, 1, MPI_INT, nnz_in_row_axis_tpose.data(), 
+                1, MPI_INT, grid->row_world);
+
+        int max_nnz = *(std::max_element(nnz_in_row_axis.begin(), nnz_in_row_axis.end()));
+        int max_nnz_tpose = *(std::max_element(nnz_in_row_axis_tpose.begin(), nnz_in_row_axis_tpose.end()));
+
         S->own_all_coordinates();
         ST->own_all_coordinates();
 
         S->monolithBlockColumn();
         ST->monolithBlockColumn();
 
-        S->initializeCSRBlocks(blockAwidth, localArows, -1, false);
-        ST->initializeCSRBlocks(blockBwidth, localBrows, -1, false);
+        S->initializeCSRBlocks(blockAwidth, localArows, max_nnz, false);
+        ST->initializeCSRBlocks(blockBwidth, localBrows, max_nnz, false);
         check_initialized();
     }
 
@@ -154,15 +167,20 @@ public:
                             ) {
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
+        int arBwidth, brBwidth;
         if(mode == k_spmmA || mode == k_sddmmA) {
             Arole = &localA;
             Brole = &localB;
             choice = S.get();
+            arBwidth = blockAwidth;
+            brBwidth = blockBwidth;
         } 
         else if(mode == k_spmmB || mode == k_sddmmB) {
             Arole = &localB;
             Brole = &localA;
-            choice = ST.get(); 
+            choice = ST.get();
+            arBwidth = blockBwidth;
+            brBwidth = blockAwidth;
         }
         else {
             assert(false);
@@ -173,8 +191,10 @@ public:
         if(initial_replicate) {
             auto t = start_clock();
             accumulation_buffer = DenseMatrix::Constant(Brole->rows() * c, R, 0.0); 
-            MPI_Allgather(Brole->data(), Brole->size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), Brole->size(), MPI_DOUBLE, grid->row_world);
+            for(int i = 0; i < p / c; i++) {
+                MPI_Allgather(Brole->data() + brBwidth* i, brBwidth, MPI_DOUBLE,
+                                accumulation_buffer.data() + brBwidth * c, brBwidth * c, MPI_DOUBLE, grid->row_world);
+            }
             stop_clock_and_add(t, "Dense Broadcast Time");  
         }
 
@@ -186,34 +206,44 @@ public:
             choice->setCSRValues(SValues);
         }
         stop_clock_and_add(t, "Computation Time"); 
- 
+
+        DenseMatrix tmp(arBwidth, Arole->cols());
+
         for(int i = 0; i < p / c; i++) {
-            int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
-
             auto t = start_clock();
+            int block_id = pMod(grid->i - i, p / c);
 
-            // TODO: Need to offset the Arole matrix here by the block id 
+            if(mode == k_sddmmA || mode == k_sddmmB) {
+                tmp = Arole->middleRows(block_id * arBwidth, arBwidth);
+            }
 
             kernel->triple_function(
                 mode == k_spmmB ? k_spmmA : mode,
                 *choice,
-                *Arole,
+                tmp,
                 accumulation_buffer,
                 0,
                 0); // TODO: Need to modify the internal offset! 
+
+            if(mode == k_spmmA || mode == k_spmmB) {
+                Arole->middleRows(block_id * arBwidth, arBwidth) = tmp; 
+            }
+
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
-            /*
+
+            int src = pMod(grid->i - 1, p / c);
+            int dst = pMod(grid->i + 1, p / c);
+
             if(mode==k_sddmmA || mode==k_sddmmB) {
-                choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, coo);
+                choice->csr_blocks[0]->shiftCSR(src, dst, grid->col_world, nnz_in_axis[pMod(- i - 1, p / c)], 72, coo);
                 choice->blockStarts[1] = choice->csr_blocks[0]->num_coords;
             }
             else {
-                choice->csr_blocks[0]->shiftCSR(src, dst, grid->row_world, nnz_in_axis[pMod(sparse_shift - i - 1, sqrtpc)], 72, csr);
+                choice->csr_blocks[0]->shiftCSR(src, dst, grid->col_world, nnz_in_axis[pMod(- i - 1, p / c)], 72, csr);
                 choice->blockStarts[1] = choice->csr_blocks[0]->num_coords;
             }
-            */
 
             MPI_Barrier(MPI_COMM_WORLD);
             stop_clock_and_add(t, "Cyclic Shift Time");
@@ -224,9 +254,5 @@ public:
             *sddmm_result_ptr = SValues.cwiseProduct(choice->getCSRValues());
             stop_clock_and_add(t, "Computation Time"); 
         }
-
-        // TODO: If the fusion mode is 1, need to add a terminal reduction! 
     }
-
-
 };
