@@ -1,7 +1,5 @@
+#include "benchmark_dist.hpp"
 #include <string>
-
-#include "SpmatLocal.hpp"
-#include "benchmark_dist.h"
 
 using namespace std;
 
@@ -28,6 +26,7 @@ int main(int argc, char** argv) {
     int R = atoi(argv[4]);
     int c = atoi(argv[5]);
     string fused_string(argv[6]);
+    string output_file(argv[7]);
 
     bool fused;
     if(fused_string == "fused") {
@@ -46,6 +45,7 @@ int main(int argc, char** argv) {
     S.loadTuples(false, logM, edgeFactor, dummy);
     benchmark_algorithm(&S, 
             algorithm_name,
+            output_file,
             fused,
             R,
             c);

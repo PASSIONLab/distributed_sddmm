@@ -150,6 +150,31 @@ public:
         jobj["dim_interpretations"] = dim_interpretations;
         jobj["dim_values"] = dim_values;
 
+        // Allgather and report any load imbalance 
+        vector<uint64_t> nnz_counts, nnz_counts_tpose;
+        nnz_counts.resize(p);
+        nnz_counts_tpose.resize(p);
+
+        uint64_t nnz_on_proc = S->owned_coords_end-S->owned_coords_start;
+        uint64_t nnz_on_proc_tpose = ST->owned_coords_end-ST->owned_coords_start;
+
+        MPI_Allgather(&nnz_on_proc, 1, MPI_LONG, 
+                nnz_counts.data(), 1, MPI_LONG, MPI_COMM_WORLD);
+
+        MPI_Allgather(&nnz_on_proc_tpose, 1, MPI_LONG, 
+                nnz_counts_tpose.data(), 1, MPI_LONG, MPI_COMM_WORLD);
+
+        json nnz = json::array();
+        json nnz_tpose = json::array();
+
+        for(int i = 0; i < p; i++) {
+            nnz.push_back(nnz_counts[i]);
+            nnz_tpose.push_back(nnz_counts_tpose[i]);
+        }
+
+        jobj["nnz_procs"] = nnz;
+        jobj["nnz_tpose_procs"] = nnz_tpose;
+
         return jobj;
     }
 

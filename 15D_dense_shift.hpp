@@ -70,7 +70,7 @@ public:
         proc_grid_names = {"# Rows", "# Layers"};
 
         perf_counter_keys = 
-                {"Dense Broadcast Time",
+                {"Replication Time",
                 "Cyclic Shift Time",
                 "Computation Time" 
                 };
@@ -119,7 +119,9 @@ public:
         }
 
         S->initializeCSRBlocks(localArows * c, localBrows, -1, local_tpose);
+        vector<spcoord_t>().swap(S->coords);
         ST->initializeCSRBlocks(localBrows * c, localArows, -1, local_tpose);
+        vector<spcoord_t>().swap(ST->coords);
         check_initialized();
     }
 
@@ -165,13 +167,13 @@ public:
         SpmatLocal* choice;
 
         if(mode == Amat) {
-            assert(Svalues.size() == S->coords.size());
+            //assert(Svalues.size() == S->coords.size());
             Arole = &localA;
             Brole = &localB;
             choice = S.get();
         } 
         else if(mode == Bmat) {
-            assert(Svalues.size() == ST->coords.size());
+            //assert(Svalues.size() == ST->coords.size());
             Arole = &localB;
             Brole = &localA;
             choice = ST.get(); 
@@ -189,7 +191,7 @@ public:
         t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                         broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-        stop_clock_and_add(t, "Dense Broadcast Time");
+        stop_clock_and_add(t, "Replication Time");
 
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
@@ -214,7 +216,9 @@ public:
             stop_clock_and_add(t, "Computation Time");
 
             t = start_clock();
-            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+            if(p > 1) {
+                shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+            }
             MPI_Barrier(MPI_COMM_WORLD);
             stop_clock_and_add(t, "Cyclic Shift Time");
         }
@@ -228,7 +232,7 @@ public:
         MPI_Reduce_scatter(accumulation_buffer.data(), 
                 Arole->data(), recvCounts.data(),
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
-        stop_clock_and_add(t, "Dense Broadcast Time");
+        stop_clock_and_add(t, "Replication Time");
 
         // TODO: Doesn't affect the applications, but this fused method
         // currently doesn't fill the SDDMM buffers.
@@ -289,7 +293,7 @@ public:
             accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
             MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                             accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-            stop_clock_and_add(t, "Dense Broadcast Time");  
+            stop_clock_and_add(t, "Replication Time");  
         }
 
         auto t = start_clock();
@@ -304,8 +308,8 @@ public:
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
 
-            assert(S->blockStarts[block_id] <= S->coords.size());
-            assert(S->blockStarts[block_id + 1] <= S->coords.size());
+            //assert(S->blockStarts[block_id] <= S->coords.size());
+            //assert(S->blockStarts[block_id + 1] <= S->coords.size());
 
             KernelMode mode_temp;
             if(fusionApproach == 1) {
@@ -329,8 +333,10 @@ public:
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
-            shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
-            MPI_Barrier(MPI_COMM_WORLD);
+            if(p > 1) {
+                shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
             stop_clock_and_add(t, "Cyclic Shift Time");
         }        
 
@@ -350,7 +356,7 @@ public:
             MPI_Reduce_scatter(accumulation_buffer.data(), 
                     Arole->data(), recvCounts.data(),
                         MPI_DOUBLE, MPI_SUM, grid->row_world);
-            stop_clock_and_add(t, "Dense Broadcast Time");
+            stop_clock_and_add(t, "Replication Time");
         }
     }
 };

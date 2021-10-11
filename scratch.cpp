@@ -4,7 +4,6 @@
 #include "25D_cannon_sparse.hpp"
 #include "SpmatLocal.hpp"
 #include <string>
-#include "benchmark_dist.h"
 #include "als_conjugate_gradients.h"
 #include "json.hpp"
 #include "gat.hpp"
@@ -105,7 +104,7 @@ int main(int argc, char** argv) {
             new Sparse15D_Dense_Shift(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                2, 
+                1, 
                 &local_ops);
 
     /*Sparse15D_Sparse_Shift* d_ops =
@@ -123,13 +122,13 @@ int main(int argc, char** argv) {
         );*/
 
 
-    //cout << "Initialization complete from " << d_ops->proc_rank << endl;
-    verify_operation(S, d_ops);
+    cout << "Initialization complete from " << d_ops->proc_rank << endl;
+    //verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
-    Distributed_ALS d_als(d_ops, true) ;
-    d_als.run_cg(5);
+    //Distributed_ALS d_als(d_ops, true) ;
+    //d_als.run_cg(5);
 
     //vector<GATLayer> layers;
     

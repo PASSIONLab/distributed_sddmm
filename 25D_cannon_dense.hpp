@@ -127,7 +127,9 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows * c, localBrows, max_nnz, true);
+        vector<spcoord_t>().swap(S->coords);
 	    ST->initializeCSRBlocks(localBrows * c, localArows, max_nnz_tpose, true);
+        vector<spcoord_t>().swap(ST->coords);
 
         // Skew the S-matrix in preparation for repeated Cannon's algorithm.
         int src = pMod(grid->rankInRow + grid->rankInCol, sqrtpc);

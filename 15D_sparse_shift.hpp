@@ -68,7 +68,7 @@ public:
         proc_grid_names = {"# Rows", "# Layers"};
 
         perf_counter_keys = 
-                {"Dense Broadcast Time",
+                {"Replication Time",
                 "Cyclic Shift Time",
                 "Computation Time" 
                 };
@@ -128,7 +128,9 @@ public:
         ST->monolithBlockColumn();
 
         S->initializeCSRBlocks(blockAwidth, localArows, max_nnz, false);
+        vector<spcoord_t>().swap(S->coords);
         ST->initializeCSRBlocks(blockBwidth, localBrows, max_nnz_tpose, false);
+        vector<spcoord_t>().swap(ST->coords);
         check_initialized();
     }
 
@@ -210,7 +212,7 @@ public:
             else {
                 accumulation_buffer = *Brole;
             }
-            stop_clock_and_add(t, "Dense Broadcast Time");  
+            stop_clock_and_add(t, "Replication Time");  
         }
 
         auto t = start_clock();

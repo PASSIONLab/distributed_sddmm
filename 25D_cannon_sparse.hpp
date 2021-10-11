@@ -119,7 +119,9 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
+        vector<spcoord_t>().swap(S->coords);
 	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
+        vector<spcoord_t>().swap(ST->coords);
 
         check_initialized();
     }

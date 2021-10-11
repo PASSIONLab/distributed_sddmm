@@ -7,6 +7,7 @@
 
 void benchmark_algorithm(SpmatLocal* S, 
         string algorithm_name,
+        string output_file,
         bool fused,
         int R,
         int c 

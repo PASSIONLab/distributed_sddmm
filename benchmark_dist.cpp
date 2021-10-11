@@ -1,6 +1,8 @@
+#include "benchmark_dist.hpp"
+
 #include <iostream>
+#include <fstream>
 #include <string>
-#include "benchmark_dist.h"
 #include "distributed_sparse.h"
 #include "15D_dense_shift.hpp"
 #include "15D_sparse_shift.hpp"
@@ -22,10 +24,14 @@ using namespace std;
 
 void benchmark_algorithm(SpmatLocal* spmat, 
         string algorithm_name,
+        string output_file,
         bool fused,
         int R,
         int c 
         ) {
+
+    ofstream fout;
+    fout.open(output_file);
 
     StandardKernel local_ops;
     Distributed_Sparse* d_ops;
@@ -36,6 +42,13 @@ void benchmark_algorithm(SpmatLocal* spmat,
             R, 
             c, 
             1, 
+            &local_ops);
+    }
+    else if(algorithm_name=="15d_sparse") {
+        d_ops = new Sparse15D_Sparse_Shift(
+            spmat, 
+            R, 
+            c, 
             &local_ops);
     }
     else if(algorithm_name=="15d_fusion2") {
@@ -107,9 +120,10 @@ void benchmark_algorithm(SpmatLocal* spmat,
     j_obj["perf_stats"] = d_ops->json_perf_statistics();
 
     if(rank == 0) {
-        cout << j_obj.dump(4) << endl;
+        fout << j_obj.dump(4) << "," << endl;
     } 
+
+    fout.close();
 
     delete d_ops;
 }
-
