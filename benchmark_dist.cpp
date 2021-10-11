@@ -31,7 +31,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
         ) {
 
     ofstream fout;
-    fout.open(output_file);
+        fout.open(output_file, std::ios_base::app 
+    );
 
     StandardKernel local_ops;
     Distributed_Sparse* d_ops;

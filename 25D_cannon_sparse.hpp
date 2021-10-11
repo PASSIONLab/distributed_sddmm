@@ -42,6 +42,7 @@ public:
 class Sparse25D_Cannon_Sparse : public Distributed_Sparse {
 public:
     int sqrtpc;
+    int nnz, nnz_tpose;
 
     void broadcastCoordinatesFromFloor(unique_ptr<SpmatLocal> &spmat) {
         int num_nnz = spmat->coords.size();
@@ -119,8 +120,11 @@ public:
         ST->monolithBlockColumn();
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
+        nnz = S->coords.size();
         vector<spcoord_t>().swap(S->coords);
+
 	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
+        nnz_tpose = ST->coords.size();
         vector<spcoord_t>().swap(ST->coords);
 
         check_initialized();
@@ -183,21 +187,24 @@ public:
 
         DenseMatrix *Arole, *Brole;
 
+        int nnz_selection;
         if(mode == k_spmmA || mode == k_sddmmA) {
             assert(SValues.size() == S->owned_coords_end - S->owned_coords_start);
             choice = S.get();
             Arole = &localA;
             Brole = &localB;
+            nnz_selection = nnz;
         } 
         else if(mode == k_spmmB || mode == k_sddmmB) {
             assert(SValues.size() == ST->owned_coords_end - ST->owned_coords_start);
             choice = ST.get();
             Arole = &localB;
             Brole = &localA;
+            nnz_selection = nnz_tpose;
         }
 
         int nnz_processed = 0;
-		VectorXd accumulation_buffer = VectorXd::Constant(choice->coords.size(), 0.0); 
+		VectorXd accumulation_buffer = VectorXd::Constant(nnz_selection, 0.0); 
 
         if(mode == k_spmmA || mode == k_spmmB) {
             auto t = start_clock();
