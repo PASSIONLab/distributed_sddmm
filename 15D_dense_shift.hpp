@@ -268,12 +268,14 @@ public:
 
         DenseMatrix *Arole, *Brole;
         SpmatLocal* choice;
-        if(mode == k_spmmA || mode == k_sddmmA) {
+
+        bool invert = fusionApproach == 1;
+        if((mode == k_spmmA || mode == k_sddmmA) == invert) {
             Arole = &localB;
             Brole = &localA;
             choice = ST.get();
         } 
-        else if(mode == k_spmmB || mode == k_sddmmB) {
+        else if((mode == k_spmmB || mode == k_sddmmB) == invert) {
             Arole = &localA;
             Brole = &localB;
             choice = S.get(); 
@@ -307,6 +309,17 @@ public:
             assert(S->blockStarts[block_id] <= S->coords.size());
             assert(S->blockStarts[block_id + 1] <= S->coords.size());
 
+            KernelMode mode;
+            if(fusionApproach == 1) {
+                mode = k_spmmA ? k_spmmB : mode;
+            }
+            else if(fusionApproach == 2) {
+                mode = k_spmmB ? k_spmmA : mode;
+            }
+            else {
+                assert(false);
+            }
+
             auto t = start_clock();
             kernel->triple_function(
                 mode == k_spmmA ? k_spmmB : mode,
@@ -329,6 +342,17 @@ public:
             stop_clock_and_add(t, "Computation Time"); 
         }
 
-        // TODO: If the fusion mode is 1, need to add a terminal reduction! 
+        if(fusionApproach == 2 && (mode == k_spmmA || mode == k_spmmB)) {
+            vector<int> recvCounts;
+            for(int i = 0; i < c; i++) {
+                recvCounts.push_back(Arole->rows() * R);
+            }
+
+            t = start_clock();
+            MPI_Reduce_scatter(accumulation_buffer.data(), 
+                    Arole->data(), recvCounts.data(),
+                        MPI_DOUBLE, MPI_SUM, grid->row_world);
+            stop_clock_and_add(t, "Dense Broadcast Time");
+        }
     }
 };

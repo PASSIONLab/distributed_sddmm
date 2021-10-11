@@ -93,7 +93,6 @@ int main(int argc, char** argv) {
     //S.loadTuples(false, 4, 4, fname);
     S.loadTuples(true, -1, -1, fname);
 
-    /*
     Sparse25D_Cannon_Dense* d_ops
         = new Sparse25D_Cannon_Dense(
             &S,
@@ -101,22 +100,19 @@ int main(int argc, char** argv) {
             atoi(argv[3]),
             &local_ops
         );
-    */
 
-    /*
-    Sparse15D_Dense_Shift* d_ops =
-            new Sparse15D_MDense_Shift_Striped(&S, 
+    /*Sparse15D_Dense_Shift* d_ops =
+            new Sparse15D_Dense_Shift(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);
-    */
+                &local_ops);*/
 
-    Sparse15D_Sparse_Shift* d_ops =
+    /*Sparse15D_Sparse_Shift* d_ops =
             new Sparse15D_Sparse_Shift(&S,
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                &local_ops);
+                &local_ops);*/
 
     /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
@@ -128,12 +124,12 @@ int main(int argc, char** argv) {
 
 
     //cout << "Initialization complete from " << d_ops->proc_rank << endl;
-    verify_operation(S, d_ops);
+    //verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
-    //Distributed_ALS d_als(d_ops, true) ;
-    //d_als.run_cg(20);
+    Distributed_ALS d_als(d_ops, true) ;
+    d_als.run_cg(5);
 
     //vector<GATLayer> layers;
     

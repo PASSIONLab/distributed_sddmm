@@ -77,7 +77,8 @@ public:
 
         r_split = true;
 
-        // TODO: Need to set the R-split world! 
+        A_R_split_world = grid->col_world;
+        B_R_split_world = grid->col_world;
 
         this->M = S_input->M;
         this->N = S_input->N;
