@@ -1,4 +1,4 @@
-#include "15D_mdense_shift_striped.hpp"
+#include "15D_dense_shift.hpp"
 #include "15D_sparse_shift.hpp"
 #include "25D_cannon_dense.hpp"
 #include "25D_cannon_sparse.hpp"
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     */
 
     /*
-    Sparse15D_MDense_Shift_Striped* d_ops =
+    Sparse15D_Dense_Shift* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 

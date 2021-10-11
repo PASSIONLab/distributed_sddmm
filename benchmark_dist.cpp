@@ -2,7 +2,8 @@
 #include <string>
 #include "benchmark_dist.h"
 #include "distributed_sparse.h"
-#include "15D_mdense_shift_striped.hpp"
+#include "15D_dense_shift.hpp"
+#include "15D_sparse_shift.hpp"
 #include "25D_cannon_dense.hpp"
 #include "25D_cannon_sparse.hpp"
 
@@ -30,7 +31,7 @@ void benchmark_algorithm(SpmatLocal* spmat,
     Distributed_Sparse* d_ops;
 
     if(algorithm_name=="15d_fusion1") {
-        d_ops = new Sparse15D_MDense_Shift_Striped(
+        d_ops = new Sparse15D_Dense_Shift(
             spmat, 
             R, 
             c, 
@@ -38,7 +39,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
             &local_ops);
     }
     else if(algorithm_name=="15d_fusion2") {
-        d_ops = new Sparse15D_MDense_Shift_Striped(
+        d_ops = new 
+        Sparse15D_Dense_Shift(
             spmat, 
             R,
             c, 

@@ -47,13 +47,13 @@ public:
  * Unlike its non-striped counterpart, this algorithm uses reductions of smaller
  * messages instead of one large AllReduce 
  */
-class Sparse15D_MDense_Shift_Striped : public Distributed_Sparse {
+class Sparse15D_Dense_Shift : public Distributed_Sparse {
 public:
     int fusionApproach;
 
     DenseMatrix accumulation_buffer;
 
-    Sparse15D_MDense_Shift_Striped(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
+    Sparse15D_Dense_Shift(SpmatLocal* S_input, int R, int c, int fusionApproach, KernelImplementation* k) 
         : Distributed_Sparse(k) 
     {
         this->fusionApproach = fusionApproach;

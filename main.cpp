@@ -1,8 +1,6 @@
-#include "15D_mdense_shift_striped.hpp"
-#include "25D_cannon_dense.hpp"
-#include "25D_cannon_sparse.hpp"
-#include "SpmatLocal.hpp"
 #include <string>
+
+#include "SpmatLocal.hpp"
 #include "benchmark_dist.h"
 
 using namespace std;
