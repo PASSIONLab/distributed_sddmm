@@ -64,7 +64,7 @@ public:
             }
         }
 
-        algorithm_name = "1.5D Block Row Replicated S Striped AB Cyclic Shift";
+        algorithm_name = "1.5D Sparse Shifting Dense Replicating Algorithm";
         proc_grid_names = {"# Rows", "# Layers"};
 
         perf_counter_keys = 
@@ -229,6 +229,9 @@ public:
 
             if(mode == k_sddmmA || mode == k_sddmmB) {
                 tmp = Arole->middleRows(block_id * arBwidth, arBwidth);
+            }
+            else {
+                tmp *= 0.0;
             }
 
             kernel->triple_function(
