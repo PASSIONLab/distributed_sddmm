@@ -39,9 +39,8 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
 
-    d_ops->print_nonzero_distribution(A, B);
-    /*d_ops->initial_shift(&A, &B, k_sddmmA);
-
+    //d_ops->print_nonzero_distribution(A, B);
+    d_ops->initial_shift(&A, &B, k_sddmmA);
     d_ops->sddmmA(A, B, S, result);
 
     double A_fingerprint = A.squaredNorm();
@@ -50,6 +49,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     double sddmm_fingerprint = result.squaredNorm(); 
     MPI_Allreduce(MPI_IN_PLACE, &sddmm_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
     d_ops->initial_shift(&A, &B, k_spmmA);
@@ -57,6 +57,7 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
 
     double spmmA_fingerprint = A.squaredNorm();
     MPI_Allreduce(MPI_IN_PLACE, &spmmA_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
 
     d_ops->dummyInitialize(A, Amat);
     d_ops->dummyInitialize(B, Bmat);
@@ -68,11 +69,11 @@ void verify_operation(SpmatLocal &spmat, Distributed_Sparse* d_ops) {
     MPI_Allreduce(MPI_IN_PLACE, &spmmB_fingerprint, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if(proc_rank == 0) {
-        cout << "A Fingerprint: " << A_fingerprint << endl;
+        //cout << "A Fingerprint: " << A_fingerprint << endl;
         cout << "SDDMM Fingerprint: " << sddmm_fingerprint << endl;
         cout << "SpMMA Fingerprint: " << spmmA_fingerprint << endl;
         cout << "SpMMB Fingerprint: " << spmmB_fingerprint << endl; 
-    }*/
+    }
 }
 
 int main(int argc, char** argv) {
@@ -102,13 +103,14 @@ int main(int argc, char** argv) {
         );
     */
 
-    /*Sparse15D_MDense_Shift_Striped* d_ops =
+    /*
+    Sparse15D_MDense_Shift_Striped* d_ops =
             new Sparse15D_MDense_Shift_Striped(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);*/
-
+                &local_ops);
+    */
 
     Sparse15D_Sparse_Shift* d_ops =
             new Sparse15D_Sparse_Shift(&S,
