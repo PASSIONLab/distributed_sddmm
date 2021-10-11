@@ -180,12 +180,13 @@ public:
             assert(false);
         }
 
-		// Temporary buffer that holds the results of the local ops; this buffer
-		// is sharded and then reduced to local portions of the
+        auto t = start_clock();
 		DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+        choice->setValuesConstant(0.0);
+        stop_clock_and_add(t, "Computation Time");
 
-        auto t = start_clock();
+        t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                         broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
@@ -201,9 +202,6 @@ public:
                 *Brole,
                 block_id,
                 0);
-
-            // TODO: Slightly broken! We need to optimize the
-            // copy operation between these two kernels
  
             kernel->triple_function(
                 k_spmmA,
@@ -217,9 +215,8 @@ public:
 
             t = start_clock();
             shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
-            stop_clock_and_add(t, "Cyclic Shift Time");
-
             MPI_Barrier(MPI_COMM_WORLD);
+            stop_clock_and_add(t, "Cyclic Shift Time");
         }
 
         vector<int> recvCounts;
@@ -233,7 +230,8 @@ public:
                     MPI_DOUBLE, MPI_SUM, grid->row_world);
         stop_clock_and_add(t, "Dense Broadcast Time");
 
-        // TODO: This currently doesn't copy out the result SDDMM buffer...
+        // TODO: Doesn't affect the applications, but this fused method
+        // currently doesn't fill the SDDMM buffers.
     }
 
     VectorXd like_S_values(double value) {
@@ -309,12 +307,12 @@ public:
             assert(S->blockStarts[block_id] <= S->coords.size());
             assert(S->blockStarts[block_id + 1] <= S->coords.size());
 
-            KernelMode mode;
+            KernelMode mode_temp;
             if(fusionApproach == 1) {
-                mode = k_spmmA ? k_spmmB : mode;
+                mode_temp = mode == k_spmmA ? k_spmmB : mode;
             }
             else if(fusionApproach == 2) {
-                mode = k_spmmB ? k_spmmA : mode;
+                mode_temp = mode == k_spmmB ? k_spmmA : mode;
             }
             else {
                 assert(false);
@@ -322,7 +320,7 @@ public:
 
             auto t = start_clock();
             kernel->triple_function(
-                mode == k_spmmA ? k_spmmB : mode,
+                mode_temp, 
                 *choice,
                 accumulation_buffer,
                 *Brole,
