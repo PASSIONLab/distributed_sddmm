@@ -305,12 +305,18 @@ public:
             int topRow = submatrices[t].topRow;
             int leftCol = submatrices[t].leftCol;
 
-            for(int i = 0; i < loc.rows(); i++) {
-                for(int j = 0; j < loc.cols(); j++) {
+            //cout << proc_rank << " Top Row and Left Column: " << topRow 
+            //        << " " << leftCol << " " << submatrices[t].rowCount 
+            //        << " " << submatrices[t].colCount << endl;
+
+
+            for(int i = 0; i < submatrices[t].rowCount; i++) {
+                for(int j = 0; j < submatrices[t].colCount; j++) {
                     *ptr = (topRow + i) * R + leftCol + j;
                     ptr++;
                 }
             }
+
         } 
     }
 

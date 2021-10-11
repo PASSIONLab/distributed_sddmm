@@ -48,6 +48,7 @@ public:
 class Sparse15D_Sparse_Shift : public Distributed_Sparse {
 public:
     DenseMatrix accumulation_buffer;
+    int blockAwidth, blockBwidth;
 
     Sparse15D_Sparse_Shift(SpmatLocal* S_input, int R, int c, KernelImplementation* k) 
         : Distributed_Sparse(k) 
@@ -87,18 +88,21 @@ public:
         S.reset(S_input->redistribute_nonzeros(&standard_dist, false, false));
         ST.reset(S->redistribute_nonzeros(&transpose_dist, true, false));
 
-        localArows = divideAndRoundUp(this->M, p) * p / c;
-        localBrows = divideAndRoundUp(this->N, p) * p / c;
+        blockAwidth = divideAndRoundUp(this->M, p);
+        blockBwidth = divideAndRoundUp(this->N, p);
+
+        localArows = blockAwidth * p / c;
+        localBrows = blockBwidth * p / c;
 
         setRValue(R);
 
         for(int i = 0; i < S->coords.size(); i++) {
-            S->coords[i].r %= localArows / p * c;
+            S->coords[i].r %= blockAwidth; 
         }
  
         for(int i = 0; i < ST->coords.size(); i++) {
-            ST->coords[i].r %= localBrows / p * c;
-        } 
+            ST->coords[i].r %= blockBwidth; 
+        }
 
         S->own_all_coordinates();
         ST->own_all_coordinates();
@@ -106,8 +110,8 @@ public:
         S->monolithBlockColumn();
         ST->monolithBlockColumn();
 
-        S->initializeCSRBlocks(localArows / p * c, localBrows, -1, false);
-        ST->initializeCSRBlocks(localBrows / p * c, localArows, -1, false);
+        S->initializeCSRBlocks(blockAwidth, localArows, -1, false);
+        ST->initializeCSRBlocks(blockBwidth, localBrows, -1, false);
         check_initialized();
     }
 
@@ -124,11 +128,11 @@ public:
         aSubmatrices.clear();
         bSubmatrices.clear();
 
-        for(int i = 0; i < p; i++) {
-            aSubmatrices.emplace_back(localArows / p * c * (grid->j + c * i), 
-                    localAcols * grid->i, localArows / p * c, localAcols);
-            bSubmatrices.emplace_back(localBrows / p * c * (grid->j + c * i), 
-                    localBcols * grid->i, localBrows / p * c, localBcols);
+        for(int i = 0; i < p / c; i++) {
+            aSubmatrices.emplace_back(blockAwidth * (grid->j + c * i), 
+                    localAcols * grid->i, blockAwidth, localAcols);
+            bSubmatrices.emplace_back(blockBwidth * (grid->j + c * i), 
+                    localBcols * grid->i, blockBwidth, localBcols);
         }
     }
 
