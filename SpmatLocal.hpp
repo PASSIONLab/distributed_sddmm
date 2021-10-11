@@ -460,8 +460,22 @@ public:
 
 		if(readFromFile) {
 			G = new PSpMat_s32p64_Int(simpleGrid);
-			// This has a load-balancing problem...	
 			G->ParallelReadMM(filename, true, maximum<double>());	
+
+			// Apply a random permutation for load balance
+			// Taken from CombBLAS (see Aydin's email) 
+			// TODO: May want to save these permutations to undo 
+			// their application later 
+			FullyDistVec<int64_t, int64_t> p( G->getcommgrid());
+			FullyDistVec<int64_t, int64_t> q( G->getcommgrid());
+
+			p.iota(G->getnrow(), 0);
+			q.iota(G->getncol(), 0);
+
+			p.RandPerm();
+			q.RandPerm();
+
+			(*G)(p,q,true);// in-place permute to save memory
 
 			nnz = G->getnnz();
 			if(proc_rank == 0) {
