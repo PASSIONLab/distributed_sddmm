@@ -166,14 +166,19 @@ public:
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localA != nullptr) {
-                shiftDenseMatrix(*localA, grid->col_world, 
+                BufferPair aBuf(localA);
+                shiftDenseMatrix(aBuf, grid->col_world, 
                         pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 1);
+                aBuf.sync_active();
+
             }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
             if(localB != nullptr) {
-                shiftDenseMatrix(*localB, grid->col_world, 
+                BufferPair bBuf(localB);
+                shiftDenseMatrix(bBuf, grid->col_world, 
                         pMod(grid->rankInCol - grid->rankInRow, sqrtpc), 2);
+                bBuf.sync_active();
             }
         }
     }
@@ -182,14 +187,18 @@ public:
     void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localA != nullptr) {
-                shiftDenseMatrix(*localA, grid->col_world, 
+                BufferPair aBuf(localA);
+                shiftDenseMatrix(aBuf, grid->col_world, 
                         pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 1);
+                aBuf.sync_active();
             }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
             if(localB != nullptr) {
-                shiftDenseMatrix(*localB, grid->col_world, 
+                BufferPair bBuf(localB);
+                shiftDenseMatrix(bBuf, grid->col_world, 
                         pMod(grid->rankInCol + grid->rankInRow, sqrtpc), 2);
+                bBuf.sync_active();
             }
         }
     }
@@ -231,6 +240,8 @@ public:
             nnz_in_axis = nnz_in_row_axis;
         }
 
+        BufferPair bBuf(Brole); 
+
         auto t = start_clock();
         if(mode == k_sddmmA || mode == k_sddmmB) {
             choice->setValuesConstant(0.0);
@@ -254,7 +265,7 @@ public:
                 mode == k_spmmA ? k_spmmB : mode, // Need to account for SDDMMB here!
                 *choice,
                 accumulation_buffer,
-                *Brole,
+                *(bBuf.getActive()),
                 0,
                 localAcols * grid->j 
                 );
@@ -263,7 +274,7 @@ public:
 
             if(sqrtpc > 1) {
                 t = start_clock();
-                shiftDenseMatrix(*Brole, grid->col_world, 
+                shiftDenseMatrix(bBuf, grid->col_world, 
                         pMod(grid->rankInCol + 1, sqrtpc), 1);
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
 
@@ -283,6 +294,8 @@ public:
                 stop_clock_and_add(t, "Sparse Cyclic Shift Time");
             }
         }
+
+        bBuf.sync_active();
 
         t = start_clock();
         if(mode == k_sddmmA || mode == k_sddmmB) {

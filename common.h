@@ -46,5 +46,51 @@ void initialize_mpi_datatypes();
  */
 void divideIntoSegments(int total, int num_segments, vector<int> &segment_starts, vector<int> &segment_sizes);
 
+class BufferPair {
+public:
+	DenseMatrix* original;
+	DenseMatrix* extra;
+
+	int switchVal;
+
+	BufferPair(DenseMatrix* buf) {
+		switchVal = 0;
+		original = buf;
+		extra = new DenseMatrix(buf->rows(), buf->cols());
+	}
+
+	~BufferPair() {
+		delete extra;
+	}
+
+	DenseMatrix* getActive() {
+		if(switchVal == 0) {
+			return original;	
+		}
+		else {
+			return extra;
+		}
+	}
+
+	DenseMatrix* getPassive() {
+		if(switchVal == 0) {
+			return extra;	
+		}
+		else {
+			return original;
+		}
+	}
+
+	void swapActive() {
+		switchVal = 1 - switchVal;
+	}
+
+	void sync_active() {
+		if(switchVal == 1) {
+			*original = *extra;
+		}
+	}
+};
+
 
 #endif

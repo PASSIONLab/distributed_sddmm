@@ -121,13 +121,12 @@ int main(int argc, char** argv) {
             &local_ops
         );
 
-    cout << "Initialization complete from " << d_ops->proc_rank << endl;
     verify_operation(S, d_ops);
 
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
-    //Distributed_ALS d_als(d_ops, true) ;
-    //d_als.run_cg(5);
+    Distributed_ALS d_als(d_ops, true) ;
+    d_als.run_cg(5);
 
     //vector<GATLayer> layers;
     

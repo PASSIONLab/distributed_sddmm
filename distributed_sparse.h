@@ -348,19 +348,16 @@ public:
     /*
      * Convenience functions. 
      */
-    void shiftDenseMatrix(DenseMatrix &mat, MPI_Comm world, int send_dst, int tag) {
+    void shiftDenseMatrix(BufferPair &buf, MPI_Comm world, int send_dst, int tag) {
         MPI_Status stat;
-        DenseMatrix recvBuffer(mat.rows(), mat.cols());
 
-        MPI_Sendrecv(mat.data(), mat.size(), MPI_DOUBLE,
-                send_dst, 0,
-                recvBuffer.data(), recvBuffer.size(), MPI_DOUBLE,
-                MPI_ANY_SOURCE, 0,
+        MPI_Sendrecv(buf.getActive()->data(), buf.getActive()->size(), MPI_DOUBLE,
+                send_dst, tag,
+                buf.getPassive()->data(), buf.getPassive()->size(), MPI_DOUBLE,
+                MPI_ANY_SOURCE, tag,
                 world, &stat); 
 
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        mat = recvBuffer;
+        buf.swapActive();
     }
 
     void print_nonzero_distribution(DenseMatrix &localA, DenseMatrix &localB) {

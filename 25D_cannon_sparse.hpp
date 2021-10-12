@@ -155,14 +155,18 @@ public:
         int tpose_dest = grid->get_global_rank(grid->j, grid->i, grid->k); 
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localB != nullptr) {
-                shiftDenseMatrix(*localB, MPI_COMM_WORLD, 
+                BufferPair bBuf(localB);
+                shiftDenseMatrix(bBuf, MPI_COMM_WORLD, 
                         tpose_dest, 1);
+                bBuf.sync_active(); 
             }
         }
         else if(mode == k_sddmmB || mode == k_spmmB) {
             if(localA != nullptr) {
-                shiftDenseMatrix(*localA, MPI_COMM_WORLD, 
+                BufferPair aBuf(localA);
+                shiftDenseMatrix(aBuf, MPI_COMM_WORLD, 
                         tpose_dest, 1);
+                aBuf.sync_active(); 
             }
         }
 
@@ -203,6 +207,9 @@ public:
             nnz_selection = nnz_tpose;
         }
 
+        BufferPair aBuf(Arole); 
+        BufferPair bBuf(Brole); 
+
         int nnz_processed = 0;
 		VectorXd accumulation_buffer = VectorXd::Constant(nnz_selection, 0.0); 
 
@@ -240,8 +247,8 @@ public:
             nnz_processed += kernel->triple_function(
                 temp, 
                 *choice,
-                *Arole,
-                *Brole,
+                *(aBuf.getActive()),
+                *(bBuf.getActive()),
                 0,
                 pMod(grid->i + grid->j + i, sqrtpc) * localAcols
                 );
@@ -250,13 +257,17 @@ public:
 
             if(sqrtpc > 1) {
                 t = start_clock();
-                shiftDenseMatrix(*Arole, grid->row_world, 
+                shiftDenseMatrix(aBuf, grid->row_world, 
                         pMod(grid->rankInRow + 1, sqrtpc), 1);
-                shiftDenseMatrix(*Brole, grid->col_world, 
+                shiftDenseMatrix(bBuf, grid->col_world, 
                         pMod(grid->rankInCol + 1, sqrtpc), 2);
+                MPI_Barrier(MPI_COMM_WORLD);
                 stop_clock_and_add(t, "Dense Cyclic Shift Time");
             }
         }
+
+        aBuf.sync_active();
+        bBuf.sync_active();
 
         if(mode == k_sddmmA || mode == k_sddmmB) {
             auto t = start_clock();

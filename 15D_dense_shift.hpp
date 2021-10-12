@@ -182,13 +182,13 @@ public:
             assert(false);
         }
 
-        auto t = start_clock();
-		DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+        BufferPair bBuf(Brole); 
+
+        DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
         choice->setValuesConstant(0.0);
-        stop_clock_and_add(t, "Computation Time");
 
-        t = start_clock();
+        auto t = start_clock();
         MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
                         broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
         stop_clock_and_add(t, "Replication Time");
@@ -201,7 +201,7 @@ public:
                 k_sddmmA,
                 *choice,
                 broadcast_buffer,
-                *Brole,
+                *(bBuf.getActive()),
                 block_id,
                 0);
  
@@ -209,7 +209,7 @@ public:
                 k_spmmA,
                 *choice,
                 accumulation_buffer,
-                *Brole,
+                *(bBuf.getActive()),
                 block_id,
                 0);
 
@@ -217,9 +217,9 @@ public:
 
             t = start_clock();
             if(p > 1) {
-                shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+                shiftDenseMatrix(bBuf, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+                MPI_Barrier(MPI_COMM_WORLD);
             }
-            MPI_Barrier(MPI_COMM_WORLD);
             stop_clock_and_add(t, "Cyclic Shift Time");
         }
 
@@ -227,6 +227,10 @@ public:
         for(int i = 0; i < c; i++) {
             recvCounts.push_back(Arole->rows() * R);
         }
+    
+        t = start_clock();
+        bBuf.sync_active();
+        stop_clock_and_add(t, "Computation Time");
 
         t = start_clock();
         MPI_Reduce_scatter(accumulation_buffer.data(), 
@@ -286,6 +290,8 @@ public:
             assert(false);
         }
 
+        BufferPair bBuf(Brole); 
+
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to the local portions of the matrix. 
         if(initial_replicate) {
@@ -327,18 +333,22 @@ public:
                 mode_temp, 
                 *choice,
                 accumulation_buffer,
-                *Brole,
+                *(bBuf.getActive()),
                 block_id,
                 0);
             stop_clock_and_add(t, "Computation Time"); 
 
             t = start_clock();
             if(p > 1) {
-                shiftDenseMatrix(*Brole, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
+                shiftDenseMatrix(bBuf, grid->col_world, pMod(grid->rankInCol + 1, p / c), 55);
                 MPI_Barrier(MPI_COMM_WORLD);
             }
             stop_clock_and_add(t, "Cyclic Shift Time");
         }        
+
+        t = start_clock();
+        bBuf.sync_active();
+        stop_clock_and_add(t, "Computation Time");
 
         if(mode == k_sddmmA || mode == k_sddmmB) {
             auto t = start_clock();
