@@ -100,18 +100,18 @@ int main(int argc, char** argv) {
             &local_ops
         );*/
 
-    Sparse15D_Dense_Shift* d_ops =
+    /*Sparse15D_Dense_Shift* d_ops =
             new Sparse15D_Dense_Shift(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);
+                &local_ops);*/
 
-    /*Sparse15D_Sparse_Shift* d_ops =
+    Sparse15D_Sparse_Shift* d_ops =
             new Sparse15D_Sparse_Shift(&S,
                 atoi(argv[2]), 
                 atoi(argv[3]), 
-                &local_ops);*/
+                &local_ops);
 
     /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
@@ -121,20 +121,20 @@ int main(int argc, char** argv) {
             &local_ops
         );*/
 
-    verify_operation(S, d_ops);
-
     srand((unsigned int) time(0) + d_ops->proc_rank + 2);
 
-    Distributed_ALS d_als(d_ops, true) ;
-    d_als.run_cg(5);
+    //Distributed_ALS d_als(d_ops, true) ;
+    //d_als.run_cg(5);
 
-    //vector<GATLayer> layers;
-    
+    verify_operation(S, d_ops);
+
+    vector<GATLayer> layers;
     // Input features, features per head, output features
-    /*layers.emplace_back(256, 256, 1);
-    layers.emplace_back(256, 256, 1);
+    layers.emplace_back(256, 256, 4);
+    layers.emplace_back(1024, 256, 4);
+    layers.emplace_back(1024, 256, 6);
     GAT gnn(layers, d_ops);
-    gnn.forwardPass();*/
+    gnn.forwardPass();
 
     //Sparse25D_MDense_Nostage* d_ops = new Sparse25D_MDense_Nostage(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), &local_ops);
  

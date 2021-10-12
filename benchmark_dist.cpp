@@ -27,7 +27,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
         string output_file,
         bool fused,
         int R,
-        int c 
+        int c,
+        string app 
         ) {
 
     ofstream fout;
