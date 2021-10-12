@@ -5,3 +5,7 @@ metis
 eigen
 result_files/*
 output_files/*
+weak_scaling_experiments/*
+strong_scaling_experiments/*
+applications/*
+rank_reordering/*

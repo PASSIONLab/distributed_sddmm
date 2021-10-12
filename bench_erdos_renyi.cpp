@@ -25,9 +25,10 @@ int main(int argc, char** argv) {
     string algorithm_name(argv[3]);
     int R = atoi(argv[4]);
     int c = atoi(argv[5]);
-    string fused_string(argv[6]);
-    string output_file(argv[7]);
+    string output_file(argv[6]);
+    //string fused_string(argv[7]);
 
+    /*
     bool fused;
     if(fused_string == "fused") {
         fused = true;
@@ -38,17 +39,76 @@ int main(int argc, char** argv) {
     else {
         assert(false);
     }
+    */
+
 
     string dummy = "";
 
     SpmatLocal S;
     S.loadTuples(false, logM, edgeFactor, dummy);
-    benchmark_algorithm(&S, 
-            algorithm_name,
-            output_file,
-            fused,
-            R,
-            c);
+
+
+    if(algorithm_name == "15d") {
+        benchmark_algorithm(&S, 
+                "15d_fusion1",
+                output_file,
+                true,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "15d_fusion2",
+                output_file,
+                true,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "15d_fusion1",
+                output_file,
+                false,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "15d_sparse",
+                output_file,
+                true,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "15d_sparse",
+                output_file,
+                false,
+                R,
+                c);
+    }
+    else if(algorithm_name == "25d") {
+        benchmark_algorithm(&S, 
+                "25d_sparse_replicate",
+                output_file,
+                false,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "25d_dense_replicate",
+                output_file,
+                true,
+                R,
+                c);
+
+        benchmark_algorithm(&S, 
+                "25d_dense_replicate",
+                output_file,
+                false,
+                R,
+                c);
+    }
+    else {
+        assert(false);
+    }
 
     MPI_Finalize();
 }

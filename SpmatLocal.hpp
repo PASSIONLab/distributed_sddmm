@@ -200,13 +200,13 @@ public:
 		MPI_Status stat;
 		int nnz_to_send = num_coords;
 		int recv_verify;
-        MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
+        /*MPI_Sendrecv(&nnz_to_send, 1, MPI_INT,
                 dst, 0,
                 &recv_verify, 1, MPI_INT,
                 src, 0,
                 comm, &stat);
 
-		assert(recv_verify == nnz_to_receive);
+		assert(recv_verify == nnz_to_receive);*/
 
 		MPI_Request vRequestSend, cRequestSend, ridxRequestSend, rRequestSend;
 		MPI_Request vRequestReceive, cRequestReceive, ridxRequestReceive, rRequestReceive;
