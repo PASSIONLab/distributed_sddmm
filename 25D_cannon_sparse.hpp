@@ -211,27 +211,35 @@ public:
         BufferPair bBuf(Brole); 
 
         int nnz_processed = 0;
-		VectorXd accumulation_buffer = VectorXd::Constant(nnz_selection, 0.0); 
+        VectorXd accumulation_buffer = VectorXd::Constant(nnz_selection, 0.0); 
 
         if(mode == k_spmmA || mode == k_spmmB) {
-            auto t = start_clock();
-            MPI_Allgatherv(
-                SValues.data(),
-                SValues.size(),
-                MPI_DOUBLE,
-                accumulation_buffer.data(),
-                choice->layer_coords_sizes.data(),
-                choice->layer_coords_start.data(),
-                MPI_DOUBLE,
-                grid->fiber_world
-                );
-
-            stop_clock_and_add(t, "Sparse Fiber Communication Time");
+            if(c > 1) {
+                auto t = start_clock();
+                MPI_Allgatherv(
+                    SValues.data(),
+                    SValues.size(),
+                    MPI_DOUBLE,
+                    accumulation_buffer.data(),
+                    choice->layer_coords_sizes.data(),
+                    choice->layer_coords_start.data(),
+                    MPI_DOUBLE,
+                    grid->fiber_world
+                    );
+                choice->setCSRValues(accumulation_buffer); 
+                stop_clock_and_add(t, "Sparse Fiber Communication Time");
+            }
+            else {
+                auto t = start_clock();
+                choice->setCSRValues(SValues); 
+                stop_clock_and_add(t, "Computation Time");
+            }
         }
-
-        auto t = start_clock();
-        choice->setCSRValues(accumulation_buffer); 
-        stop_clock_and_add(t, "Computation Time");
+        else {
+            auto t = start_clock();
+            choice->setValuesConstant(0.0);
+            stop_clock_and_add(t, "Computation Time");
+        }
 
         KernelMode temp = mode;
         if(mode == k_sddmmB) {
@@ -266,27 +274,36 @@ public:
             }
         }
 
+        auto t = start_clock();
         aBuf.sync_active();
         bBuf.sync_active();
+        stop_clock_and_add(t, "Computation Time");
 
         if(mode == k_sddmmA || mode == k_sddmmB) {
-            auto t = start_clock();
-            accumulation_buffer = choice->getCSRValues();
-            stop_clock_and_add(t, "Computation Time");
+            if(c > 1) {
+                auto t = start_clock();
+                accumulation_buffer = choice->getCSRValues();
+                stop_clock_and_add(t, "Computation Time");
 
-            t = start_clock();
-            MPI_Reduce_scatter(accumulation_buffer.data(),
-                sddmm_result_ptr->data(),
-                choice->layer_coords_sizes.data(), 
-                MPI_DOUBLE,
-                MPI_SUM,
-                grid->fiber_world
-            );
-            stop_clock_and_add(t, "Sparse Fiber Communication Time");
+                t = start_clock();
+                MPI_Reduce_scatter(accumulation_buffer.data(),
+                    sddmm_result_ptr->data(),
+                    choice->layer_coords_sizes.data(), 
+                    MPI_DOUBLE,
+                    MPI_SUM,
+                    grid->fiber_world
+                );
+                stop_clock_and_add(t, "Sparse Fiber Communication Time");
 
-            t = start_clock();
-            *sddmm_result_ptr = SValues.cwiseProduct(*sddmm_result_ptr);
-            stop_clock_and_add(t, "Computation Time");
+                t = start_clock();
+                *sddmm_result_ptr = SValues.cwiseProduct(*sddmm_result_ptr);
+                stop_clock_and_add(t, "Computation Time");
+            }
+            else {
+                t = start_clock();
+                *sddmm_result_ptr = SValues.cwiseProduct(choice->getCSRValues());
+                stop_clock_and_add(t, "Computation Time");
+            }
         }
     }
 };

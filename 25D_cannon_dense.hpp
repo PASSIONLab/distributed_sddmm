@@ -252,11 +252,13 @@ public:
         stop_clock_and_add(t, "Computation Time");
 
         if(initial_replicate) {
-            t = start_clock();
-		    accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, Arole->cols(), 0.0);
-            MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);        
-            stop_clock_and_add(t, "Dense Fiber Communication Time");
+            if(c > 1) {
+                t = start_clock();
+                accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, Arole->cols(), 0.0);
+                MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                                accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->fiber_world);        
+                stop_clock_and_add(t, "Dense Fiber Communication Time");
+            }
         }
 
         for(int i = 0; i < sqrtpc; i++) {
@@ -264,7 +266,7 @@ public:
             kernel->triple_function(
                 mode == k_spmmA ? k_spmmB : mode, // Need to account for SDDMMB here!
                 *choice,
-                accumulation_buffer,
+                c > 1 ? accumulation_buffer : *Arole,
                 *(bBuf.getActive()),
                 0,
                 localAcols * grid->j 

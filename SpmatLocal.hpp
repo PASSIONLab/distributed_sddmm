@@ -292,7 +292,9 @@ public:
 
 	~SpmatLocal() {
 		for(int i = 0; i < csr_blocks.size(); i++) {
-			delete csr_blocks[i];
+			if(csr_blocks[i] != nullptr) {
+				delete csr_blocks[i];
+			}
 		}
 	}
 
@@ -305,9 +307,14 @@ public:
 			for(int i = 0; i < blockStarts.size() - 1; i++) {
 				int num_coords = blockStarts[i + 1] - blockStarts[i];
 
-				CSRLocal* block 
-						= new CSRLocal(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);	
-				csr_blocks.push_back(block);
+				if(num_coords > 0) {
+					CSRLocal* block 
+							= new CSRLocal(blockRows, blockCols, num_coords, coords.data() + blockStarts[i], num_coords, transpose);					
+					csr_blocks.push_back(block);
+				}
+				else {
+					csr_blocks.push_back(nullptr);
+				}
 			}	
 		}
 		else {
@@ -546,9 +553,11 @@ public:
 
 	void setCSRValues(VectorXd &values) {
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
-			memcpy(csr_blocks[i]->getActive()->values.data(), 	
-					values.data() + blockStarts[i], 
-					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
+			if(csr_blocks[i] != nullptr) {
+				memcpy(csr_blocks[i]->getActive()->values.data(), 	
+						values.data() + blockStarts[i], 
+						sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
+			}
 		}
 	}
 
@@ -556,9 +565,11 @@ public:
 		VectorXd values = VectorXd::Constant(blockStarts[blockStarts.size() -1], 0.0);
 
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
-			memcpy(values.data() + blockStarts[i], 
-					csr_blocks[i]->getActive()->values.data(), 
-					sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
+			if(csr_blocks[i] != nullptr) {
+				memcpy(values.data() + blockStarts[i], 
+						csr_blocks[i]->getActive()->values.data(), 
+						sizeof(double) * (blockStarts[i + 1] - blockStarts[i]));
+			}
 		}
 
 		return values;
@@ -566,11 +577,12 @@ public:
 
 	void setValuesConstant(double cval) {
 		for(int i = 0; i < blockStarts.size() - 1; i++) {
-
-			// This may be too slow, we maybe should optimize this...
-			#pragma omp parallel for
-			for(int j = 0; j < blockStarts[i+1] - blockStarts[i]; j++) {
-				csr_blocks[i]->getActive()->values[j] = cval;
+			if(csr_blocks[i] != nullptr) {
+				// This may be too slow, we maybe should optimize this...
+				#pragma omp parallel for
+				for(int j = 0; j < blockStarts[i+1] - blockStarts[i]; j++) {
+					csr_blocks[i]->getActive()->values[j] = cval;
+				}
 			}
 		}
 	}

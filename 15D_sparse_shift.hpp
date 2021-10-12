@@ -200,17 +200,14 @@ public:
 		// is sharded and then reduced to the local portions of the matrix. 
         if(initial_replicate) {
             auto t = start_clock();
-            int cols = Brole->cols();
-            accumulation_buffer = DenseMatrix::Constant(Brole->rows() * c, cols, 0.0); 
-
+        
             if(c > 1) {
+                int cols = Brole->cols();
+                accumulation_buffer = DenseMatrix::Constant(Brole->rows() * c, cols, 0.0); 
                 for(int i = 0; i < p / c; i++) {
                     MPI_Allgather(Brole->data() + brBwidth * cols * i, brBwidth * cols, MPI_DOUBLE,
                                     accumulation_buffer.data() + brBwidth * cols * c * i, brBwidth * cols, MPI_DOUBLE, grid->row_world);
                 }
-            }
-            else {
-                accumulation_buffer = *Brole;
             }
             stop_clock_and_add(t, "Replication Time");  
         }
@@ -241,9 +238,9 @@ public:
                 mode == k_spmmB ? k_spmmA : mode,
                 *choice,
                 tmp,
-                accumulation_buffer,
+                c > 1 ? accumulation_buffer : *Brole,
                 0,
-                0); // TODO: Need to modify the internal offset! 
+                0); // TODO: Need to modify this offset! 
 
             if(mode == k_spmmA || mode == k_spmmB) {
                 Arole->middleRows(block_id * arBwidth, arBwidth) = tmp; 

@@ -142,5 +142,8 @@ int main(int argc, char** argv) {
 
     //test_15D(d_ops);
 
+
+    //delete d_ops;
+
     MPI_Finalize();
 }

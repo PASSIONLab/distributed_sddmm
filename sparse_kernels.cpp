@@ -22,6 +22,10 @@ size_t StandardKernel::sddmm_local(
 
     size_t processed = 0;
 
+    if(S.csr_blocks[block] == nullptr) {
+        return processed;
+    }
+
     double *Aptr, *Bptr;
     if(S.csr_blocks[block]->transpose) {
         Aptr = B.data();
@@ -63,6 +67,10 @@ size_t StandardKernel::spmm_local(
 
 	struct matrix_descr descr;
 	descr.type = SPARSE_MATRIX_TYPE_GENERAL;
+
+    if(S.csr_blocks[block] == nullptr) {
+        return processed;
+    }
 
     if(mode == Amat && S.csr_blocks[block]->transpose) {
         cout << "Error, local matrix is transposed, can't perform SpmmA" << endl;

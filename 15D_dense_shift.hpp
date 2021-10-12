@@ -184,14 +184,17 @@ public:
 
         BufferPair bBuf(Brole); 
 
-        DenseMatrix broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+        DenseMatrix broadcast_buffer;
 		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
         choice->setValuesConstant(0.0);
 
-        auto t = start_clock();
-        MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                        broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-        stop_clock_and_add(t, "Replication Time");
+        if(c > 1) {
+            broadcast_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+            auto t = start_clock();
+            MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                            broadcast_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
+            stop_clock_and_add(t, "Replication Time");
+        }
 
         for(int i = 0; i < p / c; i++) {
             int block_id = pMod((grid->rankInCol - i) * c + grid->rankInRow, p);
@@ -200,7 +203,7 @@ public:
             kernel->triple_function(
                 k_sddmmA,
                 *choice,
-                broadcast_buffer,
+                c > 1 ? broadcast_buffer : *Arole,
                 *(bBuf.getActive()),
                 block_id,
                 0);
@@ -228,16 +231,22 @@ public:
             recvCounts.push_back(Arole->rows() * R);
         }
     
-        t = start_clock();
+        auto t = start_clock();
         bBuf.sync_active();
         stop_clock_and_add(t, "Computation Time");
 
-        t = start_clock();
-        MPI_Reduce_scatter(accumulation_buffer.data(), 
-                Arole->data(), recvCounts.data(),
-                    MPI_DOUBLE, MPI_SUM, grid->row_world);
-        stop_clock_and_add(t, "Replication Time");
-
+        if(c > 1) {
+            t = start_clock();
+            MPI_Reduce_scatter(accumulation_buffer.data(), 
+                    Arole->data(), recvCounts.data(),
+                        MPI_DOUBLE, MPI_SUM, grid->row_world);
+            stop_clock_and_add(t, "Replication Time");
+        }
+        else {
+            auto t = start_clock();
+            *Arole = accumulation_buffer;
+            stop_clock_and_add(t, "Computation Time");
+        }
         // TODO: Doesn't affect the applications, but this fused method
         // currently doesn't fill the SDDMM buffers.
     }
@@ -295,11 +304,13 @@ public:
 		// Temporary buffer that holds the results of the local ops; this buffer
 		// is sharded and then reduced to the local portions of the matrix. 
         if(initial_replicate) {
-            auto t = start_clock();
-            accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
-            MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
-                            accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
-            stop_clock_and_add(t, "Replication Time");  
+            if(c > 1) {
+                auto t = start_clock();
+                accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+                MPI_Allgather(Arole->data(), Arole->size(), MPI_DOUBLE,
+                                accumulation_buffer.data(), Arole->size(), MPI_DOUBLE, grid->row_world);
+                stop_clock_and_add(t, "Replication Time");  
+            }
         }
 
         auto t = start_clock();
@@ -332,7 +343,7 @@ public:
             kernel->triple_function(
                 mode_temp, 
                 *choice,
-                accumulation_buffer,
+                c > 1 ? accumulation_buffer : *Arole,
                 *(bBuf.getActive()),
                 block_id,
                 0);
@@ -362,11 +373,13 @@ public:
                 recvCounts.push_back(Arole->rows() * R);
             }
 
-            t = start_clock();
-            MPI_Reduce_scatter(accumulation_buffer.data(), 
-                    Arole->data(), recvCounts.data(),
-                        MPI_DOUBLE, MPI_SUM, grid->row_world);
-            stop_clock_and_add(t, "Replication Time");
+            if(c > 1) {
+                t = start_clock();
+                MPI_Reduce_scatter(accumulation_buffer.data(), 
+                        Arole->data(), recvCounts.data(),
+                            MPI_DOUBLE, MPI_SUM, grid->row_world);
+                stop_clock_and_add(t, "Replication Time");
+            }
         }
     }
 };
