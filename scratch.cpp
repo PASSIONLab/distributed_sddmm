@@ -100,12 +100,12 @@ int main(int argc, char** argv) {
             &local_ops
         );*/
 
-    /*Sparse15D_Dense_Shift* d_ops =
+    Sparse15D_Dense_Shift* d_ops =
             new Sparse15D_Dense_Shift(&S, 
                 atoi(argv[2]), 
                 atoi(argv[3]), 
                 1, 
-                &local_ops);*/
+                &local_ops);
 
     /*Sparse15D_Sparse_Shift* d_ops =
             new Sparse15D_Sparse_Shift(&S,
@@ -113,13 +113,13 @@ int main(int argc, char** argv) {
                 atoi(argv[3]), 
                 &local_ops);*/
 
-    Sparse25D_Cannon_Sparse* d_ops
+    /*Sparse25D_Cannon_Sparse* d_ops
         = new Sparse25D_Cannon_Sparse(
             &S,
             atoi(argv[2]),
             atoi(argv[3]),
             &local_ops
-        );
+        );*/
 
     verify_operation(S, d_ops);
 
