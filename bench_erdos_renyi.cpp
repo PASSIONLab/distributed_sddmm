@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     }
     */
 
-
+    string app = "vanilla";
     string dummy = "";
 
     SpmatLocal S;
@@ -54,35 +54,40 @@ int main(int argc, char** argv) {
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_fusion2",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_fusion1",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_sparse",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_sparse",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
     }
     else if(algorithm_name == "25d") {
         benchmark_algorithm(&S, 
@@ -90,21 +95,24 @@ int main(int argc, char** argv) {
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "25d_dense_replicate",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "25d_dense_replicate",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
     }
     else {
         assert(false);

@@ -22,8 +22,8 @@ link_directories(
     /global/homes/v/vbharadw/diBELLA.2D/CombBLAS/install/lib $ENV{MKLROOT}/lib/intel64 
     )
 
-add_executable(bench_er bench_erdos_renyi.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp) 
-add_executable(bench_file bench_file.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp) 
+add_executable(bench_er bench_erdos_renyi.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
+add_executable(bench_file bench_file.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
 add_executable(local_kernel_benchmark sparse_kernels.cpp local_kernel_benchmark.cpp common.cpp)
 add_executable(scratch scratch.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp)
 #add_executable(test_async test_async_strategies.cpp common.cpp) 

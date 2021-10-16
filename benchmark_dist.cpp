@@ -15,6 +15,7 @@
 #include "sparse_kernels.h"
 #include "common.h"
 #include "als_conjugate_gradients.h"
+#include "gat.hpp"
 #include <mpi.h>
 #include "json.hpp"
 
@@ -77,6 +78,24 @@ void benchmark_algorithm(SpmatLocal* spmat,
             &local_ops);
     }
 
+    unique_ptr<GAT> gnn;
+    unique_ptr<Distributed_ALS> d_als;
+    vector<GATLayer> layers;
+
+    if(app=="gat") {
+        // Input features, features per head, output features
+        layers.emplace_back(256, 256, 4);
+        layers.emplace_back(1024, 256, 4);
+        layers.emplace_back(1024, 256, 6);
+        gnn.reset(new GAT(layers, d_ops)); 
+    }
+    else if(app=="als") {
+        d_als.reset(new Distributed_ALS(d_ops, true));
+    }
+    else {
+        assert(app=="vanilla");
+    }
+
     DenseMatrix A = d_ops->like_A_matrix(0.0);    
     DenseMatrix B = d_ops->like_B_matrix(0.0);
 
@@ -89,17 +108,25 @@ void benchmark_algorithm(SpmatLocal* spmat,
     do {
         num_trials++;
 
-        if(fused) {
-            d_ops->fusedSpMM(A, 
-                    B, 
-                    S, 
-                    sddmm_result, 
-                    Amat);
+        if(app == "vanilla") {
+            if(fused) {
+                d_ops->fusedSpMM(A, 
+                        B, 
+                        S, 
+                        sddmm_result, 
+                        Amat);
+            }
+            else {
+                d_ops->sddmmA(A, B, S, sddmm_result);
+                d_ops->spmmA(A, B, S);
+            } 
         }
-        else {
-            d_ops->sddmmA(A, B, S, sddmm_result);
-            d_ops->spmmA(A, B, S);
-        } 
+        else if(app=="gat") {
+            gnn->forwardPass();
+        }
+        else if(app=="als") {
+            d_als->run_cg(1);
+        }
 
     } while(num_trials < 5);
     MPI_Barrier(MPI_COMM_WORLD);
@@ -114,6 +141,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
     double throughput = ops / elapsed;
     throughput /= 1e9;
 
+
+    j_obj["elapsed"] = elapsed;
     j_obj["overall_throughput"] = throughput;
     j_obj["fused"] = fused;
     j_obj["num_trials"] = num_trials;

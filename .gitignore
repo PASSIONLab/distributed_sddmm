@@ -9,3 +9,4 @@ weak_scaling_experiments/*
 strong_scaling_experiments/*
 applications/*
 rank_reordering/*
+application_experiments/*

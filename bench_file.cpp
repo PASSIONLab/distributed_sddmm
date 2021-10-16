@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     int R = atoi(argv[3]);
     int c = atoi(argv[4]);
     string output_file(argv[5]);
+    string app(argv[6]);
 
     SpmatLocal S;
     S.loadTuples(true, -1, -1, fname);
@@ -35,35 +36,40 @@ int main(int argc, char** argv) {
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_sparse",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "15d_fusion1",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "15d_fusion2",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);*/
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "15d_fusion1",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);*/
     }
     else if(algorithm_name == "25d") {
         benchmark_algorithm(&S, 
@@ -71,21 +77,24 @@ int main(int argc, char** argv) {
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "25d_dense_replicate",
                 output_file,
                 true,
                 R,
-                c);
+                c,
+                app);
 
         benchmark_algorithm(&S, 
                 "25d_dense_replicate",
                 output_file,
                 false,
                 R,
-                c);
+                c,
+                app);
     }
     else {
         assert(false);

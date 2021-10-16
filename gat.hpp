@@ -96,8 +96,6 @@ public:
         // Applies the Leaky ReLU function with the specified value of alpha 
         sddmm_buffer = sddmm_buffer.array().max(0) + sddmm_buffer.array().min(0) * leaky_relu_alpha;
 
-        // TODO: Normalize the rows 
-
         // SpMM phase
         d_ops->algorithm(A, B, sddmm_buffer, nullptr, k_spmmA, false);
 

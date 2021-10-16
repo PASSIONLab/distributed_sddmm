@@ -10,5 +10,6 @@ void benchmark_algorithm(SpmatLocal* S,
         string output_file,
         bool fused,
         int R,
-        int c 
+        int c,
+        string app 
         );
