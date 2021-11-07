@@ -117,6 +117,8 @@ public:
 		mkl_sparse_d_create_coo(&tempCOO, SPARSE_INDEX_BASE_ZERO, rows, cols, max(num_coords, 1), rArray.data(), cArray.data(), vArray.data());
 		mkl_sparse_convert_csr(tempCOO, op, &tempCSR);
 
+		mkl_sparse_destroy(tempCOO);
+
 		sparse_index_base_t indexing;
 		MKL_INT *rows_start, *rows_end, *col_idx;
 		double *values;
@@ -183,6 +185,10 @@ public:
 
 	~CSRLocal() {
 		delete[] buffer;
+
+		for(int t = 0; t < 2; t++) {
+			mkl_sparse_destroy(buffer[t].mkl_handle);
+		}
 	}
 
 	/*
