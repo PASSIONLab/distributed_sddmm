@@ -26,8 +26,10 @@ add_executable(bench_er bench_erdos_renyi.cpp benchmark_dist.cpp sparse_kernels.
 add_executable(bench_file bench_file.cpp benchmark_dist.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp) 
 add_executable(local_kernel_benchmark sparse_kernels.cpp local_kernel_benchmark.cpp common.cpp)
 add_executable(scratch scratch.cpp sparse_kernels.cpp common.cpp als_conjugate_gradients.cpp)
+add_executable(petsc_bench petsc_baseline/spmm_test.cpp) 
+
 #add_executable(test_async test_async_strategies.cpp common.cpp) 
-add_executable(par_iotest ParIOTest.cpp) 
+#add_executable(par_iotest ParIOTest.cpp) 
 
 foreach(TARGET bench_file bench_er local_kernel_benchmark scratch)
     target_compile_options(${TARGET} PRIVATE -O3 -march=knl -DMKL_ILP64  -m64  -I$ENV{MKLROOT}/include) 
@@ -36,10 +38,10 @@ foreach(TARGET bench_file bench_er local_kernel_benchmark scratch)
     target_precompile_headers(${TARGET} PRIVATE json.hpp <Eigen/Dense>)
 endforeach()
 
-foreach(TARGET par_iotest)
-    target_compile_options(${TARGET} PRIVATE -O3 -march=haswell -DMKL_ILP64  -m64  -I$ENV{MKLROOT}/include) 
-    target_link_options(${TARGET} PRIVATE -L$ENV{MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl)
-    target_link_libraries(${TARGET} PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib )
-    target_precompile_headers(${TARGET} PRIVATE json.hpp <Eigen/Dense>)
-endforeach()
+#foreach(TARGET par_iotest)
+#    target_compile_options(${TARGET} PRIVATE -O3 -march=haswell -DMKL_ILP64  -m64  -I$ENV{MKLROOT}/include) 
+#    target_link_options(${TARGET} PRIVATE -L$ENV{MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl)
+#    target_link_libraries(${TARGET} PRIVATE MPI::MPI_CXX ${BLAS_LIBRARIES} OpenMP::OpenMP_CXX CombBLAS GraphGenlib )
+#    target_precompile_headers(${TARGET} PRIVATE json.hpp <Eigen/Dense>)
+#endforeach()
 
