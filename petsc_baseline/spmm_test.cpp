@@ -1,5 +1,6 @@
 #include <petscmat.h>
 #include <algorithm>
+#include <fstream>
 #include "omp.h"
 #include "../json.hpp"
 
@@ -21,10 +22,16 @@ int main (int argc, char **argv)
 
 	int nthds, np;
 	MPI_Comm_size(MPI_COMM_WORLD, &np);
+	int rank;
+
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
 	#pragma omp parallel
 	{
 		nthds = omp_get_num_threads();
 	}
+
+	std::string output_file(argv[4]);
 
 	niters = atoi(argv[2]);
 	//PetscPrintf(PETSC_COMM_WORLD, "np %d nthds %d\n", np, nthds);
@@ -42,8 +49,8 @@ int main (int argc, char **argv)
 	MatGetInfo(A, MAT_GLOBAL_SUM, &info);
 
 	long long int sparse_nnz = (long long int) info.nz_used;
-	PetscPrintf(PETSC_COMM_WORLD, "A matrix size %d %d %lld\n",
-				m, n, sparse_nnz);
+	//PetscPrintf(PETSC_COMM_WORLD, "A matrix size %d %d %lld\n",
+	//			m, n, sparse_nnz);
 
 	/*
 	PetscInt a_local_m, a_local_n;
@@ -60,7 +67,7 @@ int main (int argc, char **argv)
 	MatLoad(B, fd);
 	PetscViewerDestroy(&fd);*/
 
-	PetscInt r = 128;
+	PetscInt r = atoi(argv[3]);
 
 	/*MatCreate(PETSC_COMM_WORLD, &B);
 	MatSetType(B, MATMPIDENSE);
@@ -99,11 +106,15 @@ int main (int argc, char **argv)
 	MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);
 	
 	//PetscPrintf(PETSC_COMM_WORLD, "Performing SpMM\n");
+
+	// Warmup to initialize matrix
+	MatMatMult(A, B, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C);
+
 	int i;
 	double start_time = MPI_Wtime();
 	for (i = 0; i < niters; ++i)
 	{
-		MatMatMult(A, B, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C);
+		MatMatMult(A, B, MAT_REUSE_MATRIX, PETSC_DEFAULT, &C);
 	}
 	double end_time = MPI_Wtime();
 
@@ -146,7 +157,14 @@ int main (int argc, char **argv)
     j_obj["alg_info"] = alg_info;
 	string res =  j_obj.dump() + ",\n";
 
-	PetscPrintf(PETSC_COMM_WORLD, res.c_str());
+	if(rank == 0) {
+		ofstream fout;
+			fout.open(output_file, std::ios_base::app 
+		);
+
+		fout << res;
+		fout.close();
+	}
 
 	MatDestroy(&A);
 	MatDestroy(&B);

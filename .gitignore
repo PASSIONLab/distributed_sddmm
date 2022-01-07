@@ -10,3 +10,5 @@ strong_scaling_experiments/*
 applications/*
 rank_reordering/*
 application_experiments/*
+petsc_baseline/petsc_bench
+petsc_baseline/*.out
