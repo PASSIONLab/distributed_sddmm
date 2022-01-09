@@ -105,11 +105,13 @@ public:
         ST->shard_across_layers(c, grid->k);
 
         // Postprocess the coordinates
+        #pragma omp parallel for
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows;
             S->coords[i].c %= localBrows;
         }
 
+        #pragma omp parallel for
         for(int i = 0; i < ST->coords.size(); i++) {
             ST->coords[i].r %= localBrows;
             ST->coords[i].c %= localArows;
@@ -118,6 +120,10 @@ public:
         // Commit to CSR format, then locally transpose ST
         S->monolithBlockColumn();
         ST->monolithBlockColumn();
+
+        if(proc_rank == 0) {
+            cout << "Initializing CSRBlocks..." << endl;
+        }
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
         nnz = S->coords.size();

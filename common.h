@@ -32,7 +32,7 @@ struct spcoord_t {
 	string string_rep();
 };
 
-bool column_major(spcoord_t &a, spcoord_t &b);
+bool column_major(spcoord_t a, spcoord_t b);
 
 bool row_major(spcoord_t &a, spcoord_t &b);
 

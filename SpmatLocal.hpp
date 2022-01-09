@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iterator>
 #include <algorithm>
+#include <parallel/algorithm>
 #include <mkl_spblas.h>
 #include <mpi.h>
 #include <string.h>
@@ -395,22 +396,28 @@ public:
 
 		spcoord_t* sendbuf = new spcoord_t[coords.size()];
 
+		#pragma omp parallel for
 		for(int i = 0; i < coords.size(); i++) {
-			sendcounts[dist->getOwner(coords[i].r, coords[i].c, transpose)]++;
+			int owner = dist->getOwner(coords[i].r, coords[i].c, transpose);
+			#pragma omp atomic update
+			sendcounts[owner]++;
 		}
 		prefix_sum(sendcounts, offsets);
 		bufindices = offsets;
 
+		#pragma omp parallel for
 		for(int i = 0; i < coords.size(); i++) {
 			int owner = dist->getOwner(coords[i].r, coords[i].c, transpose);
-			int idx = bufindices[owner];
+
+			int idx;
+			#pragma omp atomic capture
+			idx = bufindices[owner]++;
 	
 			sendbuf[idx].r = transpose ? coords[i].c : coords[i].r;
 			sendbuf[idx].c = transpose ? coords[i].r : coords[i].c;	
 			sendbuf[idx].value = coords[i].value;	
-
-			bufindices[owner]++;
 		}
+
 
 		// Broadcast the number of nonzeros that each processor is going to receive
 		MPI_Alltoall(sendcounts.data(), 1, MPI_INT, recvcounts.data(), 1, 
@@ -444,7 +451,9 @@ public:
 				SPCOORD, dist->world 
 				);
 
-		std::sort((result->coords).begin(), (result->coords).end(), column_major);
+		// TODO: Parallelize the sort routine?
+		//std::sort((result->coords).begin(), (result->coords).end(), column_major);
+		__gnu_parallel::sort((result->coords).begin(), (result->coords).end(), column_major);
 		delete[] sendbuf;
 
 		return result;

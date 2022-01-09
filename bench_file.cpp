@@ -55,21 +55,21 @@ int main(int argc, char** argv) {
                 c,
                 app);
 
-        /*benchmark_algorithm(&S, 
+        benchmark_algorithm(&S, 
                 "15d_fusion2",
                 output_file,
                 true,
                 R,
                 c,
-                app);*/
+                app);
 
-        /*benchmark_algorithm(&S, 
+        benchmark_algorithm(&S, 
                 "15d_fusion1",
                 output_file,
                 false,
                 R,
                 c,
-                app);*/
+                app);
     }
     else if(algorithm_name == "25d") {
         benchmark_algorithm(&S, 

@@ -46,7 +46,7 @@ void initialize_mpi_datatypes() {
     MPI_Type_commit(&SPCOORD);
 }	
 
-bool column_major(spcoord_t &a, spcoord_t &b) {
+bool column_major(spcoord_t a, spcoord_t b) {
     if(a.c == b.c) {
         return a.r < b.r;
     }
