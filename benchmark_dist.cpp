@@ -32,6 +32,9 @@ void benchmark_algorithm(SpmatLocal* spmat,
         string app 
         ) {
 
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
     ofstream fout;
         fout.open(output_file, std::ios_base::app 
     );
@@ -102,6 +105,10 @@ void benchmark_algorithm(SpmatLocal* spmat,
     VectorXd S = d_ops->like_S_values(1.0); 
     VectorXd sddmm_result = d_ops->like_S_values(0.0);
 
+    if(rank == 0) {
+        std::cout << "Starting benchmark " << app << endl;
+    }
+
     d_ops->reset_performance_timers();
     my_timer_t t = start_clock();
     int num_trials = 0;
@@ -130,9 +137,6 @@ void benchmark_algorithm(SpmatLocal* spmat,
 
     } while(num_trials < 5);
     MPI_Barrier(MPI_COMM_WORLD);
-
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     json j_obj; 
 

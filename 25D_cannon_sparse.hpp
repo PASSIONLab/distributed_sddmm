@@ -122,7 +122,7 @@ public:
         ST->monolithBlockColumn();
 
         if(proc_rank == 0) {
-            cout << "Initializing CSRBlocks..." << endl;
+            std::cout << "Initialize CSR Blocks" << endl;
         }
 
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
@@ -132,6 +132,10 @@ public:
 	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
         nnz_tpose = ST->coords.size();
         vector<spcoord_t>().swap(ST->coords);
+
+        if(proc_rank == 0) {
+            std::cout << "Finished CSR Blocks" << endl;
+        }
 
         check_initialized();
     }

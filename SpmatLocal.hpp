@@ -98,7 +98,7 @@ public:
 		}
 
 
-		// TODO: Should really parallelize more of the computation with OpenMP
+		#pragma omp parallel for
 		for(int i = 0; i < num_coords; i++) {
 			rArray[i] = coords[i].r;
 			cArray[i] = coords[i].c;
@@ -155,6 +155,7 @@ public:
 			buffer[t].rowStart.resize(this->rows + 1);
 
 			// Copy over row indices
+			#pragma omp parallel for
 			for(int i = 0; i < num_coords; i++) {
 				buffer[t].row_idx[i] = coords[i].r;
 			}
