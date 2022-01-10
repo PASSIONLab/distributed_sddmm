@@ -64,7 +64,7 @@ void benchmark_algorithm(SpmatLocal* spmat,
             R,
             c, 
             2, 
-            &local_ops); 
+            &local_ops);
     }
     else if(algorithm_name=="25d_dense_replicate") {
         d_ops = new Sparse25D_Cannon_Dense(
@@ -99,8 +99,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
         assert(app=="vanilla");
     }
 
-    DenseMatrix A = d_ops->like_A_matrix(0.0);    
-    DenseMatrix B = d_ops->like_B_matrix(0.0);
+    DenseMatrix A = d_ops->like_A_matrix(0.001);    
+    DenseMatrix B = d_ops->like_B_matrix(0.001);
 
     VectorXd S = d_ops->like_S_values(1.0); 
     VectorXd sddmm_result = d_ops->like_S_values(0.0);

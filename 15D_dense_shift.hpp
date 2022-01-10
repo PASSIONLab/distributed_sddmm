@@ -24,8 +24,6 @@ public:
     int p, c;
     shared_ptr<FlexibleGrid> grid;
 
-    DenseMatrix accumulation_buffer;
-
     ShardedBlockCyclicColumn(int M, int N, int p, int c, shared_ptr<FlexibleGrid> &grid) { 
         world = MPI_COMM_WORLD;
         this->p = p;
@@ -95,11 +93,13 @@ public:
 
         setRValue(R);
 
+        #pragma omp parallel for
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
         }
         S->divideIntoBlockCols(localBrows, p, true); 
- 
+
+        #pragma omp parallel for
         for(int i = 0; i < ST->coords.size(); i++) {
             ST->coords[i].r %= localBrows * c;
         } 
@@ -185,7 +185,7 @@ public:
         BufferPair bBuf(Brole); 
 
         DenseMatrix broadcast_buffer;
-		DenseMatrix accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
+		accumulation_buffer = DenseMatrix::Constant(Arole->rows() * c, R, 0.0); 
         choice->setValuesConstant(0.0);
 
         if(c > 1) {

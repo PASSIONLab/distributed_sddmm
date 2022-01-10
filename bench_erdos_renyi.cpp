@@ -47,7 +47,6 @@ int main(int argc, char** argv) {
     SpmatLocal S;
     S.loadTuples(false, logM, edgeFactor, dummy);
 
-
     if(algorithm_name == "15d") {
         benchmark_algorithm(&S, 
                 "15d_fusion1",
@@ -65,13 +64,13 @@ int main(int argc, char** argv) {
                 c,
                 app);
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "15d_fusion1",
                 output_file,
                 false,
                 R,
                 c,
-                app);
+                app);*/
 
         benchmark_algorithm(&S, 
                 "15d_sparse",
@@ -81,13 +80,13 @@ int main(int argc, char** argv) {
                 c,
                 app);
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "15d_sparse",
                 output_file,
                 false,
                 R,
                 c,
-                app);
+                app);*/
     }
     else if(algorithm_name == "25d") {
         benchmark_algorithm(&S, 
@@ -106,13 +105,13 @@ int main(int argc, char** argv) {
                 c,
                 app);
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "25d_dense_replicate",
                 output_file,
                 false,
                 R,
                 c,
-                app);
+                app);*/
     }
     else {
         assert(false);

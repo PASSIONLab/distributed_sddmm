@@ -97,8 +97,6 @@ public:
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
         ST.reset(S_input->redistribute_nonzeros(&transpose_dist, true, false));
 
-        int nnz_count = S->coords.size();
-
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);
 
@@ -123,10 +121,6 @@ public:
         S->monolithBlockColumn();
         ST->monolithBlockColumn();
 
-        if(proc_rank == 0) {
-            std::cout << "Initialize CSR Blocks" << endl;
-        }
-
 	    S->initializeCSRBlocks(localArows, localBrows, -1, false); 
         nnz = S->coords.size();
         vector<spcoord_t>().swap(S->coords);
@@ -134,10 +128,6 @@ public:
 	    ST->initializeCSRBlocks(localBrows, localArows, -1, false);
         nnz_tpose = ST->coords.size();
         vector<spcoord_t>().swap(ST->coords);
-
-        if(proc_rank == 0) {
-            std::cout << "Finished CSR Blocks" << endl;
-        }
 
         check_initialized();
     }

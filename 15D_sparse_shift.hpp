@@ -99,10 +99,12 @@ public:
 
         setRValue(R);
 
+        #pragma omp parallel for
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= blockAwidth; 
         }
- 
+
+        #pragma omp parallel for
         for(int i = 0; i < ST->coords.size(); i++) {
             ST->coords[i].r %= blockBwidth; 
         }

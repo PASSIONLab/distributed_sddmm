@@ -110,11 +110,13 @@ public:
         int max_nnz = *(std::max_element(nnz_in_row_axis.begin(), nnz_in_row_axis.end()));
         int max_nnz_tpose = *(std::max_element(nnz_in_row_axis_tpose.begin(), nnz_in_row_axis_tpose.end()));
 
+        #pragma omp parallel for
         for(int i = 0; i < S->coords.size(); i++) {
             S->coords[i].r %= localArows * c;
             S->coords[i].c %= localBrows;
         }
 
+        #pragma omp parallel for
         for(int i = 0; i < ST->coords.size(); i++) {
             ST->coords[i].r %= localBrows * c;
             ST->coords[i].c %= localArows;

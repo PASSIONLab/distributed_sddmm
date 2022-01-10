@@ -5,7 +5,7 @@
 #SBATCH -J petsc_baseline 
 #SBATCH --mail-user=vivek_bharadwaj@berkeley.edu
 #SBATCH --mail-type=ALL
-#SBATCH -t 03:00:00
+#SBATCH -t 04:30:00
 
 #OpenMP settings:
 export OMP_NUM_THREADS=1
@@ -17,14 +17,14 @@ module swap PrgEnv-intel PrgEnv-gnu
 
 r=128
 
-echo "Starting Amazon PetSC Benchmarks"
-in_file=$SCRATCH/dist_sddmm/amazon_large_randomized.petsc
-out_file=petsc_amazon_strong.out
+#echo "Starting Amazon PetSC Benchmarks"
+#in_file=$SCRATCH/dist_sddmm/amazon_large_randomized.petsc
+#out_file=petsc_amazon_strong.out
 
 # Proc Counts: 272, 544, 1088, 2176, 4352, 8704, 10w7408
 
 #srun -N 256 -n 17408 ./petsc_bench $in_file 10 $r $out_file
-srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
 #srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
 #srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
 #srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
@@ -32,27 +32,41 @@ srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
 #srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
 
 
-echo "Starting UK-2002 PetSC Benchmarks"
-in_file=$SCRATCH/dist_sddmm/uk-2002-permuted.petsc
-out_file=petsc_uk_strong.out
+#echo "Starting UK-2002 PetSC Benchmarks"
+#in_file=$SCRATCH/dist_sddmm/uk-2002-permuted.petsc
+#out_file=petsc_uk_strong.out
 
+#srun -N 256 -n 17408 ./petsc_bench $in_file 10 $r $out_file
+#srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 8   -n 544   ./petsc_bench $in_file 10 $r $out_file
+#srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
+
+
+#echo "Starting Eukarya PetSC Benchmarks"
+#in_file=$SCRATCH/dist_sddmm/eukarya-permuted.petsc
+#out_file=petsc_eukarya_strong.out
+
+#srun -N 256 -n 17408 ./petsc_bench $in_file 10 $r $out_file
+#srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
+#srun -N 8   -n 544   ./petsc_bench $in_file 10 $r $out_file
+#srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
+
+
+in_file=$SCRATCH/dist_sddmm/twitter7-permuted.petsc
+out_file=petsc_twitter7_strong.out
+
+echo "Starting Twitter PetSC Benchmarks"
+srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
+srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
+srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
+srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
+srun -N 8   -n 544   ./petsc_bench $in_file 10 $r $out_file
 srun -N 256 -n 17408 ./petsc_bench $in_file 10 $r $out_file
 srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 8   -n 544   ./petsc_bench $in_file 10 $r $out_file
-#srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
 
-
-echo "Starting Eukarya PetSC Benchmarks"
-in_file=$SCRATCH/dist_sddmm/eukarya-permuted.petsc
-out_file=petsc_eukarya_strong.out
-
-srun -N 256 -n 17408 ./petsc_bench $in_file 10 $r $out_file
-srun -N 128 -n 8704  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 64  -n 4352  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 32  -n 2176  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 16  -n 1088  ./petsc_bench $in_file 10 $r $out_file
-#srun -N 8   -n 544   ./petsc_bench $in_file 10 $r $out_file
-#srun -N 4   -n 272   ./petsc_bench $in_file 10 $r $out_file
