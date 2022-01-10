@@ -81,13 +81,12 @@ public:
 		this->rows = rows;
 		this->cols = cols;
 
-
 		this->buffer = new CSRHandle[2];
-
+	
 		// This setup is really clunky, but I don't have time to fix it. 
 		vector<MKL_INT> rArray(num_coords, 0.0);
 		vector<MKL_INT> cArray(num_coords, 0.0);
-		vector<double> vArray(num_coords, 0.0);
+		vector<double> vArray(num_coords, 0.0);	
 
 		// Put a dummy value in if the number of coordinates is 0, so that everything doesn't
 		// blow up
@@ -119,6 +118,9 @@ public:
 		mkl_sparse_convert_csr(tempCOO, op, &tempCSR);
 
 		mkl_sparse_destroy(tempCOO);
+		vector<MKL_INT>().swap(rArray);		
+		vector<MKL_INT>().swap(cArray);		
+		vector<double>().swap(vArray);
 
 		sparse_index_base_t indexing;
 		MKL_INT *rows_start, *rows_end, *col_idx;

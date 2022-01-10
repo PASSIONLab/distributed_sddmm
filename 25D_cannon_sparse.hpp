@@ -97,6 +97,8 @@ public:
         S.reset(S_input->redistribute_nonzeros(&nonzero_dist, false, false));
         ST.reset(S_input->redistribute_nonzeros(&transpose_dist, true, false));
 
+        int nnz_count = S->coords.size();
+
         broadcastCoordinatesFromFloor(S);
         broadcastCoordinatesFromFloor(ST);
 
