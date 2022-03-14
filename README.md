@@ -3,7 +3,7 @@ __Half-and-Half (HnH)__ is a C++ library for extremely
 large parallel distributed sparse-times-dense matrix multiplication (SpMM) 
 and sampled-dense-dense matrix multiplication (SDDMM) on computing clusters. 
 It relies on MPI for inter-process communication and OpenMP for intra-node parallelism.
-HnH uses state-of-the-art one-and-a-__half__ dimensional
+HnH uses one-and-a-__half__ dimensional
 (1.5D) and two-and-a-__half__ dimensional (2.5D) sparse-times-dense algorithms
 to reduce communication bandwidth, especially when dense matrix inputs are tall-skinny. 
 It provides a simple, unified interface for 1.5D
