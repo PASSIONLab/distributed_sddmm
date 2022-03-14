@@ -11,11 +11,28 @@ VectorXd batch_dot_product(DenseMatrix &A, DenseMatrix &B) {
 } 
 
 DenseMatrix scale_matrix_rows(VectorXd &scale_vector, DenseMatrix &mat) {
-    return scale_vector.asDiagonal() * mat;
+    DenseMatrix res = mat;
+    double* resData = res.data();
+    double* matData = res.data();
+    int resRows = res.rows();
+    int resCols = res.cols();
+
+    #pragma omp parallel for collapse(2)
+    for(int i = 0; i < resRows; i++) {
+        for(int j = 0; j < resCols; j++) {
+            double coeff = scale_vector[i];
+            resData[i * resCols + j] = matData[i * resCols + j] * coeff;
+        }
+    }
+    //return scale_vector.asDiagonal() * mat;
+    return res;
 }
 
-void allreduceVector(VectorXd &vec, MPI_Comm comm) {
+void ALS_CG::allreduceVector(VectorXd &vec, MPI_Comm comm) {
+    double start_time = MPI_Wtime();
     MPI_Allreduce(MPI_IN_PLACE, vec.data(), vec.size(), MPI_DOUBLE, MPI_SUM, comm);
+    double end_time = MPI_Wtime();
+    application_communication_time += end_time - start_time; 
 }
 
 void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) { 
@@ -51,21 +68,29 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
     DenseMatrix r = rhs - Mx;
     DenseMatrix p = r;
     VectorXd rsold = batch_dot_product(r, r);
-    
+    VectorXd alpha = rsold; // This just initializes the shape of alpha
+    VectorXd coeffs = rsold;
+
     if(d_ops->r_split) {
         allreduceVector(rsold, reduction_world);
     }
 
     int cg_iter;
-    for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
 
+    for(cg_iter = 0; cg_iter < cg_max_iter; cg_iter++) {
+        double start = MPI_Wtime();
         if(matrix_to_optimize == Amat) {
             computeQueries(p, B, Amat, Mp);
         }
         else {
             computeQueries(A, p, Bmat, Mp);
         }
+        double end = MPI_Wtime();
+
+        start = MPI_Wtime();
         VectorXd bdot = batch_dot_product(p, Mp);
+
+        end = MPI_Wtime();
 
         if(d_ops->r_split) {
             allreduceVector(bdot, reduction_world);
@@ -73,7 +98,16 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
 
         bdot.array() += nan_avoidance_constant;
         rsold.array() += nan_avoidance_constant;
-        VectorXd alpha = rsold.cwiseQuotient(bdot);
+
+        alpha = rsold.cwiseQuotient(bdot);
+        /*double* bdotData = bdot.data();
+        double* rsoldData = rsold.data();
+        double* alphaData = alpha.data();
+        #pragma ivdep
+        #pragma omp parallel for
+        for(int i = 0; i < rsold.size(); i++) {
+            alphaData[i] = rsoldData[i] / bdotData[i];
+        }*/
 
         if(matrix_to_optimize == Amat) {
             A += scale_matrix_rows(alpha, p);
@@ -89,9 +123,9 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
             allreduceVector(rsnew, reduction_world);
         }
 
-        double rsnew_norm_sqrt = rsnew.sum();
-        MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
-        rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);
+        //double rsnew_norm_sqrt = rsnew.sum();
+        //MPI_Allreduce(MPI_IN_PLACE, &rsnew_norm_sqrt, 1, MPI_DOUBLE, MPI_SUM, residual_reduction_world);
+        //rsnew_norm_sqrt = sqrt(rsnew_norm_sqrt);
 
         /* Uncomment this to re-enable early stopping for conjugate gradients
         if(rsnew_norm_sqrt < cg_residual_tol) {
@@ -99,9 +133,10 @@ void ALS_CG::cg_optimizer(MatMode matrix_to_optimize, int cg_max_iter) {
         }
         */
 
-        VectorXd coeffs = rsnew.cwiseQuotient(rsold);
+        coeffs = rsnew.cwiseQuotient(rsold);
         p = r + scale_matrix_rows(coeffs, p);
         rsold = rsnew;
+        end = MPI_Wtime();
     }
 }
 
@@ -200,28 +235,28 @@ void Distributed_ALS::initializeEmbeddings() {
 void ALS_CG::run_cg(int n_alternating_steps) {
     initializeEmbeddings();
 
-    double residual = computeResidual();
+    //double residual = computeResidual();
     if(proc_rank == 0) {
-        cout << "Embeddings initialized" << endl;
-        cout << "Initial Residual: " << residual << endl;
+        cout << "Embeddings initialized +" << endl;
+        //cout << "Initial Residual: " << residual << endl;
     }
 
     for(int i = 0; i < n_alternating_steps; i++) {
         cg_optimizer(Amat, 10);
         cg_optimizer(Bmat, 10);
 
-        residual = computeResidual();
+        //residual = computeResidual();
 
-        if(i == n_alternating_steps - 1) {
+        /*if(i == n_alternating_steps - 1) {
             residual = computeResidual();
-        }
+        }*/
 
         if(proc_rank == 0) {
             if(i < n_alternating_steps - 1) {
                 cout << "Completed step " << i << endl;
             }
             else {
-                cout << "Residual after step " << i << " : " << residual << endl;
+                //cout << "Residual after step " << i << " : " << residual << endl;
             }
         }
     }

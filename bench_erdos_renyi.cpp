@@ -72,13 +72,13 @@ int main(int argc, char** argv) {
                 c,
                 app);*/
 
-        benchmark_algorithm(&S, 
+        /*benchmark_algorithm(&S, 
                 "15d_sparse",
                 output_file,
                 true,
                 R,
                 c,
-                app);
+                app);*/
 
         /*benchmark_algorithm(&S, 
                 "15d_sparse",

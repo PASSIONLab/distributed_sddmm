@@ -112,6 +112,8 @@ void benchmark_algorithm(SpmatLocal* spmat,
     d_ops->reset_performance_timers();
     my_timer_t t = start_clock();
     int num_trials = 0;
+
+    double application_communication_time = 0.0;
     do {
         num_trials++;
 
@@ -132,9 +134,10 @@ void benchmark_algorithm(SpmatLocal* spmat,
             gnn->forwardPass();
         }
         else if(app=="als") {
+            d_als->application_communication_time = 0.0;
             d_als->run_cg(1);
+            application_communication_time = d_als->application_communication_time;
         }
-
     } while(num_trials < 5);
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -145,13 +148,13 @@ void benchmark_algorithm(SpmatLocal* spmat,
     double throughput = ops / elapsed;
     throughput /= 1e9;
 
-
     j_obj["elapsed"] = elapsed;
     j_obj["overall_throughput"] = throughput;
     j_obj["fused"] = fused;
     j_obj["num_trials"] = num_trials;
     j_obj["alg_name"] = algorithm_name;
     j_obj["alg_info"] = d_ops->json_algorithm_info();
+    j_obj["application_communication_time"] = application_communication_time; 
     j_obj["perf_stats"] = d_ops->json_perf_statistics();
 
     if(rank == 0) {

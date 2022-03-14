@@ -34,6 +34,8 @@ public:
 
     int proc_rank;
 
+    double application_communication_time;
+
     virtual void computeRHS(MatMode matrix_to_optimize,
                             DenseMatrix &rhs) = 0;
 
@@ -46,6 +48,8 @@ public:
     virtual double computeResidual() = 0;
 
     virtual void initializeEmbeddings() = 0;
+
+    void allreduceVector(VectorXd &vec, MPI_Comm comm);
 
     void cg_optimizer(  MatMode matrix_to_optimize,
                         int cg_max_iter

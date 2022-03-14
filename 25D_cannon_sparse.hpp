@@ -71,7 +71,8 @@ public:
         perf_counter_keys = 
                 {"Dense Cyclic Shift Time",
                  "Sparse Fiber Communication Time",
-                 "Computation Time" 
+                 "Computation Time",
+                 "Setup Shift Time" 
                 };
 
         grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
@@ -154,6 +155,7 @@ public:
     }
 
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) { 
+        auto t = start_clock();
         int tpose_dest = grid->get_global_rank(grid->j, grid->i, grid->k); 
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localB != nullptr) {
@@ -171,6 +173,7 @@ public:
                 aBuf.sync_active(); 
             }
         }
+        stop_clock_and_add(t, "Setup Shift Time");
 
         //shiftDenseMatrix(*localA, grid->row_world, 
         //        pMod(grid->rankInRow - grid->rankInCol, sqrtpc), 1); 

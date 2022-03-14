@@ -73,7 +73,8 @@ public:
                 {"Dense Cyclic Shift Time",
                  "Sparse Cyclic Shift Time",
                  "Dense Fiber Communication Time",
-                 "Computation Time" 
+                 "Computation Time",
+                 "Setup Shift Time" 
                 };
 
         grid.reset(new FlexibleGrid(sqrtpc, sqrtpc, c, 3));
@@ -166,6 +167,7 @@ public:
     }
 
     void initial_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
+        auto t = start_clock();
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localA != nullptr) {
                 BufferPair aBuf(localA);
@@ -183,10 +185,12 @@ public:
                 bBuf.sync_active();
             }
         }
+        stop_clock_and_add(t, "Setup Shift Time");
     }
 
 
     void de_shift(DenseMatrix *localA, DenseMatrix *localB, KernelMode mode) {
+        auto t = start_clock();
         if(mode == k_sddmmA || mode == k_spmmA) {
             if(localA != nullptr) {
                 BufferPair aBuf(localA);
@@ -203,6 +207,7 @@ public:
                 bBuf.sync_active();
             }
         }
+        stop_clock_and_add(t, "Setup Shift Time");
     }
 
 
