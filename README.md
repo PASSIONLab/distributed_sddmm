@@ -17,6 +17,14 @@ overlap (only 1.5D dense shifting algorithms).
 HnH can use any replacement for its local SpMM and SDDMM kernels that you provide,
 allowing it to generalize beyond the standard definitions of SDDMM and SpMM.
 
+## Citation info
+
+The algorithms implemented in this repository are described in the following publication
+
+Vivek Bharadwaj, Aydin Buluç, James Demmel. Distributed-Memory Sparse Kernels for Machine Learning. In Proceedings of 36th IEEE International Parallel & Distributed Processing Symposium, 2022.
+
+Preprint available at https://arxiv.org/abs/2203.07673
+
 ## How do I use it?
 Here are the steps:
 
